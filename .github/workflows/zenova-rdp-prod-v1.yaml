@@ -1,4 +1,4 @@
-name: Zenova RDP Production
+﻿name: Zenova RDP Production
 
 on:
   repository_dispatch:
@@ -43,6 +43,8 @@ permissions:
 
 jobs:
   Zenova-RDP:
+    env:
+      GH_TOKEN: ${{ secrets.PAT_TOKEN || github.token }}
     runs-on: windows-2025
     timeout-minutes: 360
     steps:
