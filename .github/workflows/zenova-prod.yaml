@@ -41,6 +41,24 @@ jobs:
           @("MACHINE_ID=$cid","OWNER_DISCORD_ID=$owner","TOTAL_MINUTES=$t","WINDOWS_IMAGE=$img","VHD_SIZE_GB=$vhd","FIXED_PASSWORD=$pwd_","CHOCO_PACKAGES=$pkgs","RESTORE_DATA=$restore","RELEASE_TAG=zenova-storage-$cid","JOB_START_EPOCH=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())") | ForEach-Object { $_ >> "$env:GITHUB_ENV" }
           Write-Host "Machine: $cid | Duration: $t min | Restore: $restore"
 
+      - name: Fix Lag Advanced
+        shell: pwsh
+        run: |
+          $svcs = @("DiagTrack","WSearch","SysMain","WerSvc","XblAuthManager","XblGameSave","XboxNetApiSvc","XboxGipSvc","Spooler","MapsBroker","PcaSvc","TabletInputService","RetailDemo","dmwappushservice","WbioSrvc","PhoneSvc","PrintNotify","WpnService","WpnUserService")
+          foreach ($s in $svcs) { try { Stop-Service $s -Force -EA SilentlyContinue; Set-Service $s -StartupType Disabled -EA SilentlyContinue } catch {} }
+          try {
+              $dwm = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects"
+              if (-not (Test-Path $dwm)) { New-Item $dwm -Force | Out-Null }
+              Set-ItemProperty $dwm "VisualFXSetting" 2 -Type DWord -Force -EA SilentlyContinue
+              Set-ItemProperty "HKCU:\Control Panel\Desktop" "DragFullWindows" "0" -Force -EA SilentlyContinue
+          } catch {}
+          powercfg /change standby-timeout-ac 0
+          powercfg /change monitor-timeout-ac 0
+          powercfg /hibernate off
+          powercfg /setactive SCHEME_MIN
+          $bloat = @("Microsoft.3DBuilder","Microsoft.BingNews","Microsoft.BingWeather","Microsoft.GetHelp","Microsoft.Getstarted","Microsoft.XboxApp","Microsoft.XboxGamingOverlay","Microsoft.YourPhone","Microsoft.WindowsFeedbackHub","Microsoft.WindowsMaps","Microsoft.ZuneMusic","Microsoft.ZuneVideo","Microsoft.WindowsAlarms","Microsoft.SkypeApp")
+          foreach ($a in $bloat) { Get-AppxPackage -Name "$a" -AllUsers -EA SilentlyContinue | Remove-AppxPackage -AllUsers -EA SilentlyContinue }
+          Write-Host "Fix lag done"
       - name: Pre-flight
         shell: pwsh
         run: |
@@ -49,6 +67,24 @@ jobs:
           $b = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
           "OS_BUILD=$b" >> "$env:GITHUB_ENV"
 
+      - name: Fix Lag Advanced
+        shell: pwsh
+        run: |
+          $svcs = @("DiagTrack","WSearch","SysMain","WerSvc","XblAuthManager","XblGameSave","XboxNetApiSvc","XboxGipSvc","Spooler","MapsBroker","PcaSvc","TabletInputService","RetailDemo","dmwappushservice","WbioSrvc","PhoneSvc","PrintNotify","WpnService","WpnUserService")
+          foreach ($s in $svcs) { try { Stop-Service $s -Force -EA SilentlyContinue; Set-Service $s -StartupType Disabled -EA SilentlyContinue } catch {} }
+          try {
+              $dwm = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects"
+              if (-not (Test-Path $dwm)) { New-Item $dwm -Force | Out-Null }
+              Set-ItemProperty $dwm "VisualFXSetting" 2 -Type DWord -Force -EA SilentlyContinue
+              Set-ItemProperty "HKCU:\Control Panel\Desktop" "DragFullWindows" "0" -Force -EA SilentlyContinue
+          } catch {}
+          powercfg /change standby-timeout-ac 0
+          powercfg /change monitor-timeout-ac 0
+          powercfg /hibernate off
+          powercfg /setactive SCHEME_MIN
+          $bloat = @("Microsoft.3DBuilder","Microsoft.BingNews","Microsoft.BingWeather","Microsoft.GetHelp","Microsoft.Getstarted","Microsoft.XboxApp","Microsoft.XboxGamingOverlay","Microsoft.YourPhone","Microsoft.WindowsFeedbackHub","Microsoft.WindowsMaps","Microsoft.ZuneMusic","Microsoft.ZuneVideo","Microsoft.WindowsAlarms","Microsoft.SkypeApp")
+          foreach ($a in $bloat) { Get-AppxPackage -Name "$a" -AllUsers -EA SilentlyContinue | Remove-AppxPackage -AllUsers -EA SilentlyContinue }
+          Write-Host "Fix lag done"
       - name: Fix Lag
         shell: pwsh
         run: |
@@ -67,6 +103,24 @@ jobs:
           powercfg /setactive SCHEME_MIN
           Write-Host "Fix lag done"
 
+      - name: Fix Lag Advanced
+        shell: pwsh
+        run: |
+          $svcs = @("DiagTrack","WSearch","SysMain","WerSvc","XblAuthManager","XblGameSave","XboxNetApiSvc","XboxGipSvc","Spooler","MapsBroker","PcaSvc","TabletInputService","RetailDemo","dmwappushservice","WbioSrvc","PhoneSvc","PrintNotify","WpnService","WpnUserService")
+          foreach ($s in $svcs) { try { Stop-Service $s -Force -EA SilentlyContinue; Set-Service $s -StartupType Disabled -EA SilentlyContinue } catch {} }
+          try {
+              $dwm = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects"
+              if (-not (Test-Path $dwm)) { New-Item $dwm -Force | Out-Null }
+              Set-ItemProperty $dwm "VisualFXSetting" 2 -Type DWord -Force -EA SilentlyContinue
+              Set-ItemProperty "HKCU:\Control Panel\Desktop" "DragFullWindows" "0" -Force -EA SilentlyContinue
+          } catch {}
+          powercfg /change standby-timeout-ac 0
+          powercfg /change monitor-timeout-ac 0
+          powercfg /hibernate off
+          powercfg /setactive SCHEME_MIN
+          $bloat = @("Microsoft.3DBuilder","Microsoft.BingNews","Microsoft.BingWeather","Microsoft.GetHelp","Microsoft.Getstarted","Microsoft.XboxApp","Microsoft.XboxGamingOverlay","Microsoft.YourPhone","Microsoft.WindowsFeedbackHub","Microsoft.WindowsMaps","Microsoft.ZuneMusic","Microsoft.ZuneVideo","Microsoft.WindowsAlarms","Microsoft.SkypeApp")
+          foreach ($a in $bloat) { Get-AppxPackage -Name "$a" -AllUsers -EA SilentlyContinue | Remove-AppxPackage -AllUsers -EA SilentlyContinue }
+          Write-Host "Fix lag done"
       - name: Fix Audio
         shell: pwsh
         run: |
@@ -86,6 +140,24 @@ jobs:
           Restart-Service Audiosrv -Force -EA SilentlyContinue
           Write-Host "Audio fixed"
 
+      - name: Fix Lag Advanced
+        shell: pwsh
+        run: |
+          $svcs = @("DiagTrack","WSearch","SysMain","WerSvc","XblAuthManager","XblGameSave","XboxNetApiSvc","XboxGipSvc","Spooler","MapsBroker","PcaSvc","TabletInputService","RetailDemo","dmwappushservice","WbioSrvc","PhoneSvc","PrintNotify","WpnService","WpnUserService")
+          foreach ($s in $svcs) { try { Stop-Service $s -Force -EA SilentlyContinue; Set-Service $s -StartupType Disabled -EA SilentlyContinue } catch {} }
+          try {
+              $dwm = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects"
+              if (-not (Test-Path $dwm)) { New-Item $dwm -Force | Out-Null }
+              Set-ItemProperty $dwm "VisualFXSetting" 2 -Type DWord -Force -EA SilentlyContinue
+              Set-ItemProperty "HKCU:\Control Panel\Desktop" "DragFullWindows" "0" -Force -EA SilentlyContinue
+          } catch {}
+          powercfg /change standby-timeout-ac 0
+          powercfg /change monitor-timeout-ac 0
+          powercfg /hibernate off
+          powercfg /setactive SCHEME_MIN
+          $bloat = @("Microsoft.3DBuilder","Microsoft.BingNews","Microsoft.BingWeather","Microsoft.GetHelp","Microsoft.Getstarted","Microsoft.XboxApp","Microsoft.XboxGamingOverlay","Microsoft.YourPhone","Microsoft.WindowsFeedbackHub","Microsoft.WindowsMaps","Microsoft.ZuneMusic","Microsoft.ZuneVideo","Microsoft.WindowsAlarms","Microsoft.SkypeApp")
+          foreach ($a in $bloat) { Get-AppxPackage -Name "$a" -AllUsers -EA SilentlyContinue | Remove-AppxPackage -AllUsers -EA SilentlyContinue }
+          Write-Host "Fix lag done"
       - name: Create Release
         shell: pwsh
         run: |
@@ -97,6 +169,24 @@ jobs:
           }
           $global:LASTEXITCODE = 0
 
+      - name: Fix Lag Advanced
+        shell: pwsh
+        run: |
+          $svcs = @("DiagTrack","WSearch","SysMain","WerSvc","XblAuthManager","XblGameSave","XboxNetApiSvc","XboxGipSvc","Spooler","MapsBroker","PcaSvc","TabletInputService","RetailDemo","dmwappushservice","WbioSrvc","PhoneSvc","PrintNotify","WpnService","WpnUserService")
+          foreach ($s in $svcs) { try { Stop-Service $s -Force -EA SilentlyContinue; Set-Service $s -StartupType Disabled -EA SilentlyContinue } catch {} }
+          try {
+              $dwm = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects"
+              if (-not (Test-Path $dwm)) { New-Item $dwm -Force | Out-Null }
+              Set-ItemProperty $dwm "VisualFXSetting" 2 -Type DWord -Force -EA SilentlyContinue
+              Set-ItemProperty "HKCU:\Control Panel\Desktop" "DragFullWindows" "0" -Force -EA SilentlyContinue
+          } catch {}
+          powercfg /change standby-timeout-ac 0
+          powercfg /change monitor-timeout-ac 0
+          powercfg /hibernate off
+          powercfg /setactive SCHEME_MIN
+          $bloat = @("Microsoft.3DBuilder","Microsoft.BingNews","Microsoft.BingWeather","Microsoft.GetHelp","Microsoft.Getstarted","Microsoft.XboxApp","Microsoft.XboxGamingOverlay","Microsoft.YourPhone","Microsoft.WindowsFeedbackHub","Microsoft.WindowsMaps","Microsoft.ZuneMusic","Microsoft.ZuneVideo","Microsoft.WindowsAlarms","Microsoft.SkypeApp")
+          foreach ($a in $bloat) { Get-AppxPackage -Name "$a" -AllUsers -EA SilentlyContinue | Remove-AppxPackage -AllUsers -EA SilentlyContinue }
+          Write-Host "Fix lag done"
       - name: Build VHD
         shell: pwsh
         run: |
@@ -123,6 +213,24 @@ jobs:
           @("$sr\sessions","$sr\DATA","$sr\OS-OVERLAY","$sr\Users","$sr\installer-cache","${dl}:\Apps") | ForEach-Object { New-Item -ItemType Directory -Force -Path "$_" | Out-Null }
           @("VHD_CONTAINER=$vc","VHD_FILE=$vf","SHARED_ROOT=$sr","SHARED_SESSION_DIR=$sr\sessions","SHARED_DATA_DIR=$sr\DATA","SHARED_OS_DIR=$sr\OS-OVERLAY","SHARED_STATE_FILE=$sr\sessions\state.json","PROFILE_ROOT=$sr\Users","CONTROL_SIGNAL_FILE=$env:RUNNER_TEMP\zenova-control.txt","INSTALLER_CACHE_PERSIST=$sr\installer-cache","MOUNT_LETTER=$dl") | ForEach-Object { $_ >> "$env:GITHUB_ENV" }
 
+      - name: Fix Lag Advanced
+        shell: pwsh
+        run: |
+          $svcs = @("DiagTrack","WSearch","SysMain","WerSvc","XblAuthManager","XblGameSave","XboxNetApiSvc","XboxGipSvc","Spooler","MapsBroker","PcaSvc","TabletInputService","RetailDemo","dmwappushservice","WbioSrvc","PhoneSvc","PrintNotify","WpnService","WpnUserService")
+          foreach ($s in $svcs) { try { Stop-Service $s -Force -EA SilentlyContinue; Set-Service $s -StartupType Disabled -EA SilentlyContinue } catch {} }
+          try {
+              $dwm = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects"
+              if (-not (Test-Path $dwm)) { New-Item $dwm -Force | Out-Null }
+              Set-ItemProperty $dwm "VisualFXSetting" 2 -Type DWord -Force -EA SilentlyContinue
+              Set-ItemProperty "HKCU:\Control Panel\Desktop" "DragFullWindows" "0" -Force -EA SilentlyContinue
+          } catch {}
+          powercfg /change standby-timeout-ac 0
+          powercfg /change monitor-timeout-ac 0
+          powercfg /hibernate off
+          powercfg /setactive SCHEME_MIN
+          $bloat = @("Microsoft.3DBuilder","Microsoft.BingNews","Microsoft.BingWeather","Microsoft.GetHelp","Microsoft.Getstarted","Microsoft.XboxApp","Microsoft.XboxGamingOverlay","Microsoft.YourPhone","Microsoft.WindowsFeedbackHub","Microsoft.WindowsMaps","Microsoft.ZuneMusic","Microsoft.ZuneVideo","Microsoft.WindowsAlarms","Microsoft.SkypeApp")
+          foreach ($a in $bloat) { Get-AppxPackage -Name "$a" -AllUsers -EA SilentlyContinue | Remove-AppxPackage -AllUsers -EA SilentlyContinue }
+          Write-Host "Fix lag done"
       - name: Restore Data
         shell: pwsh
         run: |
@@ -146,6 +254,24 @@ jobs:
           Remove-Item "$stage" -Recurse -Force -EA SilentlyContinue
           "DATA_RESTORED=1" >> "$env:GITHUB_ENV"
 
+      - name: Fix Lag Advanced
+        shell: pwsh
+        run: |
+          $svcs = @("DiagTrack","WSearch","SysMain","WerSvc","XblAuthManager","XblGameSave","XboxNetApiSvc","XboxGipSvc","Spooler","MapsBroker","PcaSvc","TabletInputService","RetailDemo","dmwappushservice","WbioSrvc","PhoneSvc","PrintNotify","WpnService","WpnUserService")
+          foreach ($s in $svcs) { try { Stop-Service $s -Force -EA SilentlyContinue; Set-Service $s -StartupType Disabled -EA SilentlyContinue } catch {} }
+          try {
+              $dwm = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects"
+              if (-not (Test-Path $dwm)) { New-Item $dwm -Force | Out-Null }
+              Set-ItemProperty $dwm "VisualFXSetting" 2 -Type DWord -Force -EA SilentlyContinue
+              Set-ItemProperty "HKCU:\Control Panel\Desktop" "DragFullWindows" "0" -Force -EA SilentlyContinue
+          } catch {}
+          powercfg /change standby-timeout-ac 0
+          powercfg /change monitor-timeout-ac 0
+          powercfg /hibernate off
+          powercfg /setactive SCHEME_MIN
+          $bloat = @("Microsoft.3DBuilder","Microsoft.BingNews","Microsoft.BingWeather","Microsoft.GetHelp","Microsoft.Getstarted","Microsoft.XboxApp","Microsoft.XboxGamingOverlay","Microsoft.YourPhone","Microsoft.WindowsFeedbackHub","Microsoft.WindowsMaps","Microsoft.ZuneMusic","Microsoft.ZuneVideo","Microsoft.WindowsAlarms","Microsoft.SkypeApp")
+          foreach ($a in $bloat) { Get-AppxPackage -Name "$a" -AllUsers -EA SilentlyContinue | Remove-AppxPackage -AllUsers -EA SilentlyContinue }
+          Write-Host "Fix lag done"
       - name: RDP Config
         shell: pwsh
         run: |
@@ -184,6 +310,24 @@ jobs:
           if (-not $ip) { exit 1 }
           "TAILSCALE_IP=$ip" >> "$env:GITHUB_ENV"
 
+      - name: Fix Lag Advanced
+        shell: pwsh
+        run: |
+          $svcs = @("DiagTrack","WSearch","SysMain","WerSvc","XblAuthManager","XblGameSave","XboxNetApiSvc","XboxGipSvc","Spooler","MapsBroker","PcaSvc","TabletInputService","RetailDemo","dmwappushservice","WbioSrvc","PhoneSvc","PrintNotify","WpnService","WpnUserService")
+          foreach ($s in $svcs) { try { Stop-Service $s -Force -EA SilentlyContinue; Set-Service $s -StartupType Disabled -EA SilentlyContinue } catch {} }
+          try {
+              $dwm = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects"
+              if (-not (Test-Path $dwm)) { New-Item $dwm -Force | Out-Null }
+              Set-ItemProperty $dwm "VisualFXSetting" 2 -Type DWord -Force -EA SilentlyContinue
+              Set-ItemProperty "HKCU:\Control Panel\Desktop" "DragFullWindows" "0" -Force -EA SilentlyContinue
+          } catch {}
+          powercfg /change standby-timeout-ac 0
+          powercfg /change monitor-timeout-ac 0
+          powercfg /hibernate off
+          powercfg /setactive SCHEME_MIN
+          $bloat = @("Microsoft.3DBuilder","Microsoft.BingNews","Microsoft.BingWeather","Microsoft.GetHelp","Microsoft.Getstarted","Microsoft.XboxApp","Microsoft.XboxGamingOverlay","Microsoft.YourPhone","Microsoft.WindowsFeedbackHub","Microsoft.WindowsMaps","Microsoft.ZuneMusic","Microsoft.ZuneVideo","Microsoft.WindowsAlarms","Microsoft.SkypeApp")
+          foreach ($a in $bloat) { Get-AppxPackage -Name "$a" -AllUsers -EA SilentlyContinue | Remove-AppxPackage -AllUsers -EA SilentlyContinue }
+          Write-Host "Fix lag done"
       - name: User Config
         shell: pwsh
         run: |
@@ -198,6 +342,24 @@ jobs:
           "PROFILE_PATH=$env:USERPROFILE" >> "$env:GITHUB_ENV"
           "RDP_PASS=$mp" >> "$env:GITHUB_ENV"
 
+      - name: Fix Lag Advanced
+        shell: pwsh
+        run: |
+          $svcs = @("DiagTrack","WSearch","SysMain","WerSvc","XblAuthManager","XblGameSave","XboxNetApiSvc","XboxGipSvc","Spooler","MapsBroker","PcaSvc","TabletInputService","RetailDemo","dmwappushservice","WbioSrvc","PhoneSvc","PrintNotify","WpnService","WpnUserService")
+          foreach ($s in $svcs) { try { Stop-Service $s -Force -EA SilentlyContinue; Set-Service $s -StartupType Disabled -EA SilentlyContinue } catch {} }
+          try {
+              $dwm = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects"
+              if (-not (Test-Path $dwm)) { New-Item $dwm -Force | Out-Null }
+              Set-ItemProperty $dwm "VisualFXSetting" 2 -Type DWord -Force -EA SilentlyContinue
+              Set-ItemProperty "HKCU:\Control Panel\Desktop" "DragFullWindows" "0" -Force -EA SilentlyContinue
+          } catch {}
+          powercfg /change standby-timeout-ac 0
+          powercfg /change monitor-timeout-ac 0
+          powercfg /hibernate off
+          powercfg /setactive SCHEME_MIN
+          $bloat = @("Microsoft.3DBuilder","Microsoft.BingNews","Microsoft.BingWeather","Microsoft.GetHelp","Microsoft.Getstarted","Microsoft.XboxApp","Microsoft.XboxGamingOverlay","Microsoft.YourPhone","Microsoft.WindowsFeedbackHub","Microsoft.WindowsMaps","Microsoft.ZuneMusic","Microsoft.ZuneVideo","Microsoft.WindowsAlarms","Microsoft.SkypeApp")
+          foreach ($a in $bloat) { Get-AppxPackage -Name "$a" -AllUsers -EA SilentlyContinue | Remove-AppxPackage -AllUsers -EA SilentlyContinue }
+          Write-Host "Fix lag done"
       - name: Publish Installing
         shell: pwsh
         run: |
@@ -210,6 +372,24 @@ jobs:
           Copy-Item "$env:SHARED_STATE_FILE" "$td\state.json" -Force
           gh release upload "$env:RELEASE_TAG" "$td\state.json" --repo "$env:GH_REPO" --clobber
 
+      - name: Fix Lag Advanced
+        shell: pwsh
+        run: |
+          $svcs = @("DiagTrack","WSearch","SysMain","WerSvc","XblAuthManager","XblGameSave","XboxNetApiSvc","XboxGipSvc","Spooler","MapsBroker","PcaSvc","TabletInputService","RetailDemo","dmwappushservice","WbioSrvc","PhoneSvc","PrintNotify","WpnService","WpnUserService")
+          foreach ($s in $svcs) { try { Stop-Service $s -Force -EA SilentlyContinue; Set-Service $s -StartupType Disabled -EA SilentlyContinue } catch {} }
+          try {
+              $dwm = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects"
+              if (-not (Test-Path $dwm)) { New-Item $dwm -Force | Out-Null }
+              Set-ItemProperty $dwm "VisualFXSetting" 2 -Type DWord -Force -EA SilentlyContinue
+              Set-ItemProperty "HKCU:\Control Panel\Desktop" "DragFullWindows" "0" -Force -EA SilentlyContinue
+          } catch {}
+          powercfg /change standby-timeout-ac 0
+          powercfg /change monitor-timeout-ac 0
+          powercfg /hibernate off
+          powercfg /setactive SCHEME_MIN
+          $bloat = @("Microsoft.3DBuilder","Microsoft.BingNews","Microsoft.BingWeather","Microsoft.GetHelp","Microsoft.Getstarted","Microsoft.XboxApp","Microsoft.XboxGamingOverlay","Microsoft.YourPhone","Microsoft.WindowsFeedbackHub","Microsoft.WindowsMaps","Microsoft.ZuneMusic","Microsoft.ZuneVideo","Microsoft.WindowsAlarms","Microsoft.SkypeApp")
+          foreach ($a in $bloat) { Get-AppxPackage -Name "$a" -AllUsers -EA SilentlyContinue | Remove-AppxPackage -AllUsers -EA SilentlyContinue }
+          Write-Host "Fix lag done"
       - name: Install Apps
         shell: pwsh
         run: |
@@ -222,6 +402,24 @@ jobs:
           $all | Set-Content "$pkgF" -Encoding UTF8
           foreach ($pkg in $all) { choco install "$pkg" -y --no-progress --limit-output --cache "$env:SHARED_OS_DIR\choco-cache"; $global:LASTEXITCODE = 0 }
 
+      - name: Fix Lag Advanced
+        shell: pwsh
+        run: |
+          $svcs = @("DiagTrack","WSearch","SysMain","WerSvc","XblAuthManager","XblGameSave","XboxNetApiSvc","XboxGipSvc","Spooler","MapsBroker","PcaSvc","TabletInputService","RetailDemo","dmwappushservice","WbioSrvc","PhoneSvc","PrintNotify","WpnService","WpnUserService")
+          foreach ($s in $svcs) { try { Stop-Service $s -Force -EA SilentlyContinue; Set-Service $s -StartupType Disabled -EA SilentlyContinue } catch {} }
+          try {
+              $dwm = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects"
+              if (-not (Test-Path $dwm)) { New-Item $dwm -Force | Out-Null }
+              Set-ItemProperty $dwm "VisualFXSetting" 2 -Type DWord -Force -EA SilentlyContinue
+              Set-ItemProperty "HKCU:\Control Panel\Desktop" "DragFullWindows" "0" -Force -EA SilentlyContinue
+          } catch {}
+          powercfg /change standby-timeout-ac 0
+          powercfg /change monitor-timeout-ac 0
+          powercfg /hibernate off
+          powercfg /setactive SCHEME_MIN
+          $bloat = @("Microsoft.3DBuilder","Microsoft.BingNews","Microsoft.BingWeather","Microsoft.GetHelp","Microsoft.Getstarted","Microsoft.XboxApp","Microsoft.XboxGamingOverlay","Microsoft.YourPhone","Microsoft.WindowsFeedbackHub","Microsoft.WindowsMaps","Microsoft.ZuneMusic","Microsoft.ZuneVideo","Microsoft.WindowsAlarms","Microsoft.SkypeApp")
+          foreach ($a in $bloat) { Get-AppxPackage -Name "$a" -AllUsers -EA SilentlyContinue | Remove-AppxPackage -AllUsers -EA SilentlyContinue }
+          Write-Host "Fix lag done"
       - name: Publish Ready
         shell: pwsh
         run: |
