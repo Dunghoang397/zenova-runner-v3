@@ -1,4 +1,4 @@
-﻿name: ALB ULTIMATE RDP v7.0
+﻿name: ALB ULTIMATE RDP v8.0
 
 on:
   workflow_dispatch:
@@ -278,41 +278,34 @@ jobs:
         run: |
           Write-Host "CAU HINH RDP - FIX PROMPT PASSWORD" -ForegroundColor Yellow
 
-          # 1. Bật RDP
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0 -Force
-
           $p = 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
 
-          # 2. FIX: UserAuthentication = 1 (BẬT NLA - BẮT BUỘC để fPromptForPassword có tác dụng)
+          # FIX 1: NLA (BẮT BUỘC để fPromptForPassword có tác dụng)
           Set-ItemProperty -Path "$p" -Name 'UserAuthentication' -Value 1 -Type DWord -Force
           Write-Host "  OK: UserAuthentication = 1 (NLA)" -ForegroundColor Green
 
-          # 3. FIX: SecurityLayer = 2 (Negotiate/TLS)
+          # FIX 2: TLS
           Set-ItemProperty -Path "$p" -Name 'SecurityLayer' -Value 2 -Type DWord -Force
           Write-Host "  OK: SecurityLayer = 2 (TLS)" -ForegroundColor Green
 
-          # 4. FIX: fPromptForPassword = 1 ở RDP-Tcp
+          # FIX 3: fPromptForPassword ở RDP-Tcp
           Set-ItemProperty -Path "$p" -Name 'fPromptForPassword' -Value 1 -Type DWord -Force
-          Write-Host "  OK: fPromptForPassword = 1 (RDP-Tcp)" -ForegroundColor Green
 
-          # 5. FIX: fPromptForPassword = 1 ở Policy (ưu tiên cao nhất)
+          # FIX 4: fPromptForPassword ở Policy (ưu tiên cao)
           $tsPolicy = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
           New-Item -Path "$tsPolicy" -Force | Out-Null
           Set-ItemProperty -Path "$tsPolicy" -Name 'fPromptForPassword' -Value 1 -Type DWord -Force
-          Write-Host "  OK: fPromptForPassword = 1 (Policy)" -ForegroundColor Green
+          Write-Host "  OK: fPromptForPassword = 1 (2 vi tri)" -ForegroundColor Green
 
-          # 6. FIX: Xóa credential cache (nếu có) - QUAN TRỌNG
+          # FIX 5: Xóa credential cache
           $creds = cmdkey /list 2>$null | Select-String "TERMSRV"
-          if ($creds) {
-              $creds | ForEach-Object { if ($_ -match 'TERMSRV/([^\s]+)') { cmdkey /delete:$($Matches[0]) 2>$null; Write-Host "  Da xoa credential: $($Matches[0])" -ForegroundColor Yellow } }
-          }
-          Write-Host "  OK: Da kiem tra va xoa credential cache" -ForegroundColor Green
+          if ($creds) { $creds | ForEach-Object { if ($_ -match 'TERMSRV/([^\s]+)') { cmdkey /delete:$($Matches[0]) 2>$null } } }
+          Write-Host "  OK: Da xoa credential cache" -ForegroundColor Green
 
-          # 7. Âm thanh
           Set-ItemProperty -Path "$p" -Name 'fDisableAudioCapture' -Value 0 -Type DWord -Force
           Set-ItemProperty -Path "$p" -Name 'fDisableCam' -Value 0 -Type DWord -Force
 
-          # 8. Firewall
           Remove-NetFirewallRule -DisplayName 'ALB-RDP' -ErrorAction SilentlyContinue
           Remove-NetFirewallRule -DisplayName 'ALB-Sunshine-TCP' -ErrorAction SilentlyContinue
           Remove-NetFirewallRule -DisplayName 'ALB-Sunshine-UDP' -ErrorAction SilentlyContinue
@@ -385,14 +378,11 @@ jobs:
           VDD_RES: ${{ inputs.vdd_resolution }}
         run: |
           $ErrorActionPreference = 'Continue'; $ProgressPreference = 'SilentlyContinue'; $instCache = "$env:INSTALLER_CACHE"; $sunPersistCfg = "$env:SUNSHINE_PERSIST_CFG"; $dl = "$env:MOUNT_LETTER"
-          # VDD
           $resParts = "$env:VDD_RES" -split '[@x]'; $vWidth = if (($resParts.Count) -ge 1) { [int]$resParts[0] } else { 1920 }; $vHeight = if (($resParts.Count) -ge 2) { [int]$resParts[1] } else { 1080 }; $vHz = if (($resParts.Count) -ge 3) { [int]$resParts[2] } else { 60 }
           $vddCacheDir = [System.IO.Path]::Combine("$instCache", 'VDD'); New-Item -ItemType Directory -Force -Path "$vddCacheDir" | Out-Null; $usbDir = 'C:\usbmmidd_v2'
           try { $usbZip = [System.IO.Path]::Combine("$vddCacheDir", 'usbmmidd_v2.zip'); if (-not (Test-Path "$usbZip")) { Invoke-WebRequest -Uri 'https://www.amyuni.com/downloads/usbmmidd_v2.zip' -OutFile "$usbZip" -UseBasicParsing -TimeoutSec 45 }; if (Test-Path "$usbZip") { Expand-Archive -Path "$usbZip" -DestinationPath 'C:\' -Force; if (Test-Path "$usbDir\deviceinstaller64.exe") { Push-Location "$usbDir"; Get-ChildItem -Path "$usbDir" -Filter '*.cer' -Recurse | ForEach-Object { Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\Root' *>$null; Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' *>$null }; & .\deviceinstaller64.exe install usbmmidd.inf usbmmidd *> $null; $wudfPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\WUDF\Services\usbmmidd\Parameters'; New-Item -Path "$wudfPath" -Force | Out-Null; Set-ItemProperty -Path "$wudfPath" -Name '0' -Value '1920,1080,60' -Type String -Force; Set-ItemProperty -Path "$wudfPath" -Name '1' -Value '1920,1080,120' -Type String -Force; Set-ItemProperty -Path "$wudfPath" -Name '2' -Value '2560,1440,60' -Type String -Force; Set-ItemProperty -Path "$wudfPath" -Name '3' -Value '3840,2160,60' -Type String -Force; & .\deviceinstaller64.exe enableidd 1 *> $null; Pop-Location } } } catch {}
-          # VB-Audio
           try { @('MMCSS', 'AudioEndpointBuilder', 'Audiosrv') | ForEach-Object { Set-Service -Name "$_" -StartupType Automatic -ErrorAction SilentlyContinue; Start-Service -Name "$_" -ErrorAction SilentlyContinue }; $vbCacheDir = [System.IO.Path]::Combine("$instCache", 'VBCable'); $vbZip = [System.IO.Path]::Combine("$vbCacheDir", 'VBCABLE_Driver_Pack43.zip'); New-Item -ItemType Directory -Force -Path "$vbCacheDir" | Out-Null; if (-not (Test-Path "$vbZip")) { try { Invoke-WebRequest -Uri 'https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip' -OutFile "$vbZip" -UseBasicParsing -TimeoutSec 45 } catch { Invoke-WebRequest -Uri 'https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack45.zip' -OutFile "$vbZip" -UseBasicParsing -TimeoutSec 45 } }; if ((Test-Path "$vbZip") -and (-not (Test-Path "$vbCacheDir\VBCABLE_Setup_x64.exe"))) { Expand-Archive -Path "$vbZip" -DestinationPath "$vbCacheDir" -Force }; Get-ChildItem -Path "$vbCacheDir" -Include '*.cer','*.cat','*.sys','*.exe' -Recurse -ErrorAction SilentlyContinue | ForEach-Object { if ($_.Extension -eq '.cer') { Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\Root' *>$null; Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' *>$null } else { $sig = Get-AuthenticodeSignature -FilePath ($_.FullName) -ErrorAction SilentlyContinue; if ($sig -and $sig.SignerCertificate) { $storeRoot = New-Object System.Security.Cryptography.X509Certificates.X509Store('Root', 'LocalMachine'); $storeRoot.Open('ReadWrite'); $storeRoot.Add($sig.SignerCertificate); $storeRoot.Close(); $storePub = New-Object System.Security.Cryptography.X509Certificates.X509Store('TrustedPublisher', 'LocalMachine'); $storePub.Open('ReadWrite'); $storePub.Add($sig.SignerCertificate); $storePub.Close() } } }; $vbInf = Get-ChildItem -Path "$vbCacheDir" -Filter '*64*.inf' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1; if (-not ($vbInf)) { $vbInf = Get-ChildItem -Path "$vbCacheDir" -Filter '*.inf' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 }; if ($vbInf) { pnputil /add-driver ($vbInf.FullName) /install *> $null; if (Test-Path "$usbDir\deviceinstaller64.exe") { Push-Location ($vbInf.DirectoryName); & "$usbDir\deviceinstaller64.exe" install ($vbInf.Name) 'VBAudioVACWDM' *> $null; Pop-Location } }; pnputil /scan-devices *> $null; Restart-Service -Name 'Audiosrv' -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; $finalAudio = @(Get-PnpDevice -Class 'MEDIA','AudioEndpoint' -ErrorAction SilentlyContinue | Where-Object { ($_.FriendlyName -match 'VB-Audio|CABLE|Virtual Audio|Speaker|Line') -and ($_.Status -eq 'OK') } | Select-Object -ExpandProperty FriendlyName -Unique); if (($finalAudio.Count) -gt 0) { "AUDIO_DEVICE_NAME=$($finalAudio -join ', ')" >> "$env:GITHUB_ENV" } else { "AUDIO_DEVICE_NAME=Windows Virtual Audio (Active)" >> "$env:GITHUB_ENV" } } catch { "AUDIO_DEVICE_NAME=N/A" >> "$env:GITHUB_ENV" }
           $global:LASTEXITCODE = 0
-          # Sunshine
           $sunDir = 'C:\Program Files\Sunshine'; $sunExe = "$sunDir\sunshine.exe"; $sunCfg = "$sunDir\config"
           if (-not (Test-Path "$sunExe")) { Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*Sunshine*' -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -Path 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*Sunshine*' -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -Path 'HKLM:\SOFTWARE\LizardByte*' -Recurse -Force -ErrorAction SilentlyContinue; & sc.exe stop SunshineService *> $null; & sc.exe delete SunshineService *> $null; & sc.exe stop sunshinesvc *> $null; & sc.exe delete sunshinesvc *> $null; $installJob = Start-Job -ScriptBlock { choco install sunshine -y --no-progress --limit-output --ignore-checksums }; $completed = Wait-Job -Job ($installJob) -Timeout 90; if (-not ($completed)) { Stop-Job -Job ($installJob) -ErrorAction SilentlyContinue; Get-Process | Where-Object { ($_.Name -match 'sunshine|choco') -and ($_.Name -ne 'sunshinesvc') } | Stop-Process -Force -ErrorAction SilentlyContinue } else { Receive-Job -Job ($installJob) | Out-Null }; Remove-Job -Job ($installJob) -Force -ErrorAction SilentlyContinue; $global:LASTEXITCODE = 0 }
           if (Test-Path "$sunExe") { Stop-Service -Name 'SunshineService' -Force -ErrorAction SilentlyContinue; Stop-Service -Name 'sunshinesvc' -Force -ErrorAction SilentlyContinue; Stop-Process -Name 'sunshine' -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; if (Test-Path "$sunCfg") { $item = Get-Item "$sunCfg" -Force; if (($item.Attributes) -notmatch 'ReparsePoint') { if ((@(Get-ChildItem "$sunPersistCfg" -Force -ErrorAction SilentlyContinue).Count) -eq 0) { Copy-Item -Path "$sunCfg\*" -Destination "$sunPersistCfg" -Recurse -Force -ErrorAction SilentlyContinue }; Remove-Item -Path "$sunCfg" -Recurse -Force -ErrorAction SilentlyContinue; New-Item -ItemType Junction -Path "$sunCfg" -Target "$sunPersistCfg" -Force | Out-Null } } else { New-Item -ItemType Junction -Path "$sunCfg" -Target "$sunPersistCfg" -Force | Out-Null }; $confFile = [System.IO.Path]::Combine("$sunPersistCfg", 'sunshine.conf'); if (-not (Test-Path "$confFile")) { @("sunshine_name = ALB-$($env:MACHINE_ID)","min_log_level = info","origin_web_ui_allowed = wan","upnp = disabled","address_family = both") | Set-Content -Path "$confFile" -Encoding UTF8 } }
@@ -435,35 +425,58 @@ jobs:
           try { $desktopDir = [System.IO.Path]::Combine("$profPath", 'Desktop'); New-Item -ItemType Directory -Force -Path "$desktopDir" | Out-Null; $ws = New-Object -ComObject WScript.Shell; @("$desktopDir", 'C:\Users\Public\Desktop') | ForEach-Object { $d = "$_"; $ws.CreateShortcut("$d\WEB-QUAN-LY-RDP.url").TargetPath = "http://127.0.0.1:$($env:WEB_PORT)/"; $ws.CreateShortcut("$d\WEB-QUAN-LY-RDP.url").Save(); $ws.CreateShortcut("$d\SUNSHINE-WEB-UI.url").TargetPath = "https://127.0.0.1:$($env:SUNSHINE_WEB_PORT)/"; $ws.CreateShortcut("$d\SUNSHINE-WEB-UI.url").Save() } } catch {}
           'SESSION_READY=1' >> "$env:GITHUB_ENV"; exit 0
 
-      - name: 📦 Cài sẵn Discord, Spotify, StarDesk
+      - name: 📦 Cài sẵn Discord, Spotify, StarDesk (Direct Download - NO WINGET)
         shell: pwsh
         run: |
-          Write-Host "CAI SAN DISCORD, SPOTIFY, STARDESK" -ForegroundColor Yellow
+          Write-Host "CAI SAN DISCORD, SPOTIFY, STARDESK (Direct Download)" -ForegroundColor Yellow
+          $ProgressPreference = 'SilentlyContinue'
+          $tmp = "$env:TEMP\ALB-Apps"
+          New-Item -ItemType Directory -Force -Path "$tmp" | Out-Null
 
-          $wingetOk = $false
-          try { winget --version 2>&1 | Out-Null; if ($LASTEXITCODE -eq 0) { $wingetOk = $true } } catch {}
-          if (-not $wingetOk) {
-              Write-Host "  Bootstrap winget..." -ForegroundColor Cyan
-              try {
-                  $vclibs = "$env:TEMP\Microsoft.VCLibs.x64.14.00.Desktop.appx"
-                  $xaml = "$env:TEMP\Microsoft.UI.Xaml.2.8.x64.appx"
-                  $bundle = "$env:TEMP\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
-                  Invoke-WebRequest -Uri "https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx" -OutFile $vclibs -UseBasicParsing
-                  Invoke-WebRequest -Uri "https://github.com/microsoft/microsoft-ui-xaml/releases/download/v2.8.6/Microsoft.UI.Xaml.2.8.x64.appx" -OutFile $xaml -UseBasicParsing
-                  Invoke-WebRequest -Uri "https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle" -OutFile $bundle -UseBasicParsing
-                  Add-AppxPackage -Path $vclibs -ErrorAction SilentlyContinue
-                  Add-AppxPackage -Path $xaml -ErrorAction SilentlyContinue
-                  Add-AppxPackage -Path $bundle -ErrorAction SilentlyContinue
-                  $wingetOk = $true
-                  Write-Host "  OK: winget da cai" -ForegroundColor Green
-              } catch { Write-Host "  WARN: winget bootstrap fail" -ForegroundColor Yellow }
-          }
+          # Discord
+          try {
+              Write-Host "  Cai Discord..." -ForegroundColor Cyan
+              $discord = "$tmp\DiscordSetup.exe"
+              Invoke-WebRequest -Uri "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x64" -OutFile $discord -UseBasicParsing -TimeoutSec 120
+              if (Test-Path $discord) {
+                  Start-Process -FilePath $discord -ArgumentList "/S" -Wait -NoNewWindow
+                  Write-Host "  OK: Discord" -ForegroundColor Green
+              }
+          } catch { Write-Host "  WARN: Discord fail - $($_.Exception.Message)" -ForegroundColor Yellow }
 
-          try { if ($wingetOk) { winget install Discord.Discord --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null } else { $discord = "$env:TEMP\DiscordSetup.exe"; Invoke-WebRequest -Uri "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x64" -OutFile $discord -UseBasicParsing; Start-Process -FilePath $discord -ArgumentList "/S" -Wait }; Write-Host "  OK: Discord" -ForegroundColor Green } catch { Write-Host "  WARN: Discord fail" -ForegroundColor Yellow }
-          try { if ($wingetOk) { winget install Spotify.Spotify --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null } else { $spotify = "$env:TEMP\SpotifySetup.exe"; Invoke-WebRequest -Uri "https://download.scdn.co/SpotifySetup.exe" -OutFile $spotify -UseBasicParsing; Start-Process -FilePath $spotify -ArgumentList "/silent" -Wait }; Write-Host "  OK: Spotify" -ForegroundColor Green } catch { Write-Host "  WARN: Spotify fail" -ForegroundColor Yellow }
-          try { if ($wingetOk) { winget install Stardesk.Stardesk --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null } else { $sd = "$env:TEMP\StarDeskSetup.exe"; Invoke-WebRequest -Uri "https://stardesk.net/download/windows" -OutFile $sd -UseBasicParsing; Start-Process -FilePath "$sd" -ArgumentList "/S" -Wait }; Write-Host "  OK: StarDesk" -ForegroundColor Green } catch { Write-Host "  WARN: StarDesk fail" -ForegroundColor Yellow }
+          # Spotify
+          try {
+              Write-Host "  Cai Spotify..." -ForegroundColor Cyan
+              $spotify = "$tmp\SpotifySetup.exe"
+              Invoke-WebRequest -Uri "https://download.scdn.co/SpotifySetup.exe" -OutFile $spotify -UseBasicParsing -TimeoutSec 120
+              if (Test-Path $spotify) {
+                  Start-Process -FilePath $spotify -ArgumentList "/silent /skip-app-launch" -Wait -NoNewWindow
+                  Write-Host "  OK: Spotify" -ForegroundColor Green
+              }
+          } catch { Write-Host "  WARN: Spotify fail - $($_.Exception.Message)" -ForegroundColor Yellow }
 
-          $global:LASTEXITCODE = 0; exit 0
+          # StarDesk
+          try {
+              Write-Host "  Cai StarDesk..." -ForegroundColor Cyan
+              $sd = "$tmp\StarDeskSetup.exe"
+              Invoke-WebRequest -Uri "https://stardesk.net/download/windows" -OutFile $sd -UseBasicParsing -TimeoutSec 120
+              if (Test-Path $sd) {
+                  Start-Process -FilePath $sd -ArgumentList "/S" -Wait -NoNewWindow
+                  Write-Host "  OK: StarDesk" -ForegroundColor Green
+              }
+          } catch { Write-Host "  WARN: StarDesk fail - $($_.Exception.Message)" -ForegroundColor Yellow }
+
+          Write-Host ""
+          Write-Host "KIEM TRA CAI DAT:" -ForegroundColor Cyan
+          $discordPath = "$env:LOCALAPPDATA\Discord\Update.exe"
+          if (Test-Path $discordPath) { Write-Host "  OK: Discord installed" -ForegroundColor Green } else { Write-Host "  WARN: Discord not found" -ForegroundColor Yellow }
+          $spotifyPath = "$env:APPDATA\Spotify\Spotify.exe"
+          if (Test-Path $spotifyPath) { Write-Host "  OK: Spotify installed" -ForegroundColor Green } else { Write-Host "  WARN: Spotify not found" -ForegroundColor Yellow }
+          $sdPath = "C:\Program Files\StarDesk\StarDesk.exe"
+          if (Test-Path $sdPath) { Write-Host "  OK: StarDesk installed" -ForegroundColor Green } else { Write-Host "  WARN: StarDesk not found" -ForegroundColor Yellow }
+
+          $global:LASTEXITCODE = 0
+          exit 0
 
       - name: 🌐 Web Panel (Service)
         shell: pwsh
@@ -516,7 +529,7 @@ jobs:
         run: |
           $passText = "$env:RDP_PASS"; $audioName = if ($env:AUDIO_DEVICE_NAME) { $env:AUDIO_DEVICE_NAME } else { 'N/A' }
           Write-Host "============================================================" -ForegroundColor Cyan
-          Write-Host "  ALB ULTIMATE RDP v7.0 — TỐI THƯỢNG" -ForegroundColor Cyan
+          Write-Host "  ALB ULTIMATE RDP v8.0 — HOAN CHINH" -ForegroundColor Cyan
           Write-Host "============================================================" -ForegroundColor Cyan
           Write-Host "  May         : $env:MACHINE_ID" -ForegroundColor Cyan
           Write-Host "  Creator     : $env:CREATOR" -ForegroundColor Cyan
@@ -527,9 +540,9 @@ jobs:
           Write-Host "  Audio       : $audioName" -ForegroundColor Green
           Write-Host "  Web Panel   : http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Yellow
           Write-Host "  Sunshine    : https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/" -ForegroundColor Yellow
-          Write-Host "  Discord     : Da cai san" -ForegroundColor Green
-          Write-Host "  Spotify     : Da cai san" -ForegroundColor Green
-          Write-Host "  StarDesk    : Da cai san" -ForegroundColor Green
+          Write-Host "  Discord     : Da cai san (Direct Download)" -ForegroundColor Green
+          Write-Host "  Spotify     : Da cai san (Direct Download)" -ForegroundColor Green
+          Write-Host "  StarDesk    : Da cai san (Direct Download)" -ForegroundColor Green
           Write-Host "  RDP Prompt  : NLA=1, TLS=2, fPromptForPassword=1 (2 vi tri), cmdkey cleaned" -ForegroundColor Yellow
           Write-Host "============================================================" -ForegroundColor Cyan
           exit 0
