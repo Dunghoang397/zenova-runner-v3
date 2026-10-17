@@ -1,4 +1,4 @@
-﻿name: ALB ULTIMATE RDP v5.0
+﻿name: ALB ULTIMATE RDP v7.0
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ on:
         default: ''
         type: string
       machine_id:
-        description: 'Tên máy đơn (nếu không dùng machine_ids)'
+        description: 'Tên máy đơn'
         required: false
         default: 'may-phu-1'
         type: string
@@ -46,17 +46,17 @@ on:
         type: choice
         options: ['windows-2022', 'windows-2025']
       rdp_username:
-        description: 'Tên user ngoài RDP (mặc định: runneradmin)'
+        description: 'Tên user ngoài RDP'
         required: false
         default: 'runneradmin'
         type: string
       rdp_password:
-        description: 'Mật khẩu RDP (mặc định: Aistv@2026)'
+        description: 'Mật khẩu RDP'
         required: false
         default: 'Aistv@2026'
         type: string
       creator_name:
-        description: 'Tên người tạo máy (lưu metadata)'
+        description: 'Tên người tạo máy'
         required: false
         default: 'ALB'
         type: string
@@ -72,12 +72,12 @@ on:
         default: ''
         type: string
       app_urls:
-        description: 'App cài bằng link trực tiếp (mỗi dòng 1 URL)'
+        description: 'App cài bằng link (mỗi dòng 1 URL)'
         required: false
         default: ''
         type: string
       optimize_windows:
-        description: 'Tối ưu Windows (fix lag)'
+        description: 'Tối ưu Windows'
         required: false
         default: true
         type: boolean
@@ -100,11 +100,7 @@ jobs:
       - id: set
         shell: bash
         run: |
-          if [ -n "${{ inputs.machine_ids }}" ]; then
-            IDS='${{ inputs.machine_ids }}'
-          else
-            IDS='${{ inputs.machine_id }}'
-          fi
+          if [ -n "${{ inputs.machine_ids }}" ]; then IDS='${{ inputs.machine_ids }}'; else IDS='${{ inputs.machine_id }}'; fi
           JSON=$(echo "$IDS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' | jq -R -s -c 'split("\n") | map(select(length > 0))')
           echo "matrix=$JSON" >> $GITHUB_OUTPUT
 
@@ -130,278 +126,95 @@ jobs:
       SUNSHINE_WEB_PORT: '47990'
 
     steps:
-      - name: 🧱 Dựng ổ đĩa riêng & thông số kho lưu theo máy
+      - name: 🧱 Dựng ổ đĩa & thông số
         shell: pwsh
         env:
           INPUT_DURATION: ${{ inputs.duration }}
         run: |
           $nowEpoch = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
           "JOB_START_EPOCH=$nowEpoch" >> "$env:GITHUB_ENV"
-
           $cleanId = (("$env:MACHINE_ID").Trim().ToLower() -replace '[^a-z0-9\-]', '-') -replace '\-+', '-' -replace '^\-|\-$', ''
           if ([string]::IsNullOrWhiteSpace("$cleanId")) { $cleanId = 'may-phu-1' }
-          $relTag      = "alb-storage-$cleanId"
-          $stateBranch = "alb-state-$cleanId"
-
-          "MACHINE_ID=$cleanId" >> "$env:GITHUB_ENV"
-          "RELEASE_TAG=$relTag" >> "$env:GITHUB_ENV"
-          "STATE_BRANCH=$stateBranch" >> "$env:GITHUB_ENV"
-
+          $relTag = "alb-storage-$cleanId"; $stateBranch = "alb-state-$cleanId"
+          "MACHINE_ID=$cleanId" >> "$env:GITHUB_ENV"; "RELEASE_TAG=$relTag" >> "$env:GITHUB_ENV"; "STATE_BRANCH=$stateBranch" >> "$env:GITHUB_ENV"
           $total = 300; $display = '5 giờ 00 phút'
-          if ("$env:INPUT_DURATION" -eq '1h') { $total = 60; $display = '1 giờ' }
-          elseif ("$env:INPUT_DURATION" -eq '3h') { $total = 180; $display = '3 giờ' }
-          "TOTAL_MINUTES=$total" >> "$env:GITHUB_ENV"
-          "DISPLAY_TIME=$display" >> "$env:GITHUB_ENV"
-
-          $user     = "$env:USERNAME"
-          $profPath = "$env:USERPROFILE"
-          "RDP_USER=$user" >> "$env:GITHUB_ENV"
-          "PROFILE_PATH=$profPath" >> "$env:GITHUB_ENV"
-
+          if ("$env:INPUT_DURATION" -eq '1h') { $total = 60; $display = '1 giờ' } elseif ("$env:INPUT_DURATION" -eq '3h') { $total = 180; $display = '3 giờ' }
+          "TOTAL_MINUTES=$total" >> "$env:GITHUB_ENV"; "DISPLAY_TIME=$display" >> "$env:GITHUB_ENV"
+          $user = "$env:USERNAME"; $profPath = "$env:USERPROFILE"
+          "RDP_USER=$user" >> "$env:GITHUB_ENV"; "PROFILE_PATH=$profPath" >> "$env:GITHUB_ENV"
           $dl = (("$env:DRIVE_LETTER").Trim() -replace '[^A-Za-z]', '').ToUpper()
           if ((-not ("$dl")) -or ("$dl" -in @('C', 'D'))) { $dl = 'X' }
           "MOUNT_LETTER=$dl" >> "$env:GITHUB_ENV"
-
-          $vhdContainer = 'C:\ALB-VHD-HOST'
-          New-Item -ItemType Directory -Force -Path "$vhdContainer" | Out-Null
+          $vhdContainer = 'C:\ALB-VHD-HOST'; New-Item -ItemType Directory -Force -Path "$vhdContainer" | Out-Null
           $vhdFile = [System.IO.Path]::Combine("$vhdContainer", 'alb-os-disk.vhdx')
-
           $sizeBytes = ([int64]"$env:VHD_SIZE_GB") * 1GB
           $mounted = $false
           try {
-              if (-not (Test-Path "$vhdFile")) {
-                  New-VHD -Path "$vhdFile" -SizeBytes ($sizeBytes) -Dynamic | Mount-VHD -PassThru | Initialize-Disk -PartitionStyle GPT -PassThru | New-Partition -DriveLetter "$dl" -UseMaximumSize | Format-Volume -FileSystem NTFS -NewFileSystemLabel 'ALB-OS' -Confirm:($false) | Out-Null
-              } else {
-                  Mount-VHD -Path "$vhdFile"
-              }
-              $null = Get-PSDrive -Name "$dl" -ErrorAction Stop
-              if (Test-Path "${dl}:\") { $mounted = $true }
+              if (-not (Test-Path "$vhdFile")) { New-VHD -Path "$vhdFile" -SizeBytes ($sizeBytes) -Dynamic | Mount-VHD -PassThru | Initialize-Disk -PartitionStyle GPT -PassThru | New-Partition -DriveLetter "$dl" -UseMaximumSize | Format-Volume -FileSystem NTFS -NewFileSystemLabel 'ALB-OS' -Confirm:($false) | Out-Null }
+              else { Mount-VHD -Path "$vhdFile" }
+              $null = Get-PSDrive -Name "$dl" -ErrorAction Stop; if (Test-Path "${dl}:\") { $mounted = $true }
           } catch {}
-
           if (-not ($mounted)) {
-              $fallbackDir = [System.IO.Path]::Combine("$vhdContainer", 'VIRTUAL-DRIVE-ROOT')
-              New-Item -ItemType Directory -Force -Path "$fallbackDir" | Out-Null
+              $fallbackDir = [System.IO.Path]::Combine("$vhdContainer", 'VIRTUAL-DRIVE-ROOT'); New-Item -ItemType Directory -Force -Path "$fallbackDir" | Out-Null
               & subst "${dl}:" "$fallbackDir"
               Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\DOS Devices' -Name "${dl}:" -Value "\??\$fallbackDir" -Type String -Force
               $null = New-PSDrive -Name "$dl" -PSProvider FileSystem -Root "${dl}:\" -Scope Global -ErrorAction SilentlyContinue
           }
-
-          $sharedRoot       = "${dl}:\ALB-SYSTEM"
-          $sharedSessionDir = "$sharedRoot\sessions"
-          $sharedDataDir    = "$sharedRoot\DATA"
-          $sharedOsDir      = "$sharedRoot\OS-OVERLAY"
-          $sharedStateFile  = "$sharedSessionDir\rdp-session-state.json"
-          $profileStoreRoot = "$sharedRoot\Users"
-          $baselineFile     = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'baseline-c-dirs.json')
-          $controlSignal    = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'alb-control-action.txt')
-
-          @("$sharedRoot", "$sharedSessionDir", "$sharedDataDir", "$sharedOsDir", "$profileStoreRoot", "${dl}:\Apps") | ForEach-Object {
-              New-Item -ItemType Directory -Force -Path "$_" | Out-Null
-          }
-
-          $baseline = @{
-              PF64 = @(Get-ChildItem 'C:\Program Files' -Directory -Force -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
-              PF86 = @(Get-ChildItem 'C:\Program Files (x86)' -Directory -Force -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
-              PD   = @(Get-ChildItem 'C:\ProgramData' -Directory -Force -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
-          }
+          $sharedRoot = "${dl}:\ALB-SYSTEM"; $sharedSessionDir = "$sharedRoot\sessions"; $sharedDataDir = "$sharedRoot\DATA"; $sharedOsDir = "$sharedRoot\OS-OVERLAY"; $sharedStateFile = "$sharedSessionDir\rdp-session-state.json"; $profileStoreRoot = "$sharedRoot\Users"; $baselineFile = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'baseline-c-dirs.json'); $controlSignal = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'alb-control-action.txt')
+          @("$sharedRoot", "$sharedSessionDir", "$sharedDataDir", "$sharedOsDir", "$profileStoreRoot", "${dl}:\Apps") | ForEach-Object { New-Item -ItemType Directory -Force -Path "$_" | Out-Null }
+          $baseline = @{ PF64 = @(Get-ChildItem 'C:\Program Files' -Directory -Force -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name); PF86 = @(Get-ChildItem 'C:\Program Files (x86)' -Directory -Force -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name); PD = @(Get-ChildItem 'C:\ProgramData' -Directory -Force -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name) }
           $baseline | ConvertTo-Json -Depth 4 | Set-Content -Path "$baselineFile" -Encoding UTF8
-
-          "VHD_CONTAINER=$vhdContainer" >> "$env:GITHUB_ENV"
-          "VHD_FILE=$vhdFile" >> "$env:GITHUB_ENV"
-          "SHARED_ROOT=$sharedRoot" >> "$env:GITHUB_ENV"
-          "SHARED_SESSION_DIR=$sharedSessionDir" >> "$env:GITHUB_ENV"
-          "SHARED_DATA_DIR=$sharedDataDir" >> "$env:GITHUB_ENV"
-          "SHARED_OS_DIR=$sharedOsDir" >> "$env:GITHUB_ENV"
-          "SHARED_STATE_FILE=$sharedStateFile" >> "$env:GITHUB_ENV"
-          "PROFILE_ROOT=$profileStoreRoot" >> "$env:GITHUB_ENV"
-          "BASELINE_FILE=$baselineFile" >> "$env:GITHUB_ENV"
-          "CONTROL_SIGNAL_FILE=$controlSignal" >> "$env:GITHUB_ENV"
-
+          "VHD_CONTAINER=$vhdContainer" >> "$env:GITHUB_ENV"; "VHD_FILE=$vhdFile" >> "$env:GITHUB_ENV"; "SHARED_ROOT=$sharedRoot" >> "$env:GITHUB_ENV"; "SHARED_SESSION_DIR=$sharedSessionDir" >> "$env:GITHUB_ENV"; "SHARED_DATA_DIR=$sharedDataDir" >> "$env:GITHUB_ENV"; "SHARED_OS_DIR=$sharedOsDir" >> "$env:GITHUB_ENV"; "SHARED_STATE_FILE=$sharedStateFile" >> "$env:GITHUB_ENV"; "PROFILE_ROOT=$profileStoreRoot" >> "$env:GITHUB_ENV"; "BASELINE_FILE=$baselineFile" >> "$env:GITHUB_ENV"; "CONTROL_SIGNAL_FILE=$controlSignal" >> "$env:GITHUB_ENV"
           $build = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').CurrentBuild
           "OS_BUILD=$build" >> "$env:GITHUB_ENV"
-
-          $delaySec = [int]($cleanId -replace '[^0-9]', '')
-          if ($delaySec -gt 0) { $delaySec = ($delaySec % 10) * 2 } else { $delaySec = 0 }
-          if ($delaySec -gt 0) { Start-Sleep -Seconds $delaySec }
-
+          $delaySec = [int]($cleanId -replace '[^0-9]', ''); if ($delaySec -gt 0) { $delaySec = ($delaySec % 10) * 2 }; if ($delaySec -gt 0) { Start-Sleep -Seconds $delaySec }
           $null = gh release view "$relTag" --repo "$env:GH_REPO" 2>&1
           if (($LASTEXITCODE) -ne 0) {
-              $dummy = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'init.txt')
-              Set-Content -Path "$dummy" -Value "ALB Storage Init for $cleanId" -Encoding UTF8
+              $dummy = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'init.txt'); Set-Content -Path "$dummy" -Value "ALB Storage Init for $cleanId" -Encoding UTF8
               gh release create "$relTag" "$dummy" --repo "$env:GH_REPO" --title "ALB Storage ($cleanId)" --notes "Kho lưu tự động của máy [$cleanId]"
           }
-          $global:LASTEXITCODE = 0
-          Write-Host "OK mount ${dl}:\ | May: $cleanId" -ForegroundColor Green
+          $global:LASTEXITCODE = 0; Write-Host "OK mount ${dl}:\ | May: $cleanId" -ForegroundColor Green
 
-      - name: 🧰 Tạo script đóng gói & đẩy ổ đĩa lên GitHub
+      - name: 🧰 Tạo save-data.ps1
         shell: pwsh
         run: |
           $scriptLines = @(
               'param([string]$Reason = "session-end")'
               '$ErrorActionPreference = "Continue"'
               'if ("$env:DATA_RESTORED" -ne "1") { exit 0 }'
-              '$root  = "$env:SHARED_ROOT"'
-              '$osDir = "$env:SHARED_OS_DIR"'
-              '$dl    = "$env:MOUNT_LETTER"'
+              '$root = "$env:SHARED_ROOT"; $osDir = "$env:SHARED_OS_DIR"; $dl = "$env:MOUNT_LETTER"'
               'if ((-not ("$root")) -or (-not (Test-Path "$root"))) { exit 0 }'
-              'try {'
-              '    $drive = Get-PSDrive -Name "$dl" -ErrorAction Stop'
-              '    $freeGB = [math]::Round($drive.Free / 1GB, 2)'
-              '    if ($freeGB -lt 2) { Write-Host "O dia con < 2GB, bo qua!" -ForegroundColor Red; exit 1 }'
-              '} catch {}'
+              'try { $drive = Get-PSDrive -Name "$dl" -ErrorAction Stop; $freeGB = [math]::Round($drive.Free / 1GB, 2); if ($freeGB -lt 2) { exit 1 } } catch {}'
               '$appsToClose = @("chrome","msedge","brave","firefox","coccoc","opera","vivaldi","discord","Telegram","Zalo","steam","EpicGamesLauncher","Spotify","Code","Notion","StarDesk","EVKey","Bandicam","Apollo")'
-              'Get-Process -Name $appsToClose -ErrorAction SilentlyContinue | ForEach-Object { $null = $_.CloseMainWindow() }'
-              'Start-Sleep -Seconds 3'
+              'Get-Process -Name $appsToClose -ErrorAction SilentlyContinue | ForEach-Object { $null = $_.CloseMainWindow() }; Start-Sleep -Seconds 3'
               'Get-Process -Name $appsToClose -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue'
-              'if ("$Reason" -eq "session-end") {'
-              '    Get-Service -Name "*StarDesk*" -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue'
-              '    Get-Process -Name "StarDesk*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue'
-              '    & taskkill.exe /F /IM "StarDesk*" /T *> $null'
-              '}'
-              'Start-Sleep -Seconds 2'
-              'Add-Type -AssemblyName System.Security -ErrorAction SilentlyContinue'
-              '$u = "$env:RDP_USER"'
-              '$profSrc = "$env:PROFILE_PATH"'
-              'if (("$profSrc") -and (Test-Path "$profSrc\AppData")) {'
-              '    Get-ChildItem -Path "$profSrc\AppData" -Filter "Local State" -Recurse -File -Force -ErrorAction SilentlyContinue | ForEach-Object {'
-              '        try {'
-              '            $lsFile = $_.FullName'
-              '            $lsJson = Get-Content -Raw -Path "$lsFile" -Encoding UTF8 | ConvertFrom-Json'
-              '            if ($lsJson.os_crypt -and $lsJson.os_crypt.encrypted_key) {'
-              '                $encBytes = [Convert]::FromBase64String($lsJson.os_crypt.encrypted_key)'
-              '                if ($encBytes.Length -gt 5) {'
-              '                    $prefix = [System.Text.Encoding]::ASCII.GetString($encBytes[0..4])'
-              '                    if ($prefix -eq "DPAPI") {'
-              '                        $cipher = $encBytes[5..($encBytes.Length - 1)]'
-              '                        $rawKey = [System.Security.Cryptography.ProtectedData]::Unprotect($cipher, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)'
-              '                        [Convert]::ToBase64String($rawKey) | Set-Content -Path "$lsFile.albkey" -Encoding ASCII -Force'
-              '                    }'
-              '                }'
-              '            }'
-              '        } catch {}'
-              '    }'
-              '}'
-              '$regBk = [System.IO.Path]::Combine("$osDir", "Registry")'
-              'New-Item -ItemType Directory -Force -Path "$regBk" | Out-Null'
-              'reg export "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" "$regBk\Uninstall-x64.reg" /y *> $null'
-              'reg export "HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall" "$regBk\Uninstall-x86.reg" /y *> $null'
-              'reg export "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "$regBk\System-Env.reg" /y *> $null'
-              'reg export "HKLM\SOFTWARE\Microsoft\Cryptography" "$regBk\Machine-Cryptography.reg" /y *> $null'
-              'reg export "HKLM\SOFTWARE\Microsoft\SQMClient" "$regBk\Machine-SQMClient.reg" /y *> $null'
+              'if ("$Reason" -eq "session-end") { Get-Service -Name "*StarDesk*" -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue; Get-Process -Name "StarDesk*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; & taskkill.exe /F /IM "StarDesk*" /T *> $null }'
+              'Start-Sleep -Seconds 2; Add-Type -AssemblyName System.Security -ErrorAction SilentlyContinue'
+              '$u = "$env:RDP_USER"; $profSrc = "$env:PROFILE_PATH"'
+              'if (("$profSrc") -and (Test-Path "$profSrc\AppData")) { Get-ChildItem -Path "$profSrc\AppData" -Filter "Local State" -Recurse -File -Force -ErrorAction SilentlyContinue | ForEach-Object { try { $lsFile = $_.FullName; $lsJson = Get-Content -Raw -Path "$lsFile" -Encoding UTF8 | ConvertFrom-Json; if ($lsJson.os_crypt -and $lsJson.os_crypt.encrypted_key) { $encBytes = [Convert]::FromBase64String($lsJson.os_crypt.encrypted_key); if ($encBytes.Length -gt 5) { $prefix = [System.Text.Encoding]::ASCII.GetString($encBytes[0..4]); if ($prefix -eq "DPAPI") { $cipher = $encBytes[5..($encBytes.Length - 1)]; $rawKey = [System.Security.Cryptography.ProtectedData]::Unprotect($cipher, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser); [Convert]::ToBase64String($rawKey) | Set-Content -Path "$lsFile.albkey" -Encoding ASCII -Force } } } } catch {} } }'
+              '$regBk = [System.IO.Path]::Combine("$osDir", "Registry"); New-Item -ItemType Directory -Force -Path "$regBk" | Out-Null'
+              'reg export "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" "$regBk\Uninstall-x64.reg" /y *> $null; reg export "HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall" "$regBk\Uninstall-x86.reg" /y *> $null'
+              'reg export "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "$regBk\System-Env.reg" /y *> $null; reg export "HKLM\SOFTWARE\Microsoft\Cryptography" "$regBk\Machine-Cryptography.reg" /y *> $null; reg export "HKLM\SOFTWARE\Microsoft\SQMClient" "$regBk\Machine-SQMClient.reg" /y *> $null'
               'New-Item -ItemType Directory -Force -Path "$regBk\AppSoftware" | Out-Null'
-              'Get-ChildItem "HKCU:\Software" -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -notin @("Microsoft","Classes","Policies","RegisteredApplications") } | ForEach-Object {'
-              '    $subName = $_.PSChildName'
-              '    $safeName = ($subName -replace "[^A-Za-z0-9._\-]", "_")'
-              '    reg export "HKCU\Software\$subName" "$regBk\AppSoftware\App-$safeName.reg" /y *> $null'
-              '}'
-              'reg export "HKCU\Environment" "$regBk\User-Env.reg" /y *> $null'
-              'reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" "$regBk\User-StartupRun.reg" /y *> $null'
-              'reg export "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Configuration" "$regBk\Display-Config.reg" /y *> $null'
-              'reg export "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Connectivity" "$regBk\Display-Conn.reg" /y *> $null'
-              'reg export "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\ScaleFactors" "$regBk\Display-Scale.reg" /y *> $null'
-              'reg export "HKCU\Control Panel\Desktop" "$regBk\User-Desktop.reg" /y *> $null'
-              'reg export "HKCU\Control Panel\Desktop\WindowMetrics" "$regBk\User-WindowMetrics.reg" /y *> $null'
-              'reg export "HKCU\Control Panel\Personalization" "$regBk\User-Personalization.reg" /y *> $null'
-              'reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes" "$regBk\User-Themes.reg" /y *> $null'
-              'reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" "$regBk\User-Wallpapers.reg" /y *> $null'
-              'reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "$regBk\User-Explorer.reg" /y *> $null'
-              'reg export "HKCU\Software\Microsoft\Multimedia\Audio" "$regBk\User-Audio.reg" /y *> $null'
-              'reg export "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio" "$regBk\System-MMDevices-Audio.reg" /y *> $null'
-              'if (("$u") -and ("$profSrc") -and (Test-Path "$profSrc")) {'
-              '    $profDst = [System.IO.Path]::Combine("$root", "Users", "$u")'
-              '    New-Item -ItemType Directory -Force -Path "$profDst" | Out-Null'
-              '    $excludeDirs = @("$profSrc\AppData\Roaming\Microsoft\Protect","$profSrc\AppData\Roaming\Microsoft\Crypto","$profSrc\AppData\Local\Microsoft\Credentials","$profSrc\AppData\Roaming\Microsoft\Credentials","$profSrc\AppData\Local\Temp","$profSrc\AppData\Local\Packages","$profSrc\AppData\Local\TileDataLayer","$profSrc\AppData\Local\ConnectedDevicesPlatform","$profSrc\AppData\Local\Microsoft\Windows\Explorer","$profSrc\AppData\Local\Microsoft\Windows\INetCache","$profSrc\AppData\Local\Microsoft\Windows\WebCache","$profSrc\AppData\Local\Microsoft\Windows\Caches","$profSrc\AppData\Local\D3DSCache")'
-              '    robocopy "$profSrc" "$profDst" /MIR /XJ /R:2 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* WebCacheV01.dat parent.lock lockfile SingletonLock SingletonCookie SingletonSocket /XD @excludeDirs *> $null'
-              '    $global:LASTEXITCODE = 0'
-              '}'
-              'if (("$env:BASELINE_FILE") -and (Test-Path "$env:BASELINE_FILE")) {'
-              '    try {'
-              '        $base = Get-Content -Raw -Path "$env:BASELINE_FILE" | ConvertFrom-Json'
-              '        $skipNames = @("Tailscale","chocolatey","Package Cache","Microsoft","Windows Defender")'
-              '        $cOverlay = [System.IO.Path]::Combine("$osDir", "C-Drive-Overlay")'
-              '        New-Item -ItemType Directory -Force -Path "$cOverlay\PF64" | Out-Null'
-              '        New-Item -ItemType Directory -Force -Path "$cOverlay\PF86" | Out-Null'
-              '        New-Item -ItemType Directory -Force -Path "$cOverlay\PD" | Out-Null'
-              '        Get-ChildItem "C:\Program Files" -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -notin ($base.PF64)) -and ($_.Name -notin ($skipNames)) } | ForEach-Object {'
-              '            $dest = [System.IO.Path]::Combine("$cOverlay\PF64", $_.Name)'
-              '            robocopy ($_.FullName) "$dest" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null'
-              '        }'
-              '        Get-ChildItem "C:\Program Files (x86)" -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -notin ($base.PF86)) -and ($_.Name -notin ($skipNames)) } | ForEach-Object {'
-              '            $dest = [System.IO.Path]::Combine("$cOverlay\PF86", $_.Name)'
-              '            robocopy ($_.FullName) "$dest" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null'
-              '        }'
-              '        Get-ChildItem "C:\ProgramData" -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -notin ($base.PD)) -and ($_.Name -notin ($skipNames)) } | ForEach-Object {'
-              '            $dest = [System.IO.Path]::Combine("$cOverlay\PD", $_.Name)'
-              '            robocopy ($_.FullName) "$dest" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null'
-              '        }'
-              '    } catch {}'
-              '}'
+              'Get-ChildItem "HKCU:\Software" -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -notin @("Microsoft","Classes","Policies","RegisteredApplications") } | ForEach-Object { $subName = $_.PSChildName; $safeName = ($subName -replace "[^A-Za-z0-9._\-]", "_"); reg export "HKCU\Software\$subName" "$regBk\AppSoftware\App-$safeName.reg" /y *> $null }'
+              'reg export "HKCU\Environment" "$regBk\User-Env.reg" /y *> $null; reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" "$regBk\User-StartupRun.reg" /y *> $null'
+              'reg export "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Configuration" "$regBk\Display-Config.reg" /y *> $null; reg export "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Connectivity" "$regBk\Display-Conn.reg" /y *> $null; reg export "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\ScaleFactors" "$regBk\Display-Scale.reg" /y *> $null'
+              'reg export "HKCU\Control Panel\Desktop" "$regBk\User-Desktop.reg" /y *> $null; reg export "HKCU\Control Panel\Desktop\WindowMetrics" "$regBk\User-WindowMetrics.reg" /y *> $null; reg export "HKCU\Control Panel\Personalization" "$regBk\User-Personalization.reg" /y *> $null; reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes" "$regBk\User-Themes.reg" /y *> $null; reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" "$regBk\User-Wallpapers.reg" /y *> $null; reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "$regBk\User-Explorer.reg" /y *> $null; reg export "HKCU\Software\Microsoft\Multimedia\Audio" "$regBk\User-Audio.reg" /y *> $null; reg export "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio" "$regBk\System-MMDevices-Audio.reg" /y *> $null'
+              'if (("$u") -and ("$profSrc") -and (Test-Path "$profSrc")) { $profDst = [System.IO.Path]::Combine("$root", "Users", "$u"); New-Item -ItemType Directory -Force -Path "$profDst" | Out-Null; $excludeDirs = @("$profSrc\AppData\Roaming\Microsoft\Protect","$profSrc\AppData\Roaming\Microsoft\Crypto","$profSrc\AppData\Local\Microsoft\Credentials","$profSrc\AppData\Roaming\Microsoft\Credentials","$profSrc\AppData\Local\Temp","$profSrc\AppData\Local\Packages","$profSrc\AppData\Local\TileDataLayer","$profSrc\AppData\Local\ConnectedDevicesPlatform","$profSrc\AppData\Local\Microsoft\Windows\Explorer","$profSrc\AppData\Local\Microsoft\Windows\INetCache","$profSrc\AppData\Local\Microsoft\Windows\WebCache","$profSrc\AppData\Local\Microsoft\Windows\Caches","$profSrc\AppData\Local\D3DSCache"); robocopy "$profSrc" "$profDst" /MIR /XJ /R:2 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* WebCacheV01.dat parent.lock lockfile SingletonLock SingletonCookie SingletonSocket /XD @excludeDirs *> $null; $global:LASTEXITCODE = 0 }'
+              'if (("$env:BASELINE_FILE") -and (Test-Path "$env:BASELINE_FILE")) { try { $base = Get-Content -Raw -Path "$env:BASELINE_FILE" | ConvertFrom-Json; $skipNames = @("Tailscale","chocolatey","Package Cache","Microsoft","Windows Defender"); $cOverlay = [System.IO.Path]::Combine("$osDir", "C-Drive-Overlay"); New-Item -ItemType Directory -Force -Path "$cOverlay\PF64" | Out-Null; New-Item -ItemType Directory -Force -Path "$cOverlay\PF86" | Out-Null; New-Item -ItemType Directory -Force -Path "$cOverlay\PD" | Out-Null; Get-ChildItem "C:\Program Files" -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -notin ($base.PF64)) -and ($_.Name -notin ($skipNames)) } | ForEach-Object { $dest = [System.IO.Path]::Combine("$cOverlay\PF64", $_.Name); robocopy ($_.FullName) "$dest" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null }; Get-ChildItem "C:\Program Files (x86)" -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -notin ($base.PF86)) -and ($_.Name -notin ($skipNames)) } | ForEach-Object { $dest = [System.IO.Path]::Combine("$cOverlay\PF86", $_.Name); robocopy ($_.FullName) "$dest" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null }; Get-ChildItem "C:\ProgramData" -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -notin ($base.PD)) -and ($_.Name -notin ($skipNames)) } | ForEach-Object { $dest = [System.IO.Path]::Combine("$cOverlay\PD", $_.Name); robocopy ($_.FullName) "$dest" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null } } catch {} }'
               '$global:LASTEXITCODE = 0'
               '$gitStage = [System.IO.Path]::Combine("$env:RUNNER_TEMP", "git-state-sync")'
-              'try {'
-              '    if (Test-Path "$gitStage") { Remove-Item -Path "$gitStage" -Recurse -Force -ErrorAction SilentlyContinue }'
-              '    New-Item -ItemType Directory -Force -Path "$gitStage" | Out-Null'
-              '    Push-Location "$gitStage"'
-              '    git init -q'
-              '    git config user.name "ALB-Bot"'
-              '    git config user.email "bot@alb.local"'
-              '    $encodedToken = [System.Uri]::EscapeDataString($env:GH_TOKEN)'
-              '    git remote add origin "https://x-access-token:$encodedToken@github.com/$($env:GH_REPO).git"'
-              '    git fetch origin "$env:STATE_BRANCH" -q 2>$null'
-              '    if (($LASTEXITCODE) -eq 0) { git checkout -B "$env:STATE_BRANCH" "origin/$env:STATE_BRANCH" -q }'
-              '    else { git checkout --orphan "$env:STATE_BRANCH" -q }'
-              '    robocopy "$env:SHARED_SESSION_DIR" "$gitStage\sessions" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null'
-              '    robocopy "$regBk" "$gitStage\registry" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null'
-              '    $global:LASTEXITCODE = 0'
-              '    git add -A'
-              '    git commit -m "Sync state [$env:MACHINE_ID]" -q 2>$null'
-              '    git push -u origin "$env:STATE_BRANCH" --force -q 2>$null'
-              '    Pop-Location'
-              '} catch { if (((Get-Location).Path) -eq "$gitStage") { Pop-Location } }'
-              '$packDir = [System.IO.Path]::Combine("$env:RUNNER_TEMP", "alb-pack-$Reason")'
-              'if (Test-Path "$packDir") { Remove-Item -Path "$packDir" -Recurse -Force -ErrorAction SilentlyContinue }'
-              'New-Item -ItemType Directory -Force -Path "$packDir" | Out-Null'
-              '$archiveBase = [System.IO.Path]::Combine("$packDir", "alb-drive.7z")'
-              'Push-Location "$root"'
-              '$sevenZipArgs = @("a", "-t7z", "-mx=1", "-mmt=on", "-ssw", "-v1900m", "$archiveBase", "*", "-xr!Pagefile.sys", "-xr!swapfile.sys", "-xr!System Volume Information")'
-              '& 7z @sevenZipArgs *> $null'
-              '$sevenZipCode = $LASTEXITCODE'
-              'Pop-Location'
-              '$chunks = @(Get-ChildItem -Path "$packDir" -Filter "alb-drive.7z.*" | Sort-Object Name)'
-              'if (($chunks.Count) -eq 0) { exit 1 }'
-              '$manifest = [ordered]@{'
-              '    machineId  = "$env:MACHINE_ID"'
-              '    creator    = "$env:CREATOR_NAME"'
-              '    updatedUtc = (Get-Date).ToUniversalTime().ToString("o")'
-              '    reason     = "$Reason"'
-              '    chunkCount = $chunks.Count'
-              '    chunks     = @($chunks | ForEach-Object { [ordered]@{ name = $_.Name; size = $_.Length } })'
-              '}'
-              '$manifestPath = [System.IO.Path]::Combine("$packDir", "drive-manifest.json")'
-              '$manifest | ConvertTo-Json -Depth 5 | Set-Content -Path "$manifestPath" -Encoding UTF8'
-              '$uploadFiles = @($chunks | ForEach-Object { $_.FullName }) + @("$manifestPath")'
-              '$uploadOk = $false'
-              'for ($i = 1; $i -le 3; $i++) {'
-              '    $allOk = $true'
-              '    foreach ($f in $uploadFiles) {'
-              '        gh release upload "$env:RELEASE_TAG" "$f" --repo "$env:GH_REPO" --clobber'
-              '        if (($LASTEXITCODE) -ne 0) { $allOk = $false }'
-              '        Start-Sleep -Seconds 1'
-              '    }'
-              '    if ($allOk) { $uploadOk = $true; break }'
-              '    Start-Sleep -Seconds 10'
-              '}'
+              'try { if (Test-Path "$gitStage") { Remove-Item -Path "$gitStage" -Recurse -Force -ErrorAction SilentlyContinue }; New-Item -ItemType Directory -Force -Path "$gitStage" | Out-Null; Push-Location "$gitStage"; git init -q; git config user.name "ALB-Bot"; git config user.email "bot@alb.local"; $encodedToken = [System.Uri]::EscapeDataString($env:GH_TOKEN); git remote add origin "https://x-access-token:$encodedToken@github.com/$($env:GH_REPO).git"; git fetch origin "$env:STATE_BRANCH" -q 2>$null; if (($LASTEXITCODE) -eq 0) { git checkout -B "$env:STATE_BRANCH" "origin/$env:STATE_BRANCH" -q } else { git checkout --orphan "$env:STATE_BRANCH" -q }; robocopy "$env:SHARED_SESSION_DIR" "$gitStage\sessions" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null; robocopy "$regBk" "$gitStage\registry" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0; git add -A; git commit -m "Sync state [$env:MACHINE_ID]" -q 2>$null; git push -u origin "$env:STATE_BRANCH" --force -q 2>$null; Pop-Location } catch { if (((Get-Location).Path) -eq "$gitStage") { Pop-Location } }'
+              '$packDir = [System.IO.Path]::Combine("$env:RUNNER_TEMP", "alb-pack-$Reason"); if (Test-Path "$packDir") { Remove-Item -Path "$packDir" -Recurse -Force -ErrorAction SilentlyContinue }; New-Item -ItemType Directory -Force -Path "$packDir" | Out-Null'
+              '$archiveBase = [System.IO.Path]::Combine("$packDir", "alb-drive.7z"); Push-Location "$root"; $sevenZipArgs = @("a", "-t7z", "-mx=1", "-mmt=on", "-ssw", "-v1900m", "$archiveBase", "*", "-xr!Pagefile.sys", "-xr!swapfile.sys", "-xr!System Volume Information"); & 7z @sevenZipArgs *> $null; $sevenZipCode = $LASTEXITCODE; Pop-Location'
+              '$chunks = @(Get-ChildItem -Path "$packDir" -Filter "alb-drive.7z.*" | Sort-Object Name); if (($chunks.Count) -eq 0) { exit 1 }'
+              '$manifest = [ordered]@{ machineId = "$env:MACHINE_ID"; creator = "$env:CREATOR_NAME"; updatedUtc = (Get-Date).ToUniversalTime().ToString("o"); reason = "$Reason"; chunkCount = $chunks.Count; chunks = @($chunks | ForEach-Object { [ordered]@{ name = $_.Name; size = $_.Length } }) }'
+              '$manifestPath = [System.IO.Path]::Combine("$packDir", "drive-manifest.json"); $manifest | ConvertTo-Json -Depth 5 | Set-Content -Path "$manifestPath" -Encoding UTF8'
+              '$uploadFiles = @($chunks | ForEach-Object { $_.FullName }) + @("$manifestPath"); $uploadOk = $false'
+              'for ($i = 1; $i -le 3; $i++) { $allOk = $true; foreach ($f in $uploadFiles) { gh release upload "$env:RELEASE_TAG" "$f" --repo "$env:GH_REPO" --clobber; if (($LASTEXITCODE) -ne 0) { $allOk = $false }; Start-Sleep -Seconds 1 }; if ($allOk) { $uploadOk = $true; break }; Start-Sleep -Seconds 10 }'
               'if (-not $uploadOk) { exit 1 }'
-              'try {'
-              '    $relJson = gh release view "$env:RELEASE_TAG" --repo "$env:GH_REPO" --json assets | ConvertFrom-Json'
-              '    $validNames = @($chunks.Name) + @("drive-manifest.json", "init.txt")'
-              '    @($relJson.assets) | ForEach-Object {'
-              '        if (($_.name -like "alb-drive.7z.*") -and ($_.name -notin ($validNames))) { gh release delete-asset "$env:RELEASE_TAG" ($_.name) --repo "$env:GH_REPO" -y *> $null }'
-              '    }'
-              '} catch {}'
-              'Remove-Item -Path "$packDir" -Recurse -Force -ErrorAction SilentlyContinue'
-              'Write-Host "[$Reason] Da luu o dia [$env:MACHINE_ID]!" -ForegroundColor Green'
-              'exit 0'
+              'try { $relJson = gh release view "$env:RELEASE_TAG" --repo "$env:GH_REPO" --json assets | ConvertFrom-Json; $validNames = @($chunks.Name) + @("drive-manifest.json", "init.txt"); @($relJson.assets) | ForEach-Object { if (($_.name -like "alb-drive.7z.*") -and ($_.name -notin ($validNames))) { gh release delete-asset "$env:RELEASE_TAG" ($_.name) --repo "$env:GH_REPO" -y *> $null } } } catch {}'
+              'Remove-Item -Path "$packDir" -Recurse -Force -ErrorAction SilentlyContinue; Write-Host "[$Reason] Da luu o dia [$env:MACHINE_ID]!" -ForegroundColor Green; exit 0'
           )
           $saveScriptPath = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'save-data.ps1')
           Set-Content -Path "$saveScriptPath" -Value ($scriptLines -join "`r`n") -Encoding UTF8
@@ -410,143 +223,96 @@ jobs:
         shell: pwsh
         run: |
           $dl = "$env:MOUNT_LETTER"
-          @('HKLM:\SOFTWARE\Policies\Google\Chrome','HKLM:\SOFTWARE\Policies\Microsoft\Edge','HKLM:\SOFTWARE\Policies\BraveSoftware\Brave','HKLM:\SOFTWARE\Policies\CocCoc\Browser') | ForEach-Object {
-              New-Item -Path "$_" -Force | Out-Null
-              Set-ItemProperty -Path "$_" -Name 'ApplicationBoundEncryptionEnabled' -Value 0 -Type DWord -Force
-          }
-
-          $suffix = (("$env:MACHINE_ID").ToUpper() -replace '[^A-Z0-9]', '')
-          if ($suffix.Length -gt 8) { $suffix = $suffix.Substring(0, 8) }
+          @('HKLM:\SOFTWARE\Policies\Google\Chrome','HKLM:\SOFTWARE\Policies\Microsoft\Edge','HKLM:\SOFTWARE\Policies\BraveSoftware\Brave','HKLM:\SOFTWARE\Policies\CocCoc\Browser') | ForEach-Object { New-Item -Path "$_" -Force | Out-Null; Set-ItemProperty -Path "$_" -Name 'ApplicationBoundEncryptionEnabled' -Value 0 -Type DWord -Force }
+          $suffix = (("$env:MACHINE_ID").ToUpper() -replace '[^A-Z0-9]', ''); if ($suffix.Length -gt 8) { $suffix = $suffix.Substring(0, 8) }
           $fixedHost = if ($suffix) { "ALB-$suffix" } else { 'ALB-CLOUD-PC' }
           Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName' -Name 'ComputerName' -Value "$fixedHost" -Force -ErrorAction SilentlyContinue
           Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName' -Name 'ComputerName' -Value "$fixedHost" -Force -ErrorAction SilentlyContinue
           Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters' -Name 'Hostname' -Value "$fixedHost" -Force -ErrorAction SilentlyContinue
           Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters' -Name 'NV Hostname' -Value "$fixedHost" -Force -ErrorAction SilentlyContinue
-
-          $dlDir = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'gh-restore')
-          if (Test-Path "$dlDir") { Remove-Item -Path "$dlDir" -Recurse -Force -ErrorAction SilentlyContinue }
-          New-Item -ItemType Directory -Force -Path "$dlDir" | Out-Null
-
+          $dlDir = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'gh-restore'); if (Test-Path "$dlDir") { Remove-Item -Path "$dlDir" -Recurse -Force -ErrorAction SilentlyContinue }; New-Item -ItemType Directory -Force -Path "$dlDir" | Out-Null
           gh release download "$env:RELEASE_TAG" --repo "$env:GH_REPO" --pattern 'drive-manifest.json' --dir "$dlDir" 2>$null
           $manifestFile = [System.IO.Path]::Combine("$dlDir", 'drive-manifest.json')
-
-          if (-not (Test-Path "$manifestFile")) {
-              'DATA_RESTORED=1' >> "$env:GITHUB_ENV"
-              exit 0
-          }
-
-          $manifest = Get-Content -Raw -Path "$manifestFile" | ConvertFrom-Json
+          if (-not (Test-Path "$manifestFile")) { 'DATA_RESTORED=1' >> "$env:GITHUB_ENV"; exit 0 }
           gh release download "$env:RELEASE_TAG" --repo "$env:GH_REPO" --pattern 'alb-drive.7z.*' --dir "$dlDir"
           if (($LASTEXITCODE) -ne 0) { exit 1 }
-
-          $firstChunk = [System.IO.Path]::Combine("$dlDir", 'alb-drive.7z.001')
-          if (-not (Test-Path "$firstChunk")) { exit 1 }
-
-          $stage = [System.IO.Path]::Combine("$env:VHD_CONTAINER", 'restore-stage')
-          if (Test-Path "$stage") { Remove-Item -Path "$stage" -Recurse -Force -ErrorAction SilentlyContinue }
-          New-Item -ItemType Directory -Force -Path "$stage" | Out-Null
-
-          & 7z x "$firstChunk" "-o$stage" -y -mmt=on *> $null
-          Remove-Item -Path "$dlDir" -Recurse -Force -ErrorAction SilentlyContinue
-
+          $firstChunk = [System.IO.Path]::Combine("$dlDir", 'alb-drive.7z.001'); if (-not (Test-Path "$firstChunk")) { exit 1 }
+          $stage = [System.IO.Path]::Combine("$env:VHD_CONTAINER", 'restore-stage'); if (Test-Path "$stage") { Remove-Item -Path "$stage" -Recurse -Force -ErrorAction SilentlyContinue }; New-Item -ItemType Directory -Force -Path "$stage" | Out-Null
+          & 7z x "$firstChunk" "-o$stage" -y -mmt=on *> $null; Remove-Item -Path "$dlDir" -Recurse -Force -ErrorAction SilentlyContinue
           $stateHit = Get-ChildItem -Path "$stage" -Recurse -Depth 6 -Filter 'rdp-session-state.json' -File -Force -ErrorAction SilentlyContinue | Select-Object -First 1
-          $sourceRoot = "$stage"
-          if ($stateHit) { $sourceRoot = $stateHit.Directory.Parent.FullName }
-
-          robocopy "$sourceRoot" "$env:SHARED_ROOT" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null
-          $global:LASTEXITCODE = 0
+          $sourceRoot = "$stage"; if ($stateHit) { $sourceRoot = $stateHit.Directory.Parent.FullName }
+          robocopy "$sourceRoot" "$env:SHARED_ROOT" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0
           New-Item -ItemType Directory -Force -Path "$env:SHARED_DATA_DIR" | Out-Null
-
           $extraRoot = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'DriveRoot-Extra')
           if (Test-Path "$extraRoot") { robocopy "$extraRoot" "${dl}:\" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }
-
           $cOverlay = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'C-Drive-Overlay')
           if (Test-Path "$cOverlay\PF64") { robocopy "$cOverlay\PF64" 'C:\Program Files' /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null }
           if (Test-Path "$cOverlay\PF86") { robocopy "$cOverlay\PF86" 'C:\Program Files (x86)' /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null }
           if (Test-Path "$cOverlay\PD") { robocopy "$cOverlay\PD" 'C:\ProgramData' /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null }
           $global:LASTEXITCODE = 0
-
           $oldProf = [System.IO.Path]::Combine("$env:SHARED_ROOT", 'Users', "$env:RDP_USER")
-          if (-not (Test-Path "$oldProf")) {
-              $fallbackProf = Get-ChildItem -Path "$env:PROFILE_ROOT" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
-              if ($fallbackProf) { $oldProf = $fallbackProf.FullName }
-          }
+          if (-not (Test-Path "$oldProf")) { $fallbackProf = Get-ChildItem -Path "$env:PROFILE_ROOT" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1; if ($fallbackProf) { $oldProf = $fallbackProf.FullName } }
           if (Test-Path "$oldProf") {
-              @("$oldProf\AppData\Roaming\Microsoft\Protect","$oldProf\AppData\Roaming\Microsoft\Crypto","$oldProf\AppData\Local\Microsoft\Credentials","$oldProf\AppData\Roaming\Microsoft\Credentials") | ForEach-Object {
-                  if (Test-Path "$_") { Remove-Item -Path "$_" -Recurse -Force -ErrorAction SilentlyContinue }
-              }
+              @("$oldProf\AppData\Roaming\Microsoft\Protect","$oldProf\AppData\Roaming\Microsoft\Crypto","$oldProf\AppData\Local\Microsoft\Credentials","$oldProf\AppData\Roaming\Microsoft\Credentials") | ForEach-Object { if (Test-Path "$_") { Remove-Item -Path "$_" -Recurse -Force -ErrorAction SilentlyContinue } }
               $skipRestoreDirs = @("$oldProf\AppData\Roaming\Microsoft\Protect","$oldProf\AppData\Roaming\Microsoft\Crypto","$oldProf\AppData\Local\Microsoft\Credentials","$oldProf\AppData\Roaming\Microsoft\Credentials","$oldProf\AppData\Local\Packages","$oldProf\AppData\Local\TileDataLayer","$oldProf\AppData\Local\ConnectedDevicesPlatform","$oldProf\AppData\Local\Microsoft\Windows\Explorer")
-              robocopy "$oldProf" "$env:PROFILE_PATH" /E /XJ /COPY:DAT /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* parent.lock lockfile SingletonLock SingletonCookie SingletonSocket /XD @skipRestoreDirs *> $null
-              $global:LASTEXITCODE = 0
+              robocopy "$oldProf" "$env:PROFILE_PATH" /E /XJ /COPY:DAT /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* parent.lock lockfile SingletonLock SingletonCookie SingletonSocket /XD @skipRestoreDirs *> $null; $global:LASTEXITCODE = 0
           }
           Remove-Item -Path "$stage" -Recurse -Force -ErrorAction SilentlyContinue
-
           $regBk = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'Registry')
-          if (Test-Path "$regBk") {
-              Get-ChildItem -Path "$regBk" -Filter '*.reg' -Recurse | ForEach-Object { reg import ($_.FullName) *>$null }
-              & RUNDLL32.EXE user32.dll,UpdatePerUserSystemParameters 1, True
-          }
-
-          if (Test-Path "$env:SHARED_STATE_FILE") {
-              try {
-                  $state = Get-Content -Raw -Path "$env:SHARED_STATE_FILE" | ConvertFrom-Json
-                  if ($state.password) { "RESTORE_PASS=$($state.password)" >> "$env:GITHUB_ENV" }
-              } catch {}
-          }
-
-          'DATA_RESTORED=1' >> "$env:GITHUB_ENV"
-          exit 0
+          if (Test-Path "$regBk") { Get-ChildItem -Path "$regBk" -Filter '*.reg' -Recurse | ForEach-Object { reg import ($_.FullName) *>$null }; & RUNDLL32.EXE user32.dll,UpdatePerUserSystemParameters 1, True }
+          if (Test-Path "$env:SHARED_STATE_FILE") { try { $state = Get-Content -Raw -Path "$env:SHARED_STATE_FILE" | ConvertFrom-Json; if ($state.password) { "RESTORE_PASS=$($state.password)" >> "$env:GITHUB_ENV" } } catch {} }
+          'DATA_RESTORED=1' >> "$env:GITHUB_ENV"; exit 0
 
       - name: 🔗 Gắn kết OS & Apps
         shell: pwsh
         run: |
-          $osDir      = "$env:SHARED_OS_DIR"
-          $appsDir    = [System.IO.Path]::Combine("$osDir", 'InstalledApps')
-          $binDir     = [System.IO.Path]::Combine("$osDir", 'bin')
-          $chocoCache = [System.IO.Path]::Combine("$osDir", 'choco-cache')
-          $instCache  = [System.IO.Path]::Combine("$osDir", 'Installers')
-          $sunCfgDir  = [System.IO.Path]::Combine("$osDir", 'Sunshine-Config')
-          $dl         = "$env:MOUNT_LETTER"
+          $osDir = "$env:SHARED_OS_DIR"; $appsDir = [System.IO.Path]::Combine("$osDir", 'InstalledApps'); $binDir = [System.IO.Path]::Combine("$osDir", 'bin'); $chocoCache = [System.IO.Path]::Combine("$osDir", 'choco-cache'); $instCache = [System.IO.Path]::Combine("$osDir", 'Installers'); $sunCfgDir = [System.IO.Path]::Combine("$osDir", 'Sunshine-Config'); $dl = "$env:MOUNT_LETTER"
+          @("$appsDir", "$binDir", "$chocoCache", "$instCache", "$sunCfgDir", "${dl}:\Apps") | ForEach-Object { New-Item -ItemType Directory -Force -Path "$_" | Out-Null }
+          if (-not (Test-Path 'C:\ALB-Apps')) { New-Item -ItemType Junction -Path 'C:\ALB-Apps' -Target "$appsDir" -Force | Out-Null }
+          $sysEnv = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment'; $curPath = (Get-ItemProperty -Path "$sysEnv" -Name 'Path').Path
+          if ("$curPath" -notlike "*$binDir*") { Set-ItemProperty -Path "$sysEnv" -Name 'Path' -Value "$binDir;$curPath" -Force }
+          "INSTALLER_CACHE=$instCache" >> "$env:GITHUB_ENV"; "SUNSHINE_PERSIST_CFG=$sunCfgDir" >> "$env:GITHUB_ENV"
 
-          @("$appsDir", "$binDir", "$chocoCache", "$instCache", "$sunCfgDir", "${dl}:\Apps") | ForEach-Object {
-              New-Item -ItemType Directory -Force -Path "$_" | Out-Null
-          }
-
-          if (-not (Test-Path 'C:\ALB-Apps')) {
-              New-Item -ItemType Junction -Path 'C:\ALB-Apps' -Target "$appsDir" -Force | Out-Null
-          }
-
-          $sysEnv  = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment'
-          $curPath = (Get-ItemProperty -Path "$sysEnv" -Name 'Path').Path
-          if ("$curPath" -notlike "*$binDir*") {
-              Set-ItemProperty -Path "$sysEnv" -Name 'Path' -Value "$binDir;$curPath" -Force
-          }
-
-          "INSTALLER_CACHE=$instCache" >> "$env:GITHUB_ENV"
-          "SUNSHINE_PERSIST_CFG=$sunCfgDir" >> "$env:GITHUB_ENV"
-
-      - name: 🔧 Cấu hình RDP & Firewall (bao gồm ép nhập mật khẩu)
+      - name: 🔧 CẤU HÌNH RDP (FIX PROMPT PASSWORD TRIỆT ĐỂ)
         shell: pwsh
         run: |
-          # Bật RDP
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0 -Force
-          $p = 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
-          Set-ItemProperty -Path "$p" -Name 'UserAuthentication' -Value 0 -Force
-          Set-ItemProperty -Path "$p" -Name 'SecurityLayer' -Value 0 -Force
-          Set-ItemProperty -Path "$p" -Name 'fDisableAudioCapture' -Value 0 -Type DWord -Force
-          Set-ItemProperty -Path "$p" -Name 'fDisableCam' -Value 0 -Type DWord -Force
+          Write-Host "CAU HINH RDP - FIX PROMPT PASSWORD" -ForegroundColor Yellow
 
-          # FIX LỖI 1: Ép nhập mật khẩu mỗi lần kết nối RDP
-          # Cách 1: Registry trực tiếp (theo STIG V-254367)
+          # 1. Bật RDP
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0 -Force
+
+          $p = 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
+
+          # 2. FIX: UserAuthentication = 1 (BẬT NLA - BẮT BUỘC để fPromptForPassword có tác dụng)
+          Set-ItemProperty -Path "$p" -Name 'UserAuthentication' -Value 1 -Type DWord -Force
+          Write-Host "  OK: UserAuthentication = 1 (NLA)" -ForegroundColor Green
+
+          # 3. FIX: SecurityLayer = 2 (Negotiate/TLS)
+          Set-ItemProperty -Path "$p" -Name 'SecurityLayer' -Value 2 -Type DWord -Force
+          Write-Host "  OK: SecurityLayer = 2 (TLS)" -ForegroundColor Green
+
+          # 4. FIX: fPromptForPassword = 1 ở RDP-Tcp
+          Set-ItemProperty -Path "$p" -Name 'fPromptForPassword' -Value 1 -Type DWord -Force
+          Write-Host "  OK: fPromptForPassword = 1 (RDP-Tcp)" -ForegroundColor Green
+
+          # 5. FIX: fPromptForPassword = 1 ở Policy (ưu tiên cao nhất)
           $tsPolicy = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
           New-Item -Path "$tsPolicy" -Force | Out-Null
           Set-ItemProperty -Path "$tsPolicy" -Name 'fPromptForPassword' -Value 1 -Type DWord -Force
-          Write-Host "  OK: Bat fPromptForPassword = 1 (ep nhap mat khau)" -ForegroundColor Green
+          Write-Host "  OK: fPromptForPassword = 1 (Policy)" -ForegroundColor Green
 
-          # Cách 2: Set thêm trong RDP-Tcp để chắc chắn
-          Set-ItemProperty -Path "$p" -Name 'fPromptForPassword' -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+          # 6. FIX: Xóa credential cache (nếu có) - QUAN TRỌNG
+          $creds = cmdkey /list 2>$null | Select-String "TERMSRV"
+          if ($creds) {
+              $creds | ForEach-Object { if ($_ -match 'TERMSRV/([^\s]+)') { cmdkey /delete:$($Matches[0]) 2>$null; Write-Host "  Da xoa credential: $($Matches[0])" -ForegroundColor Yellow } }
+          }
+          Write-Host "  OK: Da kiem tra va xoa credential cache" -ForegroundColor Green
 
-          # Firewall
+          # 7. Âm thanh
+          Set-ItemProperty -Path "$p" -Name 'fDisableAudioCapture' -Value 0 -Type DWord -Force
+          Set-ItemProperty -Path "$p" -Name 'fDisableCam' -Value 0 -Type DWord -Force
+
+          # 8. Firewall
           Remove-NetFirewallRule -DisplayName 'ALB-RDP' -ErrorAction SilentlyContinue
           Remove-NetFirewallRule -DisplayName 'ALB-Sunshine-TCP' -ErrorAction SilentlyContinue
           Remove-NetFirewallRule -DisplayName 'ALB-Sunshine-UDP' -ErrorAction SilentlyContinue
@@ -558,6 +324,8 @@ jobs:
           Set-Service -Name UmRdpService -StartupType Automatic -ErrorAction SilentlyContinue
           Start-Service -Name TermService -ErrorAction SilentlyContinue
           Start-Service -Name UmRdpService -ErrorAction SilentlyContinue
+
+          Write-Host "  HOAN TAT: NLA=1, TLS=2, fPromptForPassword=1 (2 vi tri), cmdkey cleaned" -ForegroundColor Green
           exit 0
 
       - name: ⚙️ Tối ưu Windows
@@ -566,37 +334,12 @@ jobs:
         run: |
           $tweaksList = @(
               @{Name = "Mui gio VN"; Script = { tzutil /s 'SE Asia Standard Time' }},
-              @{Name = "Tat sleep"; Script = {
-                  powercfg /change standby-timeout-ac 0
-                  powercfg /change monitor-timeout-ac 0
-                  powercfg /change disk-timeout-ac 0
-                  powercfg /hibernate off
-                  powercfg /setactive SCHEME_MIN
-              }},
-              @{Name = "Giu phien RDP"; Script = {
-                  $p = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
-                  New-Item -Path "$p" -Force | Out-Null
-                  Set-ItemProperty -Path "$p" -Name 'MaxIdleTime' -Value 0 -Type DWord -Force
-                  Set-ItemProperty -Path "$p" -Name 'MaxDisconnectionTime' -Value 0 -Type DWord -Force
-                  Set-ItemProperty -Path "$p" -Name 'fResetBroken' -Value 0 -Type DWord -Force
-              }},
-              @{Name = "Tat Windows Update"; Script = {
-                  Stop-Service -Name wuauserv -Force -ErrorAction SilentlyContinue
-                  Set-Service -Name wuauserv -StartupType Disabled -ErrorAction SilentlyContinue
-                  Stop-Service -Name UsoSvc -Force -ErrorAction SilentlyContinue
-                  Set-Service -Name UsoSvc -StartupType Disabled -ErrorAction SilentlyContinue
-              }},
+              @{Name = "Tat sleep"; Script = { powercfg /change standby-timeout-ac 0; powercfg /change monitor-timeout-ac 0; powercfg /change disk-timeout-ac 0; powercfg /hibernate off; powercfg /setactive SCHEME_MIN }},
+              @{Name = "Giu phien RDP"; Script = { $p = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'; New-Item -Path "$p" -Force | Out-Null; Set-ItemProperty -Path "$p" -Name 'MaxIdleTime' -Value 0 -Type DWord -Force; Set-ItemProperty -Path "$p" -Name 'MaxDisconnectionTime' -Value 0 -Type DWord -Force; Set-ItemProperty -Path "$p" -Name 'fResetBroken' -Value 0 -Type DWord -Force }},
+              @{Name = "Tat Windows Update"; Script = { Stop-Service -Name wuauserv -Force -ErrorAction SilentlyContinue; Set-Service -Name wuauserv -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name UsoSvc -Force -ErrorAction SilentlyContinue; Set-Service -Name UsoSvc -StartupType Disabled -ErrorAction SilentlyContinue }},
               @{Name = "Tat Defender realtime"; Script = { Set-MpPreference -DisableRealtimeMonitoring ($true) -ErrorAction Stop }},
-              @{Name = "Tat services ngon RAM"; Script = {
-                  $svcs = @("DiagTrack","WSearch","SysMain","WerSvc","XblAuthManager","XblGameSave","XboxNetApiSvc","XboxGipSvc","Spooler","MapsBroker","PcaSvc","TabletInputService","RetailDemo","dmwappushservice","WbioSrvc","PhoneSvc","PrintNotify","WpnService","WpnUserService")
-                  foreach ($s in $svcs) { Stop-Service $s -Force -ErrorAction SilentlyContinue; Set-Service $s -StartupType Disabled -ErrorAction SilentlyContinue }
-              }},
-              @{Name = "Visual effects"; Script = {
-                  $dwm = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects"
-                  if (-not (Test-Path $dwm)) { New-Item $dwm -Force | Out-Null }
-                  Set-ItemProperty $dwm "VisualFXSetting" 2 -Type DWord -Force -ErrorAction SilentlyContinue
-                  Set-ItemProperty "HKCU:\Control Panel\Desktop" "DragFullWindows" "0" -Force -ErrorAction SilentlyContinue
-              }}
+              @{Name = "Tat services ngon RAM"; Script = { $svcs = @("DiagTrack","WSearch","SysMain","WerSvc","XblAuthManager","XblGameSave","XboxNetApiSvc","XboxGipSvc","Spooler","MapsBroker","PcaSvc","TabletInputService","RetailDemo","dmwappushservice","WbioSrvc","PhoneSvc","PrintNotify","WpnService","WpnUserService"); foreach ($s in $svcs) { Stop-Service $s -Force -ErrorAction SilentlyContinue; Set-Service $s -StartupType Disabled -ErrorAction SilentlyContinue } }},
+              @{Name = "Visual effects"; Script = { $dwm = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects"; if (-not (Test-Path $dwm)) { New-Item $dwm -Force | Out-Null }; Set-ItemProperty $dwm "VisualFXSetting" 2 -Type DWord -Force -ErrorAction SilentlyContinue; Set-ItemProperty "HKCU:\Control Panel\Desktop" "DragFullWindows" "0" -Force -ErrorAction SilentlyContinue }}
           )
           $tweaksList | ForEach-Object { $tw = $_; try { & ($tw.Script); Write-Host "  OK: $($tw.Name)" -ForegroundColor Green } catch { Write-Host "  WARN: $($tw.Name)" -ForegroundColor Yellow } }
           exit 0
@@ -607,48 +350,31 @@ jobs:
           PKGS: ${{ inputs.choco_packages }}
         run: |
           $pkgListFile = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'installed-choco-packages.txt')
-          $savedPkgs = @()
-          if (Test-Path "$pkgListFile") { $savedPkgs = @(Get-Content -Path "$pkgListFile" | Where-Object { $_ -match '^[A-Za-z0-9._\-]+$' }) }
-          $inputPkgs = @()
-          if (-not ([string]::IsNullOrWhiteSpace("$env:PKGS"))) { $inputPkgs = @("$env:PKGS" -split '\s+' | Where-Object { $_ }) }
+          $savedPkgs = @(); if (Test-Path "$pkgListFile") { $savedPkgs = @(Get-Content -Path "$pkgListFile" | Where-Object { $_ -match '^[A-Za-z0-9._\-]+$' }) }
+          $inputPkgs = @(); if (-not ([string]::IsNullOrWhiteSpace("$env:PKGS"))) { $inputPkgs = @("$env:PKGS" -split '\s+' | Where-Object { $_ }) }
           $allPkgs = @($savedPkgs + $inputPkgs | Select-Object -Unique)
-          if (($allPkgs.Count) -gt 0) {
-              $allPkgs | Set-Content -Path "$pkgListFile" -Encoding UTF8
-              $allPkgs | ForEach-Object { choco install "$_" -y --no-progress --limit-output; $global:LASTEXITCODE = 0 }
-          }
+          if (($allPkgs.Count) -gt 0) { $allPkgs | Set-Content -Path "$pkgListFile" -Encoding UTF8; $allPkgs | ForEach-Object { choco install "$_" -y --no-progress --limit-output; $global:LASTEXITCODE = 0 } }
           exit 0
 
-      - name: 🔗 Cài app bằng link trực tiếp
+      - name: 🔗 Cài app bằng link
         shell: pwsh
         env:
           APP_URLS: ${{ inputs.app_urls }}
         run: |
           if ([string]::IsNullOrWhiteSpace("$env:APP_URLS")) { exit 0 }
-          $appsDir = "$env:SHARED_DATA_DIR\Apps"
-          New-Item -ItemType Directory -Force -Path "$appsDir" | Out-Null
-          $cacheDir = "$env:INSTALLER_CACHE\CustomApps"
-          New-Item -ItemType Directory -Force -Path "$cacheDir" | Out-Null
+          $appsDir = "$env:SHARED_DATA_DIR\Apps"; New-Item -ItemType Directory -Force -Path "$appsDir" | Out-Null
+          $cacheDir = "$env:INSTALLER_CACHE\CustomApps"; New-Item -ItemType Directory -Force -Path "$cacheDir" | Out-Null
           $urlList = @($env:APP_URLS -split "`n" | Where-Object { $_ -match '^https?://' })
           foreach ($url in $urlList) {
               $url = $url.Trim(); if (-not $url) { continue }
               try {
-                  $fname = [System.IO.Path]::GetFileName(([System.Uri]$url).AbsolutePath)
-                  if (-not $fname) { $fname = "app-$(Get-Date -Format 'yyyyMMddHHmmss')" }
+                  $fname = [System.IO.Path]::GetFileName(([System.Uri]$url).AbsolutePath); if (-not $fname) { $fname = "app-$(Get-Date -Format 'yyyyMMddHHmmss')" }
                   $localPath = [System.IO.Path]::Combine("$cacheDir", $fname)
                   if (-not (Test-Path "$localPath")) { Invoke-WebRequest -Uri $url -OutFile "$localPath" -UseBasicParsing -TimeoutSec 120 }
                   $ext = [System.IO.Path]::GetExtension($fname).ToLower()
-                  if ($ext -eq '.zip') {
-                      $destDir = [System.IO.Path]::Combine("$appsDir", [System.IO.Path]::GetFileNameWithoutExtension($fname))
-                      New-Item -ItemType Directory -Force -Path "$destDir" | Out-Null
-                      Expand-Archive -Path "$localPath" -DestinationPath "$destDir" -Force
-                  } elseif ($ext -eq '.exe' -or $ext -eq '.msi') {
-                      if ($ext -eq '.msi') { $proc = Start-Process msiexec.exe -ArgumentList "/i `"$localPath`" /quiet /norestart" -Wait -PassThru }
-                      else { $proc = Start-Process -FilePath "$localPath" -ArgumentList '/S' -Wait -PassThru }
-                  } else {
-                      $destDir = [System.IO.Path]::Combine("$appsDir", "other")
-                      New-Item -ItemType Directory -Force -Path "$destDir" | Out-Null
-                      Copy-Item -Path "$localPath" -Destination "$destDir" -Force
-                  }
+                  if ($ext -eq '.zip') { $destDir = [System.IO.Path]::Combine("$appsDir", [System.IO.Path]::GetFileNameWithoutExtension($fname)); New-Item -ItemType Directory -Force -Path "$destDir" | Out-Null; Expand-Archive -Path "$localPath" -DestinationPath "$destDir" -Force }
+                  elseif ($ext -eq '.exe' -or $ext -eq '.msi') { if ($ext -eq '.msi') { $proc = Start-Process msiexec.exe -ArgumentList "/i `"$localPath`" /quiet /norestart" -Wait -PassThru } else { $proc = Start-Process -FilePath "$localPath" -ArgumentList '/S' -Wait -PassThru } }
+                  else { $destDir = [System.IO.Path]::Combine("$appsDir", "other"); New-Item -ItemType Directory -Force -Path "$destDir" | Out-Null; Copy-Item -Path "$localPath" -Destination "$destDir" -Force }
               } catch { Write-Host "  FAIL: $url" -ForegroundColor Yellow }
           }
           exit 0
@@ -658,286 +384,70 @@ jobs:
         env:
           VDD_RES: ${{ inputs.vdd_resolution }}
         run: |
-          $ErrorActionPreference = 'Continue'
-          $ProgressPreference    = 'SilentlyContinue'
-          $instCache             = "$env:INSTALLER_CACHE"
-          $sunPersistCfg         = "$env:SUNSHINE_PERSIST_CFG"
-          $dl                    = "$env:MOUNT_LETTER"
-
+          $ErrorActionPreference = 'Continue'; $ProgressPreference = 'SilentlyContinue'; $instCache = "$env:INSTALLER_CACHE"; $sunPersistCfg = "$env:SUNSHINE_PERSIST_CFG"; $dl = "$env:MOUNT_LETTER"
           # VDD
-          $resParts = "$env:VDD_RES" -split '[@x]'
-          $vWidth   = if (($resParts.Count) -ge 1) { [int]$resParts[0] } else { 1920 }
-          $vHeight  = if (($resParts.Count) -ge 2) { [int]$resParts[1] } else { 1080 }
-          $vHz      = if (($resParts.Count) -ge 3) { [int]$resParts[2] } else { 60 }
-          $vddCacheDir = [System.IO.Path]::Combine("$instCache", 'VDD')
-          New-Item -ItemType Directory -Force -Path "$vddCacheDir" | Out-Null
-          $usbDir = 'C:\usbmmidd_v2'
-          try {
-              $usbZip = [System.IO.Path]::Combine("$vddCacheDir", 'usbmmidd_v2.zip')
-              if (-not (Test-Path "$usbZip")) { Invoke-WebRequest -Uri 'https://www.amyuni.com/downloads/usbmmidd_v2.zip' -OutFile "$usbZip" -UseBasicParsing -TimeoutSec 45 }
-              if (Test-Path "$usbZip") {
-                  Expand-Archive -Path "$usbZip" -DestinationPath 'C:\' -Force
-                  if (Test-Path "$usbDir\deviceinstaller64.exe") {
-                      Push-Location "$usbDir"
-                      Get-ChildItem -Path "$usbDir" -Filter '*.cer' -Recurse | ForEach-Object {
-                          Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\Root' *>$null
-                          Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' *>$null
-                      }
-                      & .\deviceinstaller64.exe install usbmmidd.inf usbmmidd *> $null
-                      $wudfPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\WUDF\Services\usbmmidd\Parameters'
-                      New-Item -Path "$wudfPath" -Force | Out-Null
-                      Set-ItemProperty -Path "$wudfPath" -Name '0' -Value '1920,1080,60' -Type String -Force
-                      Set-ItemProperty -Path "$wudfPath" -Name '1' -Value '1920,1080,120' -Type String -Force
-                      Set-ItemProperty -Path "$wudfPath" -Name '2' -Value '2560,1440,60' -Type String -Force
-                      Set-ItemProperty -Path "$wudfPath" -Name '3' -Value '3840,2160,60' -Type String -Force
-                      & .\deviceinstaller64.exe enableidd 1 *> $null
-                      Pop-Location
-                  }
-              }
-          } catch {}
-
+          $resParts = "$env:VDD_RES" -split '[@x]'; $vWidth = if (($resParts.Count) -ge 1) { [int]$resParts[0] } else { 1920 }; $vHeight = if (($resParts.Count) -ge 2) { [int]$resParts[1] } else { 1080 }; $vHz = if (($resParts.Count) -ge 3) { [int]$resParts[2] } else { 60 }
+          $vddCacheDir = [System.IO.Path]::Combine("$instCache", 'VDD'); New-Item -ItemType Directory -Force -Path "$vddCacheDir" | Out-Null; $usbDir = 'C:\usbmmidd_v2'
+          try { $usbZip = [System.IO.Path]::Combine("$vddCacheDir", 'usbmmidd_v2.zip'); if (-not (Test-Path "$usbZip")) { Invoke-WebRequest -Uri 'https://www.amyuni.com/downloads/usbmmidd_v2.zip' -OutFile "$usbZip" -UseBasicParsing -TimeoutSec 45 }; if (Test-Path "$usbZip") { Expand-Archive -Path "$usbZip" -DestinationPath 'C:\' -Force; if (Test-Path "$usbDir\deviceinstaller64.exe") { Push-Location "$usbDir"; Get-ChildItem -Path "$usbDir" -Filter '*.cer' -Recurse | ForEach-Object { Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\Root' *>$null; Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' *>$null }; & .\deviceinstaller64.exe install usbmmidd.inf usbmmidd *> $null; $wudfPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\WUDF\Services\usbmmidd\Parameters'; New-Item -Path "$wudfPath" -Force | Out-Null; Set-ItemProperty -Path "$wudfPath" -Name '0' -Value '1920,1080,60' -Type String -Force; Set-ItemProperty -Path "$wudfPath" -Name '1' -Value '1920,1080,120' -Type String -Force; Set-ItemProperty -Path "$wudfPath" -Name '2' -Value '2560,1440,60' -Type String -Force; Set-ItemProperty -Path "$wudfPath" -Name '3' -Value '3840,2160,60' -Type String -Force; & .\deviceinstaller64.exe enableidd 1 *> $null; Pop-Location } } } catch {}
           # VB-Audio
-          try {
-              @('MMCSS', 'AudioEndpointBuilder', 'Audiosrv') | ForEach-Object { Set-Service -Name "$_" -StartupType Automatic -ErrorAction SilentlyContinue; Start-Service -Name "$_" -ErrorAction SilentlyContinue }
-              $vbCacheDir = [System.IO.Path]::Combine("$instCache", 'VBCable')
-              $vbZip      = [System.IO.Path]::Combine("$vbCacheDir", 'VBCABLE_Driver_Pack43.zip')
-              New-Item -ItemType Directory -Force -Path "$vbCacheDir" | Out-Null
-              if (-not (Test-Path "$vbZip")) {
-                  try { Invoke-WebRequest -Uri 'https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip' -OutFile "$vbZip" -UseBasicParsing -TimeoutSec 45 }
-                  catch { Invoke-WebRequest -Uri 'https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack45.zip' -OutFile "$vbZip" -UseBasicParsing -TimeoutSec 45 }
-              }
-              if ((Test-Path "$vbZip") -and (-not (Test-Path "$vbCacheDir\VBCABLE_Setup_x64.exe"))) { Expand-Archive -Path "$vbZip" -DestinationPath "$vbCacheDir" -Force }
-              Get-ChildItem -Path "$vbCacheDir" -Include '*.cer','*.cat','*.sys','*.exe' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-                  if ($_.Extension -eq '.cer') {
-                      Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\Root' *>$null
-                      Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' *>$null
-                  } else {
-                      $sig = Get-AuthenticodeSignature -FilePath ($_.FullName) -ErrorAction SilentlyContinue
-                      if ($sig -and $sig.SignerCertificate) {
-                          $storeRoot = New-Object System.Security.Cryptography.X509Certificates.X509Store('Root', 'LocalMachine')
-                          $storeRoot.Open('ReadWrite'); $storeRoot.Add($sig.SignerCertificate); $storeRoot.Close()
-                          $storePub = New-Object System.Security.Cryptography.X509Certificates.X509Store('TrustedPublisher', 'LocalMachine')
-                          $storePub.Open('ReadWrite'); $storePub.Add($sig.SignerCertificate); $storePub.Close()
-                      }
-                  }
-              }
-              $vbInf = Get-ChildItem -Path "$vbCacheDir" -Filter '*64*.inf' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-              if (-not ($vbInf)) { $vbInf = Get-ChildItem -Path "$vbCacheDir" -Filter '*.inf' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 }
-              if ($vbInf) {
-                  pnputil /add-driver ($vbInf.FullName) /install *> $null
-                  if (Test-Path "$usbDir\deviceinstaller64.exe") {
-                      Push-Location ($vbInf.DirectoryName)
-                      & "$usbDir\deviceinstaller64.exe" install ($vbInf.Name) 'VBAudioVACWDM' *> $null
-                      Pop-Location
-                  }
-              }
-              pnputil /scan-devices *> $null
-              Restart-Service -Name 'Audiosrv' -Force -ErrorAction SilentlyContinue
-              Start-Sleep -Seconds 2
-              $finalAudio = @(Get-PnpDevice -Class 'MEDIA','AudioEndpoint' -ErrorAction SilentlyContinue | Where-Object { ($_.FriendlyName -match 'VB-Audio|CABLE|Virtual Audio|Speaker|Line') -and ($_.Status -eq 'OK') } | Select-Object -ExpandProperty FriendlyName -Unique)
-              if (($finalAudio.Count) -gt 0) { "AUDIO_DEVICE_NAME=$($finalAudio -join ', ')" >> "$env:GITHUB_ENV" }
-              else { "AUDIO_DEVICE_NAME=Windows Virtual Audio (Active)" >> "$env:GITHUB_ENV" }
-          } catch { "AUDIO_DEVICE_NAME=N/A" >> "$env:GITHUB_ENV" }
+          try { @('MMCSS', 'AudioEndpointBuilder', 'Audiosrv') | ForEach-Object { Set-Service -Name "$_" -StartupType Automatic -ErrorAction SilentlyContinue; Start-Service -Name "$_" -ErrorAction SilentlyContinue }; $vbCacheDir = [System.IO.Path]::Combine("$instCache", 'VBCable'); $vbZip = [System.IO.Path]::Combine("$vbCacheDir", 'VBCABLE_Driver_Pack43.zip'); New-Item -ItemType Directory -Force -Path "$vbCacheDir" | Out-Null; if (-not (Test-Path "$vbZip")) { try { Invoke-WebRequest -Uri 'https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip' -OutFile "$vbZip" -UseBasicParsing -TimeoutSec 45 } catch { Invoke-WebRequest -Uri 'https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack45.zip' -OutFile "$vbZip" -UseBasicParsing -TimeoutSec 45 } }; if ((Test-Path "$vbZip") -and (-not (Test-Path "$vbCacheDir\VBCABLE_Setup_x64.exe"))) { Expand-Archive -Path "$vbZip" -DestinationPath "$vbCacheDir" -Force }; Get-ChildItem -Path "$vbCacheDir" -Include '*.cer','*.cat','*.sys','*.exe' -Recurse -ErrorAction SilentlyContinue | ForEach-Object { if ($_.Extension -eq '.cer') { Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\Root' *>$null; Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' *>$null } else { $sig = Get-AuthenticodeSignature -FilePath ($_.FullName) -ErrorAction SilentlyContinue; if ($sig -and $sig.SignerCertificate) { $storeRoot = New-Object System.Security.Cryptography.X509Certificates.X509Store('Root', 'LocalMachine'); $storeRoot.Open('ReadWrite'); $storeRoot.Add($sig.SignerCertificate); $storeRoot.Close(); $storePub = New-Object System.Security.Cryptography.X509Certificates.X509Store('TrustedPublisher', 'LocalMachine'); $storePub.Open('ReadWrite'); $storePub.Add($sig.SignerCertificate); $storePub.Close() } } }; $vbInf = Get-ChildItem -Path "$vbCacheDir" -Filter '*64*.inf' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1; if (-not ($vbInf)) { $vbInf = Get-ChildItem -Path "$vbCacheDir" -Filter '*.inf' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 }; if ($vbInf) { pnputil /add-driver ($vbInf.FullName) /install *> $null; if (Test-Path "$usbDir\deviceinstaller64.exe") { Push-Location ($vbInf.DirectoryName); & "$usbDir\deviceinstaller64.exe" install ($vbInf.Name) 'VBAudioVACWDM' *> $null; Pop-Location } }; pnputil /scan-devices *> $null; Restart-Service -Name 'Audiosrv' -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; $finalAudio = @(Get-PnpDevice -Class 'MEDIA','AudioEndpoint' -ErrorAction SilentlyContinue | Where-Object { ($_.FriendlyName -match 'VB-Audio|CABLE|Virtual Audio|Speaker|Line') -and ($_.Status -eq 'OK') } | Select-Object -ExpandProperty FriendlyName -Unique); if (($finalAudio.Count) -gt 0) { "AUDIO_DEVICE_NAME=$($finalAudio -join ', ')" >> "$env:GITHUB_ENV" } else { "AUDIO_DEVICE_NAME=Windows Virtual Audio (Active)" >> "$env:GITHUB_ENV" } } catch { "AUDIO_DEVICE_NAME=N/A" >> "$env:GITHUB_ENV" }
           $global:LASTEXITCODE = 0
-
           # Sunshine
-          $sunDir = 'C:\Program Files\Sunshine'
-          $sunExe = "$sunDir\sunshine.exe"
-          $sunCfg = "$sunDir\config"
-          if (-not (Test-Path "$sunExe")) {
-              Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*Sunshine*' -Recurse -Force -ErrorAction SilentlyContinue
-              Remove-Item -Path 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*Sunshine*' -Recurse -Force -ErrorAction SilentlyContinue
-              Remove-Item -Path 'HKLM:\SOFTWARE\LizardByte*' -Recurse -Force -ErrorAction SilentlyContinue
-              & sc.exe stop SunshineService *> $null; & sc.exe delete SunshineService *> $null
-              & sc.exe stop sunshinesvc *> $null; & sc.exe delete sunshinesvc *> $null
-              $installJob = Start-Job -ScriptBlock { choco install sunshine -y --no-progress --limit-output --ignore-checksums }
-              $completed = Wait-Job -Job ($installJob) -Timeout 90
-              if (-not ($completed)) { Stop-Job -Job ($installJob) -ErrorAction SilentlyContinue; Get-Process | Where-Object { ($_.Name -match 'sunshine|choco') -and ($_.Name -ne 'sunshinesvc') } | Stop-Process -Force -ErrorAction SilentlyContinue }
-              else { Receive-Job -Job ($installJob) | Out-Null }
-              Remove-Job -Job ($installJob) -Force -ErrorAction SilentlyContinue
-              $global:LASTEXITCODE = 0
-          }
-          if (Test-Path "$sunExe") {
-              Stop-Service -Name 'SunshineService' -Force -ErrorAction SilentlyContinue
-              Stop-Service -Name 'sunshinesvc' -Force -ErrorAction SilentlyContinue
-              Stop-Process -Name 'sunshine' -Force -ErrorAction SilentlyContinue
-              Start-Sleep -Seconds 2
-              if (Test-Path "$sunCfg") {
-                  $item = Get-Item "$sunCfg" -Force
-                  if (($item.Attributes) -notmatch 'ReparsePoint') {
-                      if ((@(Get-ChildItem "$sunPersistCfg" -Force -ErrorAction SilentlyContinue).Count) -eq 0) { Copy-Item -Path "$sunCfg\*" -Destination "$sunPersistCfg" -Recurse -Force -ErrorAction SilentlyContinue }
-                      Remove-Item -Path "$sunCfg" -Recurse -Force -ErrorAction SilentlyContinue
-                      New-Item -ItemType Junction -Path "$sunCfg" -Target "$sunPersistCfg" -Force | Out-Null
-                  }
-              } else { New-Item -ItemType Junction -Path "$sunCfg" -Target "$sunPersistCfg" -Force | Out-Null }
-              $confFile = [System.IO.Path]::Combine("$sunPersistCfg", 'sunshine.conf')
-              if (-not (Test-Path "$confFile")) {
-                  @("sunshine_name = ALB-$($env:MACHINE_ID)","min_log_level = info","origin_web_ui_allowed = wan","upnp = disabled","address_family = both") | Set-Content -Path "$confFile" -Encoding UTF8
-              }
-          }
-          $global:LASTEXITCODE = 0
-          exit 0
+          $sunDir = 'C:\Program Files\Sunshine'; $sunExe = "$sunDir\sunshine.exe"; $sunCfg = "$sunDir\config"
+          if (-not (Test-Path "$sunExe")) { Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*Sunshine*' -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -Path 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*Sunshine*' -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -Path 'HKLM:\SOFTWARE\LizardByte*' -Recurse -Force -ErrorAction SilentlyContinue; & sc.exe stop SunshineService *> $null; & sc.exe delete SunshineService *> $null; & sc.exe stop sunshinesvc *> $null; & sc.exe delete sunshinesvc *> $null; $installJob = Start-Job -ScriptBlock { choco install sunshine -y --no-progress --limit-output --ignore-checksums }; $completed = Wait-Job -Job ($installJob) -Timeout 90; if (-not ($completed)) { Stop-Job -Job ($installJob) -ErrorAction SilentlyContinue; Get-Process | Where-Object { ($_.Name -match 'sunshine|choco') -and ($_.Name -ne 'sunshinesvc') } | Stop-Process -Force -ErrorAction SilentlyContinue } else { Receive-Job -Job ($installJob) | Out-Null }; Remove-Job -Job ($installJob) -Force -ErrorAction SilentlyContinue; $global:LASTEXITCODE = 0 }
+          if (Test-Path "$sunExe") { Stop-Service -Name 'SunshineService' -Force -ErrorAction SilentlyContinue; Stop-Service -Name 'sunshinesvc' -Force -ErrorAction SilentlyContinue; Stop-Process -Name 'sunshine' -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; if (Test-Path "$sunCfg") { $item = Get-Item "$sunCfg" -Force; if (($item.Attributes) -notmatch 'ReparsePoint') { if ((@(Get-ChildItem "$sunPersistCfg" -Force -ErrorAction SilentlyContinue).Count) -eq 0) { Copy-Item -Path "$sunCfg\*" -Destination "$sunPersistCfg" -Recurse -Force -ErrorAction SilentlyContinue }; Remove-Item -Path "$sunCfg" -Recurse -Force -ErrorAction SilentlyContinue; New-Item -ItemType Junction -Path "$sunCfg" -Target "$sunPersistCfg" -Force | Out-Null } } else { New-Item -ItemType Junction -Path "$sunCfg" -Target "$sunPersistCfg" -Force | Out-Null }; $confFile = [System.IO.Path]::Combine("$sunPersistCfg", 'sunshine.conf'); if (-not (Test-Path "$confFile")) { @("sunshine_name = ALB-$($env:MACHINE_ID)","min_log_level = info","origin_web_ui_allowed = wan","upnp = disabled","address_family = both") | Set-Content -Path "$confFile" -Encoding UTF8 } }
+          $global:LASTEXITCODE = 0; exit 0
 
-      - name: 🌐 Thiết lập mạng Tailscale
+      - name: 🌐 Tailscale
         env:
           TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         shell: pwsh
         run: |
           if (-not ("$env:TAILSCALE_AUTH_KEY")) { exit 1 }
-          $ProgressPreference = 'SilentlyContinue'
-          $ts = 'C:\Program Files\Tailscale\tailscale.exe'
-          if (-not (Test-Path "$ts")) {
-              Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*Tailscale*' -Recurse -Force -ErrorAction SilentlyContinue
-              Remove-Item -Path 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*Tailscale*' -Recurse -Force -ErrorAction SilentlyContinue
-              Get-Process -Name 'msiexec' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-              Start-Sleep -Seconds 2
-              $msiCache = [System.IO.Path]::Combine("$env:INSTALLER_CACHE", 'tailscale-premium.msi')
-              if ((Test-Path "$msiCache") -and ((Get-Item "$msiCache").Length -lt 5MB)) { Remove-Item -Path "$msiCache" -Force -ErrorAction SilentlyContinue }
-              if (-not (Test-Path "$msiCache")) { try { Invoke-WebRequest -Uri 'https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi' -OutFile "$msiCache" -UseBasicParsing } catch {} }
-              if (Test-Path "$msiCache") {
-                  $localMsi = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'tailscale-setup.msi')
-                  Copy-Item -Path "$msiCache" -Destination "$localMsi" -Force
-                  Start-Process msiexec.exe -ArgumentList "/i `"$localMsi`" /quiet /norestart" -Wait
-              }
-              if (-not (Test-Path "$ts")) {
-                  $exePath = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'tailscale-setup-latest.exe')
-                  try { Invoke-WebRequest -Uri 'https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe' -OutFile "$exePath" -UseBasicParsing; if (Test-Path "$exePath") { Start-Process -FilePath "$exePath" -ArgumentList '/S', '/norestart' -Wait } } catch {}
-              }
-              if (-not (Test-Path "$ts")) { choco install tailscale -y --no-progress --limit-output --ignore-checksums; $global:LASTEXITCODE = 0 }
-          }
+          $ProgressPreference = 'SilentlyContinue'; $ts = 'C:\Program Files\Tailscale\tailscale.exe'
+          if (-not (Test-Path "$ts")) { Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*Tailscale*' -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -Path 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*Tailscale*' -Recurse -Force -ErrorAction SilentlyContinue; Get-Process -Name 'msiexec' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; $msiCache = [System.IO.Path]::Combine("$env:INSTALLER_CACHE", 'tailscale-premium.msi'); if ((Test-Path "$msiCache") -and ((Get-Item "$msiCache").Length -lt 5MB)) { Remove-Item -Path "$msiCache" -Force -ErrorAction SilentlyContinue }; if (-not (Test-Path "$msiCache")) { try { Invoke-WebRequest -Uri 'https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi' -OutFile "$msiCache" -UseBasicParsing } catch {} }; if (Test-Path "$msiCache") { $localMsi = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'tailscale-setup.msi'); Copy-Item -Path "$msiCache" -Destination "$localMsi" -Force; Start-Process msiexec.exe -ArgumentList "/i `"$localMsi`" /quiet /norestart" -Wait }; if (-not (Test-Path "$ts")) { $exePath = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'tailscale-setup-latest.exe'); try { Invoke-WebRequest -Uri 'https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe' -OutFile "$exePath" -UseBasicParsing; if (Test-Path "$exePath") { Start-Process -FilePath "$exePath" -ArgumentList '/S', '/norestart' -Wait } } catch {} }; if (-not (Test-Path "$ts")) { choco install tailscale -y --no-progress --limit-output --ignore-checksums; $global:LASTEXITCODE = 0 } }
           if (-not (Test-Path "$ts")) { exit 1 }
-          Set-Service -Name 'Tailscale' -StartupType Automatic -ErrorAction SilentlyContinue
-          Start-Service -Name 'Tailscale' -ErrorAction SilentlyContinue
-          Start-Sleep -Seconds 6
-          $tsHost = "alb-$($env:MACHINE_ID)-$($env:GITHUB_RUN_ID)"
-          & "$ts" up "--authkey=$env:TAILSCALE_AUTH_KEY" "--hostname=$tsHost" --accept-routes --accept-dns --reset --unattended
-          if (($LASTEXITCODE) -ne 0) {
-              Start-Sleep -Seconds 5
-              & "$ts" up "--authkey=$env:TAILSCALE_AUTH_KEY" "--hostname=$tsHost" --accept-routes --accept-dns --reset
-              if (($LASTEXITCODE) -ne 0) { exit 1 }
-          }
-          $ip = $null
-          1..20 | ForEach-Object { if (-not ($ip)) { $out = (& "$ts" ip -4 2>&1 | Out-String).Trim(); if ("$out" -match '^\d+\.\d+\.\d+\.\d+$') { $ip = "$out" } else { Start-Sleep -Seconds 3 } } }
-          if (-not ($ip)) { exit 1 }
-          "TAILSCALE_IP=$ip" >> "$env:GITHUB_ENV"
-          exit 0
+          Set-Service -Name 'Tailscale' -StartupType Automatic -ErrorAction SilentlyContinue; Start-Service -Name 'Tailscale' -ErrorAction SilentlyContinue; Start-Sleep -Seconds 6
+          $tsHost = "alb-$($env:MACHINE_ID)-$($env:GITHUB_RUN_ID)"; & "$ts" up "--authkey=$env:TAILSCALE_AUTH_KEY" "--hostname=$tsHost" --accept-routes --accept-dns --reset --unattended
+          if (($LASTEXITCODE) -ne 0) { Start-Sleep -Seconds 5; & "$ts" up "--authkey=$env:TAILSCALE_AUTH_KEY" "--hostname=$tsHost" --accept-routes --accept-dns --reset; if (($LASTEXITCODE) -ne 0) { exit 1 } }
+          $ip = $null; 1..20 | ForEach-Object { if (-not ($ip)) { $out = (& "$ts" ip -4 2>&1 | Out-String).Trim(); if ("$out" -match '^\d+\.\d+\.\d+\.\d+$') { $ip = "$out" } else { Start-Sleep -Seconds 3 } } }
+          if (-not ($ip)) { exit 1 }; "TAILSCALE_IP=$ip" >> "$env:GITHUB_ENV"; exit 0
 
-      - name: 👤 User gốc + User ngoài + Bật Sunshine
+      - name: 👤 User gốc + User ngoài + Sunshine
         shell: pwsh
         env:
           RDP_USERNAME_INPUT: ${{ inputs.rdp_username }}
           RDP_PASSWORD_INPUT: ${{ inputs.rdp_password }}
         run: |
-          $user     = "$env:RDP_USER"
-          $profPath = "$env:PROFILE_PATH"
-          $newUser  = "$env:RDP_USERNAME_INPUT"
-          if ([string]::IsNullOrWhiteSpace("$newUser")) { $newUser = 'runneradmin' }
-          $matKhau = "$env:RDP_PASSWORD_INPUT"
-          if ([string]::IsNullOrWhiteSpace("$matKhau")) { $matKhau = 'Aistv@2026' }
-
-          try {
-              & net accounts /maxpwage:unlimited *> $null
-              $secCfg = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'secpol.cfg')
-              $secDb  = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'secpol.sdb')
-              & secedit /export /cfg "$secCfg" *> $null
-              if (Test-Path "$secCfg") {
-                  $rawSec = Get-Content -Raw -Path "$secCfg"
-                  $rawSec = $rawSec -replace 'PasswordComplexity\s*=\s*1', 'PasswordComplexity = 0'
-                  $rawSec = $rawSec -replace 'MinimumPasswordLength\s*=\s*\d+', 'MinimumPasswordLength = 0'
-                  Set-Content -Path "$secCfg" -Value "$rawSec" -Encoding Unicode
-                  & secedit /configure /db "$secDb" /cfg "$secCfg" /areas SECURITYPOLICY *> $null
-                  Remove-Item -Path "$secCfg", "$secDb" -Force -ErrorAction SilentlyContinue
-              }
-          } catch {}
-
+          $user = "$env:RDP_USER"; $profPath = "$env:PROFILE_PATH"; $newUser = "$env:RDP_USERNAME_INPUT"; if ([string]::IsNullOrWhiteSpace("$newUser")) { $newUser = 'runneradmin' }
+          $matKhau = "$env:RDP_PASSWORD_INPUT"; if ([string]::IsNullOrWhiteSpace("$matKhau")) { $matKhau = 'Aistv@2026' }
+          try { & net accounts /maxpwage:unlimited *> $null; $secCfg = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'secpol.cfg'); $secDb = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'secpol.sdb'); & secedit /export /cfg "$secCfg" *> $null; if (Test-Path "$secCfg") { $rawSec = Get-Content -Raw -Path "$secCfg"; $rawSec = $rawSec -replace 'PasswordComplexity\s*=\s*1', 'PasswordComplexity = 0'; $rawSec = $rawSec -replace 'MinimumPasswordLength\s*=\s*\d+', 'MinimumPasswordLength = 0'; Set-Content -Path "$secCfg" -Value "$rawSec" -Encoding Unicode; & secedit /configure /db "$secDb" /cfg "$secCfg" /areas SECURITYPOLICY *> $null; Remove-Item -Path "$secCfg", "$secDb" -Force -ErrorAction SilentlyContinue } } catch {}
           $securePass = ConvertTo-SecureString "$matKhau" -AsPlainText -Force
-          try { Set-LocalUser -Name "$user" -Password ($securePass) -PasswordNeverExpires ($true) -ErrorAction Stop }
-          catch { & net user "$user" "$matKhau" /active:yes /expires:never *> $null }
-
+          try { Set-LocalUser -Name "$user" -Password ($securePass) -PasswordNeverExpires ($true) -ErrorAction Stop } catch { & net user "$user" "$matKhau" /active:yes /expires:never *> $null }
           $existingNew = Get-LocalUser -Name "$newUser" -ErrorAction SilentlyContinue
-          if (-not $existingNew) {
-              try { New-LocalUser -Name "$newUser" -Password ($securePass) -PasswordNeverExpires -AccountNeverExpires -ErrorAction Stop | Out-Null } catch {}
-          } else {
-              try { Set-LocalUser -Name "$newUser" -Password ($securePass) -PasswordNeverExpires ($true) -ErrorAction Stop } catch {}
-          }
+          if (-not $existingNew) { try { New-LocalUser -Name "$newUser" -Password ($securePass) -PasswordNeverExpires -AccountNeverExpires -ErrorAction Stop | Out-Null } catch {} } else { try { Set-LocalUser -Name "$newUser" -Password ($securePass) -PasswordNeverExpires ($true) -ErrorAction Stop } catch {} }
+          foreach ($u in @($user, $newUser)) { Add-LocalGroupMember -Group 'Administrators' -Member "$u" -ErrorAction SilentlyContinue; Add-LocalGroupMember -Group 'Remote Desktop Users' -Member "$u" -ErrorAction SilentlyContinue; Enable-LocalUser -Name "$u" -ErrorAction SilentlyContinue }
+          try { Set-Service -Name 'AppXSvc' -StartupType Automatic -ErrorAction SilentlyContinue; Start-Service -Name 'AppXSvc' -ErrorAction SilentlyContinue; Set-Service -Name 'StateRepository' -StartupType Automatic -ErrorAction SilentlyContinue; Start-Service -Name 'StateRepository' -ErrorAction SilentlyContinue; & icacls "$profPath\AppData\Local\Packages" /grant "*S-1-15-2-1:(OI)(CI)F" /T /C /Q *> $null; if (Test-Path 'C:\Windows\ImmersiveControlPanel\appxmanifest.xml') { Add-AppxPackage -Register 'C:\Windows\ImmersiveControlPanel\appxmanifest.xml' -DisableDevelopmentMode -ErrorAction SilentlyContinue } } catch {}
+          $global:LASTEXITCODE = 0; "RDP_PASS=$matKhau" >> "$env:GITHUB_ENV"; "RDP_EXTRA_USER=$newUser" >> "$env:GITHUB_ENV"
+          $winlogon = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'; Set-ItemProperty -Path "$winlogon" -Name 'AutoAdminLogon' -Value '1' -Force; Set-ItemProperty -Path "$winlogon" -Name 'DefaultUserName' -Value "$user" -Force; Set-ItemProperty -Path "$winlogon" -Name 'DefaultPassword' -Value "$matKhau" -Force; Set-ItemProperty -Path "$winlogon" -Name 'DefaultDomainName' -Value "$env:COMPUTERNAME" -Force
+          $sunDir = 'C:\Program Files\Sunshine'; $sunExe = "$sunDir\sunshine.exe"; $sunPersistCfg = "$env:SUNSHINE_PERSIST_CFG"; $uObj = Get-LocalUser -Name "$user" -ErrorAction SilentlyContinue; $userSid = if ($uObj) { $uObj.SID.Value } else { $null }
+          if (Test-Path "$sunExe") { if ($userSid) { & icacls "$sunDir" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null; & icacls "$sunPersistCfg" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null }; Push-Location "$sunDir"; & "$sunExe" --creds "$user" "$matKhau" *> $null; Pop-Location; $svcExe = "$sunDir\tools\sunshinesvc.exe"; $svcObj = Get-Service -Name 'SunshineService', 'sunshinesvc' -ErrorAction SilentlyContinue | Select-Object -First 1; if ((-not ($svcObj)) -and (Test-Path "$svcExe")) { & sc.exe create SunshineService binPath= "`"$svcExe`"" start= auto DisplayName= "Sunshine Gamestream Service" *> $null; $svcObj = Get-Service -Name 'SunshineService' -ErrorAction SilentlyContinue }; if ($svcObj) { Set-Service -Name ($svcObj.Name) -StartupType Automatic -ErrorAction SilentlyContinue; Start-Service -Name ($svcObj.Name) -ErrorAction SilentlyContinue } else { Start-Process -FilePath "$sunExe" -WorkingDirectory "$sunDir" -WindowStyle Hidden }; "SUNSHINE_READY=1" >> "$env:GITHUB_ENV" }
+          try { $desktopDir = [System.IO.Path]::Combine("$profPath", 'Desktop'); New-Item -ItemType Directory -Force -Path "$desktopDir" | Out-Null; $ws = New-Object -ComObject WScript.Shell; @("$desktopDir", 'C:\Users\Public\Desktop') | ForEach-Object { $d = "$_"; $ws.CreateShortcut("$d\WEB-QUAN-LY-RDP.url").TargetPath = "http://127.0.0.1:$($env:WEB_PORT)/"; $ws.CreateShortcut("$d\WEB-QUAN-LY-RDP.url").Save(); $ws.CreateShortcut("$d\SUNSHINE-WEB-UI.url").TargetPath = "https://127.0.0.1:$($env:SUNSHINE_WEB_PORT)/"; $ws.CreateShortcut("$d\SUNSHINE-WEB-UI.url").Save() } } catch {}
+          'SESSION_READY=1' >> "$env:GITHUB_ENV"; exit 0
 
-          foreach ($u in @($user, $newUser)) {
-              Add-LocalGroupMember -Group 'Administrators' -Member "$u" -ErrorAction SilentlyContinue
-              Add-LocalGroupMember -Group 'Remote Desktop Users' -Member "$u" -ErrorAction SilentlyContinue
-              Enable-LocalUser -Name "$u" -ErrorAction SilentlyContinue
-          }
-
-          try {
-              Set-Service -Name 'AppXSvc' -StartupType Automatic -ErrorAction SilentlyContinue
-              Start-Service -Name 'AppXSvc' -ErrorAction SilentlyContinue
-              Set-Service -Name 'StateRepository' -StartupType Automatic -ErrorAction SilentlyContinue
-              Start-Service -Name 'StateRepository' -ErrorAction SilentlyContinue
-              & icacls "$profPath\AppData\Local\Packages" /grant "*S-1-15-2-1:(OI)(CI)F" /T /C /Q *> $null
-              if (Test-Path 'C:\Windows\ImmersiveControlPanel\appxmanifest.xml') { Add-AppxPackage -Register 'C:\Windows\ImmersiveControlPanel\appxmanifest.xml' -DisableDevelopmentMode -ErrorAction SilentlyContinue }
-          } catch {}
-
-          $global:LASTEXITCODE = 0
-          "RDP_PASS=$matKhau" >> "$env:GITHUB_ENV"
-          "RDP_EXTRA_USER=$newUser" >> "$env:GITHUB_ENV"
-
-          $winlogon = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
-          Set-ItemProperty -Path "$winlogon" -Name 'AutoAdminLogon' -Value '1' -Force
-          Set-ItemProperty -Path "$winlogon" -Name 'DefaultUserName' -Value "$user" -Force
-          Set-ItemProperty -Path "$winlogon" -Name 'DefaultPassword' -Value "$matKhau" -Force
-          Set-ItemProperty -Path "$winlogon" -Name 'DefaultDomainName' -Value "$env:COMPUTERNAME" -Force
-
-          $sunDir = 'C:\Program Files\Sunshine'
-          $sunExe = "$sunDir\sunshine.exe"
-          $sunPersistCfg = "$env:SUNSHINE_PERSIST_CFG"
-          $uObj = Get-LocalUser -Name "$user" -ErrorAction SilentlyContinue
-          $userSid = if ($uObj) { $uObj.SID.Value } else { $null }
-          if (Test-Path "$sunExe") {
-              if ($userSid) { & icacls "$sunDir" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null; & icacls "$sunPersistCfg" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null }
-              Push-Location "$sunDir"; & "$sunExe" --creds "$user" "$matKhau" *> $null; Pop-Location
-              $svcExe = "$sunDir\tools\sunshinesvc.exe"
-              $svcObj = Get-Service -Name 'SunshineService', 'sunshinesvc' -ErrorAction SilentlyContinue | Select-Object -First 1
-              if ((-not ($svcObj)) -and (Test-Path "$svcExe")) { & sc.exe create SunshineService binPath= "`"$svcExe`"" start= auto DisplayName= "Sunshine Gamestream Service" *> $null; $svcObj = Get-Service -Name 'SunshineService' -ErrorAction SilentlyContinue }
-              if ($svcObj) { Set-Service -Name ($svcObj.Name) -StartupType Automatic -ErrorAction SilentlyContinue; Start-Service -Name ($svcObj.Name) -ErrorAction SilentlyContinue }
-              else { Start-Process -FilePath "$sunExe" -WorkingDirectory "$sunDir" -WindowStyle Hidden }
-              "SUNSHINE_READY=1" >> "$env:GITHUB_ENV"
-          }
-
-          try {
-              $desktopDir = [System.IO.Path]::Combine("$profPath", 'Desktop')
-              New-Item -ItemType Directory -Force -Path "$desktopDir" | Out-Null
-              $ws = New-Object -ComObject WScript.Shell
-              @("$desktopDir", 'C:\Users\Public\Desktop') | ForEach-Object {
-                  $d = "$_"
-                  $ws.CreateShortcut("$d\WEB-QUAN-LY-RDP.url").TargetPath = "http://127.0.0.1:$($env:WEB_PORT)/"; $ws.CreateShortcut("$d\WEB-QUAN-LY-RDP.url").Save()
-                  $ws.CreateShortcut("$d\SUNSHINE-WEB-UI.url").TargetPath = "https://127.0.0.1:$($env:SUNSHINE_WEB_PORT)/"; $ws.CreateShortcut("$d\SUNSHINE-WEB-UI.url").Save()
-              }
-          } catch {}
-
-          'SESSION_READY=1' >> "$env:GITHUB_ENV"
-          exit 0
-
-      - name: 📦 Cài sẵn Discord, Spotify, StarDesk (mặc định)
+      - name: 📦 Cài sẵn Discord, Spotify, StarDesk
         shell: pwsh
         run: |
-          Write-Host ""
           Write-Host "CAI SAN DISCORD, SPOTIFY, STARDESK" -ForegroundColor Yellow
 
-          # Cài winget trước (Windows Server 2022 không có sẵn)
           $wingetOk = $false
-          try {
-              winget --version 2>&1 | Out-Null
-              if ($LASTEXITCODE -eq 0) { $wingetOk = $true }
-          } catch {}
-
+          try { winget --version 2>&1 | Out-Null; if ($LASTEXITCODE -eq 0) { $wingetOk = $true } } catch {}
           if (-not $wingetOk) {
-              Write-Host "  Cai winget..." -ForegroundColor Cyan
-              $tmp = "$env:TEMP\winget"
-              New-Item -ItemType Directory -Force -Path "$tmp" | Out-Null
+              Write-Host "  Bootstrap winget..." -ForegroundColor Cyan
               try {
-                  # Tai dependencies
-                  $vclibs = "$tmp\Microsoft.VCLibs.x64.14.00.Desktop.appx"
-                  $xaml   = "$tmp\Microsoft.UI.Xaml.2.8.appx"
-                  $bundle = "$tmp\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
+                  $vclibs = "$env:TEMP\Microsoft.VCLibs.x64.14.00.Desktop.appx"
+                  $xaml = "$env:TEMP\Microsoft.UI.Xaml.2.8.x64.appx"
+                  $bundle = "$env:TEMP\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
                   Invoke-WebRequest -Uri "https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx" -OutFile $vclibs -UseBasicParsing
                   Invoke-WebRequest -Uri "https://github.com/microsoft/microsoft-ui-xaml/releases/download/v2.8.6/Microsoft.UI.Xaml.2.8.x64.appx" -OutFile $xaml -UseBasicParsing
                   Invoke-WebRequest -Uri "https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle" -OutFile $bundle -UseBasicParsing
@@ -945,134 +455,58 @@ jobs:
                   Add-AppxPackage -Path $xaml -ErrorAction SilentlyContinue
                   Add-AppxPackage -Path $bundle -ErrorAction SilentlyContinue
                   $wingetOk = $true
-                  Write-Host "  OK: winget" -ForegroundColor Green
-              } catch {
-                  Write-Host "  WARN: winget fail, dung link truc tiep" -ForegroundColor Yellow
-              }
+                  Write-Host "  OK: winget da cai" -ForegroundColor Green
+              } catch { Write-Host "  WARN: winget bootstrap fail" -ForegroundColor Yellow }
           }
 
-          # Cài Discord
-          try {
-              if ($wingetOk) { winget install Discord.Discord --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null }
-              else {
-                  $discord = "$env:TEMP\DiscordSetup.exe"
-                  Invoke-WebRequest -Uri "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x64" -OutFile $discord -UseBasicParsing
-                  Start-Process -FilePath $discord -ArgumentList "/S" -Wait
-              }
-              Write-Host "  OK: Discord" -ForegroundColor Green
-          } catch { Write-Host "  WARN: Discord fail" -ForegroundColor Yellow }
+          try { if ($wingetOk) { winget install Discord.Discord --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null } else { $discord = "$env:TEMP\DiscordSetup.exe"; Invoke-WebRequest -Uri "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x64" -OutFile $discord -UseBasicParsing; Start-Process -FilePath $discord -ArgumentList "/S" -Wait }; Write-Host "  OK: Discord" -ForegroundColor Green } catch { Write-Host "  WARN: Discord fail" -ForegroundColor Yellow }
+          try { if ($wingetOk) { winget install Spotify.Spotify --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null } else { $spotify = "$env:TEMP\SpotifySetup.exe"; Invoke-WebRequest -Uri "https://download.scdn.co/SpotifySetup.exe" -OutFile $spotify -UseBasicParsing; Start-Process -FilePath $spotify -ArgumentList "/silent" -Wait }; Write-Host "  OK: Spotify" -ForegroundColor Green } catch { Write-Host "  WARN: Spotify fail" -ForegroundColor Yellow }
+          try { if ($wingetOk) { winget install Stardesk.Stardesk --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null } else { $sd = "$env:TEMP\StarDeskSetup.exe"; Invoke-WebRequest -Uri "https://stardesk.net/download/windows" -OutFile $sd -UseBasicParsing; Start-Process -FilePath "$sd" -ArgumentList "/S" -Wait }; Write-Host "  OK: StarDesk" -ForegroundColor Green } catch { Write-Host "  WARN: StarDesk fail" -ForegroundColor Yellow }
 
-          # Cài Spotify
-          try {
-              if ($wingetOk) { winget install Spotify.Spotify --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null }
-              else {
-                  $spotify = "$env:TEMP\SpotifySetup.exe"
-                  Invoke-WebRequest -Uri "https://download.scdn.co/SpotifySetup.exe" -OutFile $spotify -UseBasicParsing
-                  Start-Process -FilePath $spotify -ArgumentList "/silent" -Wait
-              }
-              Write-Host "  OK: Spotify" -ForegroundColor Green
-          } catch { Write-Host "  WARN: Spotify fail" -ForegroundColor Yellow }
+          $global:LASTEXITCODE = 0; exit 0
 
-          # Cài StarDesk
-          try {
-              if ($wingetOk) { winget install Stardesk.Stardesk --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null }
-              else {
-                  $sd = "$env:TEMP\StarDeskSetup.exe"
-                  Invoke-WebRequest -Uri "https://stardesk.net/download/windows" -OutFile $sd -UseBasicParsing
-                  Start-Process -FilePath $sd -ArgumentList "/S" -Wait
-              }
-              Write-Host "  OK: StarDesk" -ForegroundColor Green
-          } catch { Write-Host "  WARN: StarDesk fail" -ForegroundColor Yellow }
-
-          $global:LASTEXITCODE = 0
-          exit 0
-
-      - name: 🌐 Khởi chạy Web Panel (chạy trực tiếp, không tách process)
+      - name: 🌐 Web Panel (Service)
         shell: pwsh
         env:
           WINDOWS_IMAGE: ${{ inputs.windows_image }}
           CREATOR: ${{ inputs.creator_name }}
         run: |
-          $savePass = "$env:RDP_PASS"
-          $uObj = Get-LocalUser -Name "$env:RDP_USER" -ErrorAction SilentlyContinue
-          $userSid = if ($uObj) { $uObj.SID.Value } else { $null }
-
-          $state = [ordered]@{
-              machineId       = "$env:MACHINE_ID"
-              creator         = "$env:CREATOR"
-              releaseTag      = "$env:RELEASE_TAG"
-              user            = "$env:RDP_USER"
-              extraUser       = "$env:RDP_EXTRA_USER"
-              sid             = "$userSid"
-              password        = $savePass
-              windowsImage    = "$env:WINDOWS_IMAGE"
-              driveLetter     = "$env:MOUNT_LETTER"
-              tailscaleIp     = "$env:TAILSCALE_IP"
-              durationMinutes = [int]"$env:TOTAL_MINUTES"
-              startUtc        = (Get-Date).ToUniversalTime().ToString('o')
-              runId           = "$env:GITHUB_RUN_ID"
-          }
+          $savePass = "$env:RDP_PASS"; $uObj = Get-LocalUser -Name "$env:RDP_USER" -ErrorAction SilentlyContinue; $userSid = if ($uObj) { $uObj.SID.Value } else { $null }
+          $state = [ordered]@{ machineId = "$env:MACHINE_ID"; creator = "$env:CREATOR"; releaseTag = "$env:RELEASE_TAG"; user = "$env:RDP_USER"; extraUser = "$env:RDP_EXTRA_USER"; sid = "$userSid"; password = $savePass; windowsImage = "$env:WINDOWS_IMAGE"; driveLetter = "$env:MOUNT_LETTER"; tailscaleIp = "$env:TAILSCALE_IP"; durationMinutes = [int]"$env:TOTAL_MINUTES"; startUtc = (Get-Date).ToUniversalTime().ToString('o'); runId = "$env:GITHUB_RUN_ID" }
           $state | ConvertTo-Json -Depth 5 -Compress | Set-Content -Path "$env:SHARED_STATE_FILE" -Encoding UTF8
 
-          # FIX LỖI 3: Web Panel chạy trong step riêng, giữ process sống bằng Start-Job
           $webScript = @'
           $ErrorActionPreference = "Continue"
           $listener = [System.Net.HttpListener]::new()
           $listener.Prefixes.Add("http://+:$($env:WEB_PORT)/")
           $listener.Start()
-          Write-Host "Web Panel listening on port $($env:WEB_PORT)..." -ForegroundColor Green
           $jobStart = if ($env:JOB_START_EPOCH) { [long]$env:JOB_START_EPOCH } else { [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() }
           $endEpoch = $jobStart + (([long]$env:TOTAL_MINUTES) * 60)
           while ($listener.IsListening) {
               try {
-                  $ctx = $listener.GetContext()
-                  $req = $ctx.Request; $resp = $ctx.Response
+                  $ctx = $listener.GetContext(); $req = $ctx.Request; $resp = $ctx.Response
                   $path = $req.Url.AbsolutePath.ToLower()
-                  $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-                  $remain = [math]::Max(0, ($endEpoch) - ($now))
-                  $h = [math]::Floor(($remain) / 3600); $m = [math]::Floor((($remain) % 3600) / 60); $s = $remain % 60
-                  if ($path -eq "/health") {
-                      $disk = Get-PSDrive -Name "$env:MOUNT_LETTER" -ErrorAction SilentlyContinue
-                      $health = [ordered]@{ machineId = "$env:MACHINE_ID"; creator = "$env:CREATOR"; status = "ok"; rdp = (Get-Service TermService -ErrorAction SilentlyContinue).Status.ToString(); sunshine = "unknown"; remaining_seconds = $remain }
-                      $json = $health | ConvertTo-Json -Compress
-                      $buf = [System.Text.Encoding]::UTF8.GetBytes("$json")
-                      $resp.ContentType = "application/json"; $resp.ContentLength64 = $buf.Length
-                      $resp.OutputStream.Write($buf, 0, $buf.Length); $resp.OutputStream.Close(); continue
-                  }
-                  if ($req.HttpMethod -eq "POST") {
-                      if ($path -eq "/action/save") { Set-Content -Path "$env:CONTROL_SIGNAL_FILE" -Value "SAVE_NOW" -Encoding UTF8 }
-                      elseif ($path -eq "/action/restart") { Set-Content -Path "$env:CONTROL_SIGNAL_FILE" -Value "RESTART_SESSION" -Encoding UTF8 }
-                      elseif ($path -eq "/action/stop") { Set-Content -Path "$env:CONTROL_SIGNAL_FILE" -Value "STOP_SESSION" -Encoding UTF8 }
-                  }
-                  $html = @"
-          <!DOCTYPE html><html><head><meta charset='utf-8'><title>ALB Panel</title>
-          <style>body{background:#0f172a;color:#f8fafc;font-family:Segoe UI;padding:24px;display:flex;justify-content:center}.card{max-width:600px;background:#1e293b;border:1px solid #334155;border-radius:16px;padding:24px}h1{color:#38bdf8;margin:0 0 8px}.row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #1e293b}.val{color:#4ade80;font-weight:600}button{width:100%;padding:14px;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;color:white;margin:6px 0}.btn-save{background:#0284c7}.btn-restart{background:#d97706}.btn-stop{background:#dc2626}</style></head>
-          <body><div class='card'><h1>ALB Panel [$env:MACHINE_ID]</h1>
-          <div class='row'><span>IP:</span><span class='val'>$env:TAILSCALE_IP</span></div>
-          <div class='row'><span>Creator:</span><span class='val'>$env:CREATOR</span></div>
-          <div class='row'><span>User:</span><span class='val'>$env:RDP_USER / $env:RDP_EXTRA_USER</span></div>
-          <div class='row'><span>O dia:</span><span class='val'>$env:MOUNT_LETTER:\</span></div>
-          <div class='row'><span>Con lai:</span><span class='val'>${h}h${m}m${s}s</span></div>
-          <form method='POST' action='/action/save'><button class='btn-save'>Luu Ngay</button></form>
-          <form method='POST' action='/action/restart'><button class='btn-restart'>Luu & Restart</button></form>
-          <form method='POST' action='/action/stop'><button class='btn-stop'>Luu & Tat</button></form>
-          </div></body></html>
-          "@
-                  $buf = [System.Text.Encoding]::UTF8.GetBytes($html)
-                  $resp.ContentType = "text/html; charset=utf-8"; $resp.ContentLength64 = $buf.Length
-                  $resp.OutputStream.Write($buf, 0, $buf.Length); $resp.OutputStream.Close()
+                  $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $remain = [math]::Max(0, ($endEpoch) - ($now))
+                  $h = [math]::Floor($remain / 3600); $m = [math]::Floor(($remain % 3600) / 60); $s = $remain % 60
+                  if ($path -eq "/health") { $health = [ordered]@{ machineId = "$env:MACHINE_ID"; creator = "$env:CREATOR"; status = "ok"; rdp = (Get-Service TermService -ErrorAction SilentlyContinue).Status.ToString(); remaining_seconds = $remain }; $json = $health | ConvertTo-Json -Compress; $buf = [System.Text.Encoding]::UTF8.GetBytes("$json"); $resp.ContentType = "application/json"; $resp.ContentLength64 = $buf.Length; $resp.OutputStream.Write($buf, 0, $buf.Length); $resp.OutputStream.Close(); continue }
+                  if ($req.HttpMethod -eq "POST") { if ($path -eq "/action/save") { Set-Content -Path "$env:CONTROL_SIGNAL_FILE" -Value "SAVE_NOW" -Encoding UTF8 } elseif ($path -eq "/action/restart") { Set-Content -Path "$env:CONTROL_SIGNAL_FILE" -Value "RESTART_SESSION" -Encoding UTF8 } elseif ($path -eq "/action/stop") { Set-Content -Path "$env:CONTROL_SIGNAL_FILE" -Value "STOP_SESSION" -Encoding UTF8 } }
+                  $html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>ALB Panel</title><style>body{background:#0f172a;color:#f8fafc;font-family:Segoe UI;padding:24px;display:flex;justify-content:center}.card{max-width:600px;background:#1e293b;border:1px solid #334155;border-radius:16px;padding:24px}h1{color:#38bdf8;margin:0 0 8px}.row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #1e293b}.val{color:#4ade80;font-weight:600}button{width:100%;padding:14px;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;color:white;margin:6px 0}.btn-save{background:#0284c7}.btn-restart{background:#d97706}.btn-stop{background:#dc2626}</style></head><body><div class='card'><h1>ALB Panel [$env:MACHINE_ID]</h1><div class='row'><span>IP:</span><span class='val'>$env:TAILSCALE_IP</span></div><div class='row'><span>Creator:</span><span class='val'>$env:CREATOR</span></div><div class='row'><span>User:</span><span class='val'>$env:RDP_USER / $env:RDP_EXTRA_USER</span></div><div class='row'><span>O dia:</span><span class='val'>$env:MOUNT_LETTER:\</span></div><div class='row'><span>Con lai:</span><span class='val'>${h}h${m}m${s}s</span></div><form method='POST' action='/action/save'><button class='btn-save'>Luu Ngay</button></form><form method='POST' action='/action/restart'><button class='btn-restart'>Luu & Restart</button></form><form method='POST' action='/action/stop'><button class='btn-stop'>Luu & Tat</button></form></div></body></html>"
+                  $buf = [System.Text.Encoding]::UTF8.GetBytes($html); $resp.ContentType = "text/html; charset=utf-8"; $resp.ContentLength64 = $buf.Length; $resp.OutputStream.Write($buf, 0, $buf.Length); $resp.OutputStream.Close()
               } catch {}
           }
           '@
           $webScriptPath = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'web-panel.ps1')
           Set-Content -Path "$webScriptPath" -Value $webScript -Encoding UTF8
-          $job = Start-Job -ScriptBlock { & pwsh -NoProfile -File $using:webScriptPath }
-          Write-Host "Web Panel job started, waiting 3s..." -ForegroundColor Green
+
+          $servyOk = $false
+          try { servy-cli --version 2>&1 | Out-Null; if ($LASTEXITCODE -eq 0) { $servyOk = $true } } catch {}
+          if (-not $servyOk) { try { choco install servy -y --no-progress 2>&1 | Out-Null; $servyOk = $true } catch {} }
+
+          if ($servyOk) { servy-cli install --name="ALB-WebPanel" --path="C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" --params="-NoProfile -File `"$webScriptPath`"" --startupType="Automatic" 2>&1 | Out-Null; Start-Service -Name "ALB-WebPanel" -ErrorAction SilentlyContinue; Write-Host "  OK: Web Panel service" -ForegroundColor Green }
+          else { Start-Job -ScriptBlock { & pwsh -NoProfile -File $using:webScriptPath } | Out-Null; Write-Host "  OK: Web Panel background" -ForegroundColor Green }
           Start-Sleep -Seconds 3
-          # Verify port
           $test = Test-NetConnection -ComputerName 127.0.0.1 -Port $env:WEB_PORT -WarningAction SilentlyContinue
-          if ($test.TcpTestSucceeded) { Write-Host "  OK: Web Panel port $env:WEB_PORT dang listen" -ForegroundColor Green }
-          else { Write-Host "  WARN: Web Panel port $env:WEB_PORT khong listen" -ForegroundColor Yellow }
+          if ($test.TcpTestSucceeded) { Write-Host "  OK: Port $env:WEB_PORT listen" -ForegroundColor Green } else { Write-Host "  WARN: Port $env:WEB_PORT khong listen" -ForegroundColor Yellow }
           exit 0
 
       - name: 🎉 Thông tin kết nối
@@ -1080,10 +514,9 @@ jobs:
         env:
           CREATOR: ${{ inputs.creator_name }}
         run: |
-          $passText = "$env:RDP_PASS"
-          $audioName = if ($env:AUDIO_DEVICE_NAME) { $env:AUDIO_DEVICE_NAME } else { 'N/A' }
+          $passText = "$env:RDP_PASS"; $audioName = if ($env:AUDIO_DEVICE_NAME) { $env:AUDIO_DEVICE_NAME } else { 'N/A' }
           Write-Host "============================================================" -ForegroundColor Cyan
-          Write-Host "  ALB ULTIMATE RDP v5.0 — SAN SANG!" -ForegroundColor Cyan
+          Write-Host "  ALB ULTIMATE RDP v7.0 — TỐI THƯỢNG" -ForegroundColor Cyan
           Write-Host "============================================================" -ForegroundColor Cyan
           Write-Host "  May         : $env:MACHINE_ID" -ForegroundColor Cyan
           Write-Host "  Creator     : $env:CREATOR" -ForegroundColor Cyan
@@ -1097,7 +530,7 @@ jobs:
           Write-Host "  Discord     : Da cai san" -ForegroundColor Green
           Write-Host "  Spotify     : Da cai san" -ForegroundColor Green
           Write-Host "  StarDesk    : Da cai san" -ForegroundColor Green
-          Write-Host "  RDP Pass    : fPromptForPassword=1 (ep nhap moi lan)" -ForegroundColor Yellow
+          Write-Host "  RDP Prompt  : NLA=1, TLS=2, fPromptForPassword=1 (2 vi tri), cmdkey cleaned" -ForegroundColor Yellow
           Write-Host "============================================================" -ForegroundColor Cyan
           exit 0
 
@@ -1107,36 +540,13 @@ jobs:
         run: |
           function Test-Port { param($Port, $TimeoutMs = 1500) try { $tcp = New-Object System.Net.Sockets.TcpClient; $task = $tcp.ConnectAsync("127.0.0.1", $Port); if ($task.Wait($TimeoutMs)) { $tcp.Close(); return $true }; $tcp.Close(); return $false } catch { return $false } }
           $jobStart = if ($env:JOB_START_EPOCH) { [long]$env:JOB_START_EPOCH } else { [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() }
-          $endEpoch = $jobStart + (([long]$env:TOTAL_MINUTES) * 60)
-          $saveScript = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'save-data.ps1')
-          $sigFile = "$env:CONTROL_SIGNAL_FILE"
-          $u = "$env:RDP_USER"
+          $endEpoch = $jobStart + (([long]$env:TOTAL_MINUTES) * 60); $saveScript = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'save-data.ps1'); $sigFile = "$env:CONTROL_SIGNAL_FILE"; $u = "$env:RDP_USER"
           $lastLog = (Get-Date).AddHours(-1); $warned = $false
           while ($true) {
-              if (Test-Path "$sigFile") {
-                  $cmd = (Get-Content -Raw -Path "$sigFile" -ErrorAction SilentlyContinue).Trim()
-                  Remove-Item -Path "$sigFile" -Force -ErrorAction SilentlyContinue
-                  if ("$cmd" -eq 'SAVE_NOW') { & "$saveScript" -Reason 'manual'; $global:LASTEXITCODE = 0 }
-                  elseif ("$cmd" -eq 'RESTART_SESSION') { 'FORCE_NEXT_SESSION=1' >> "$env:GITHUB_ENV"; break }
-                  elseif ("$cmd" -eq 'STOP_SESSION') { 'FORCE_STOP_ONLY=1' >> "$env:GITHUB_ENV"; break }
-              }
-              $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-              $remain = $endEpoch - $now
-              if ($remain -le 0) { break }
-              if (((Get-Date) - $lastLog).TotalMinutes -ge 5) {
-                  $svc = Get-Service -Name TermService -ErrorAction SilentlyContinue
-                  $sunOK = Test-Port 47990
-                  $h = [math]::Floor($remain / 3600); $m = [math]::Floor(($remain % 3600) / 60)
-                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] RDP:$($svc.Status) Sun:$sunOK Con:${h}h${m}m" -ForegroundColor Blue
-                  $lastLog = Get-Date
-              }
-              if (-not (Test-Port 47990)) {
-                  Stop-Service -Name 'SunshineService', 'sunshinesvc' -Force -ErrorAction SilentlyContinue
-                  Start-Sleep -Seconds 2
-                  $sunSvc = Get-Service -Name 'SunshineService', 'sunshinesvc' -ErrorAction SilentlyContinue | Select-Object -First 1
-                  if ($sunSvc) { Start-Service -Name ($sunSvc.Name) -ErrorAction SilentlyContinue }
-                  else { Start-Process -FilePath 'C:\Program Files\Sunshine\sunshine.exe' -WorkingDirectory 'C:\Program Files\Sunshine' -WindowStyle Hidden -ErrorAction SilentlyContinue }
-              }
+              if (Test-Path "$sigFile") { $cmd = (Get-Content -Raw -Path "$sigFile" -ErrorAction SilentlyContinue).Trim(); Remove-Item -Path "$sigFile" -Force -ErrorAction SilentlyContinue; if ("$cmd" -eq 'SAVE_NOW') { & "$saveScript" -Reason 'manual'; $global:LASTEXITCODE = 0 } elseif ("$cmd" -eq 'RESTART_SESSION') { 'FORCE_NEXT_SESSION=1' >> "$env:GITHUB_ENV"; break } elseif ("$cmd" -eq 'STOP_SESSION') { 'FORCE_STOP_ONLY=1' >> "$env:GITHUB_ENV"; break } }
+              $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $remain = $endEpoch - $now; if ($remain -le 0) { break }
+              if (((Get-Date) - $lastLog).TotalMinutes -ge 5) { $svc = Get-Service -Name TermService -ErrorAction SilentlyContinue; $sunOK = Test-Port 47990; $h = [math]::Floor($remain / 3600); $m = [math]::Floor(($remain % 3600) / 60); Write-Host "[$(Get-Date -Format 'HH:mm:ss')] RDP:$($svc.Status) Sun:$sunOK Con:${h}h${m}m" -ForegroundColor Blue; $lastLog = Get-Date }
+              if (-not (Test-Port 47990)) { Stop-Service -Name 'SunshineService', 'sunshinesvc' -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; $sunSvc = Get-Service -Name 'SunshineService', 'sunshinesvc' -ErrorAction SilentlyContinue | Select-Object -First 1; if ($sunSvc) { Start-Service -Name ($sunSvc.Name) -ErrorAction SilentlyContinue } else { Start-Process -FilePath 'C:\Program Files\Sunshine\sunshine.exe' -WorkingDirectory 'C:\Program Files\Sunshine' -WindowStyle Hidden -ErrorAction SilentlyContinue } }
               if ((-not $warned) -and ($remain -le 300)) { try { msg * /TIME:290 "ALB RDP [$env:MACHINE_ID] sap het gio!" } catch {}; $warned = $true }
               Start-Sleep -Seconds 2
           }
@@ -1146,26 +556,17 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          Stop-Service -Name 'SunshineService', 'sunshinesvc' -Force -ErrorAction SilentlyContinue
-          Stop-Process -Name 'sunshine' -Force -ErrorAction SilentlyContinue
-          & taskkill.exe /F /IM 'StarDesk*' /T *> $null
-          $saveScript = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'save-data.ps1')
-          if (Test-Path "$saveScript") { & "$saveScript" -Reason 'session-end'; $global:LASTEXITCODE = 0 }
-          exit 0
+          Stop-Service -Name 'SunshineService', 'sunshinesvc' -Force -ErrorAction SilentlyContinue; Stop-Process -Name 'sunshine' -Force -ErrorAction SilentlyContinue; & taskkill.exe /F /IM 'StarDesk*' /T *> $null
+          $saveScript = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'save-data.ps1'); if (Test-Path "$saveScript") { & "$saveScript" -Reason 'session-end'; $global:LASTEXITCODE = 0 }; exit 0
 
       - name: 🧹 Dọn dẹp
         if: always()
         shell: pwsh
         run: |
           & taskkill.exe /F /IM 'StarDesk*' /T *> $null
-          $ts = "$env:ProgramFiles\Tailscale\tailscale.exe"
-          if (Test-Path "$ts") { & "$ts" logout 2>&1 | Out-Null; & "$ts" down 2>&1 | Out-Null }
-          Remove-NetFirewallRule -DisplayName 'ALB-RDP' -ErrorAction SilentlyContinue
-          Remove-NetFirewallRule -DisplayName 'ALB-Sunshine-TCP' -ErrorAction SilentlyContinue
-          Remove-NetFirewallRule -DisplayName 'ALB-Sunshine-UDP' -ErrorAction SilentlyContinue
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 1 -Force -ErrorAction SilentlyContinue
-          Stop-Service -Name TermService -Force -ErrorAction SilentlyContinue
-          exit 0
+          $ts = "$env:ProgramFiles\Tailscale\tailscale.exe"; if (Test-Path "$ts") { & "$ts" logout 2>&1 | Out-Null; & "$ts" down 2>&1 | Out-Null }
+          Remove-NetFirewallRule -DisplayName 'ALB-RDP' -ErrorAction SilentlyContinue; Remove-NetFirewallRule -DisplayName 'ALB-Sunshine-TCP' -ErrorAction SilentlyContinue; Remove-NetFirewallRule -DisplayName 'ALB-Sunshine-UDP' -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 1 -Force -ErrorAction SilentlyContinue; Stop-Service -Name TermService -Force -ErrorAction SilentlyContinue; exit 0
 
       - name: 🔁 Auto-restart
         if: ${{ always() && steps.keepalive.outcome == 'success' && env.FORCE_STOP_ONLY != '1' && inputs.auto_restart && !inputs.run_once }}
@@ -1183,14 +584,5 @@ jobs:
           DDNS: ${{ inputs.enable_duckdns }}
         run: |
           $wf = [System.IO.Path]::GetFileName(("$env:GITHUB_WORKFLOW_REF" -split '@')[0])
-          gh workflow run "$wf" --ref "$env:GITHUB_REF_NAME" `
-              -f "machine_ids=$env:MACHINE_ID" `
-              -f "duration=$env:DURATION" `
-              -f auto_restart=true -f run_once=false `
-              -f "drive_letter=$env:MOUNT_LETTER" -f "vhd_size_gb=$env:VHD_SIZE_GB" `
-              -f "windows_image=$env:WIN_IMAGE" -f "rdp_username=$env:RDP_USERNAME" `
-              -f "rdp_password=$env:RDP_PASSWORD" -f "creator_name=$env:CREATOR" `
-              -f "vdd_resolution=$env:VDD_RES" -f "choco_packages=$env:PKGS" `
-              -f "app_urls=$env:APP_URLS" -f "optimize_windows=$($env:OPT.ToLower())" `
-              -f "enable_duckdns=$($env:DDNS.ToLower())"
+          gh workflow run "$wf" --ref "$env:GITHUB_REF_NAME" -f "machine_ids=$env:MACHINE_ID" -f "duration=$env:DURATION" -f auto_restart=true -f run_once=false -f "drive_letter=$env:MOUNT_LETTER" -f "vhd_size_gb=$env:VHD_SIZE_GB" -f "windows_image=$env:WIN_IMAGE" -f "rdp_username=$env:RDP_USERNAME" -f "rdp_password=$env:RDP_PASSWORD" -f "creator_name=$env:CREATOR" -f "vdd_resolution=$env:VDD_RES" -f "choco_packages=$env:PKGS" -f "app_urls=$env:APP_URLS" -f "optimize_windows=$($env:OPT.ToLower())" -f "enable_duckdns=$($env:DDNS.ToLower())"
           if (($LASTEXITCODE) -ne 0) { throw 'Restart fail' }
