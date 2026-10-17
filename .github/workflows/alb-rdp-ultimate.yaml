@@ -1,4 +1,4 @@
-﻿name: ALB ULTIMATE RDP v10.0
+﻿name: ALB ULTIMATE RDP v11.0
 
 on:
   workflow_dispatch:
@@ -327,7 +327,7 @@ jobs:
           $savedPkgs = @(); if (Test-Path "$pkgListFile") { $savedPkgs = @(Get-Content -Path "$pkgListFile" | Where-Object { $_ -match '^[A-Za-z0-9._\-]+$' }) }
           $inputPkgs = @(); if (-not ([string]::IsNullOrWhiteSpace("$env:PKGS"))) { $inputPkgs = @("$env:PKGS" -split '\s+' | Where-Object { $_ }) }
           $allPkgs = @($savedPkgs + $inputPkgs | Select-Object -Unique)
-          if (($allPkgs.Count) -gt 0) { $allPkgs | Set-Content -Path "$pkgListFile" -Encoding UTF8; $allPkgs | ForEach-Object { choco install "$_" -y --no-progress --limit-output; $global:LASTEXITCODE = 0 } }
+          if (($allPkgs.Count) -gt 0) { $allPkgs | Set-Content -Path "$pkgListFile" -Encoding UTF8; $allPkgs | ForEach-Object { choco install "$_" -y --no-progress --limit-output 2>&1 | Out-Null; $global:LASTEXITCODE = 0 } }
           exit 0
 
       - name: 🔗 Cài app bằng link
@@ -365,7 +365,7 @@ jobs:
           try { @('MMCSS', 'AudioEndpointBuilder', 'Audiosrv') | ForEach-Object { Set-Service -Name "$_" -StartupType Automatic -ErrorAction SilentlyContinue; Start-Service -Name "$_" -ErrorAction SilentlyContinue }; $vbCacheDir = [System.IO.Path]::Combine("$instCache", 'VBCable'); $vbZip = [System.IO.Path]::Combine("$vbCacheDir", 'VBCABLE_Driver_Pack43.zip'); New-Item -ItemType Directory -Force -Path "$vbCacheDir" | Out-Null; if (-not (Test-Path "$vbZip")) { try { Invoke-WebRequest -Uri 'https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip' -OutFile "$vbZip" -UseBasicParsing -TimeoutSec 45 } catch { Invoke-WebRequest -Uri 'https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack45.zip' -OutFile "$vbZip" -UseBasicParsing -TimeoutSec 45 } }; if ((Test-Path "$vbZip") -and (-not (Test-Path "$vbCacheDir\VBCABLE_Setup_x64.exe"))) { Expand-Archive -Path "$vbZip" -DestinationPath "$vbCacheDir" -Force }; Get-ChildItem -Path "$vbCacheDir" -Include '*.cer','*.cat','*.sys','*.exe' -Recurse -ErrorAction SilentlyContinue | ForEach-Object { if ($_.Extension -eq '.cer') { Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\Root' *>$null; Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' *>$null } else { $sig = Get-AuthenticodeSignature -FilePath ($_.FullName) -ErrorAction SilentlyContinue; if ($sig -and $sig.SignerCertificate) { $storeRoot = New-Object System.Security.Cryptography.X509Certificates.X509Store('Root', 'LocalMachine'); $storeRoot.Open('ReadWrite'); $storeRoot.Add($sig.SignerCertificate); $storeRoot.Close(); $storePub = New-Object System.Security.Cryptography.X509Certificates.X509Store('TrustedPublisher', 'LocalMachine'); $storePub.Open('ReadWrite'); $storePub.Add($sig.SignerCertificate); $storePub.Close() } } }; $vbInf = Get-ChildItem -Path "$vbCacheDir" -Filter '*64*.inf' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1; if (-not ($vbInf)) { $vbInf = Get-ChildItem -Path "$vbCacheDir" -Filter '*.inf' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 }; if ($vbInf) { pnputil /add-driver ($vbInf.FullName) /install *> $null; if (Test-Path "$usbDir\deviceinstaller64.exe") { Push-Location ($vbInf.DirectoryName); & "$usbDir\deviceinstaller64.exe" install ($vbInf.Name) 'VBAudioVACWDM' *> $null; Pop-Location } }; pnputil /scan-devices *> $null; Restart-Service -Name 'Audiosrv' -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; $finalAudio = @(Get-PnpDevice -Class 'MEDIA','AudioEndpoint' -ErrorAction SilentlyContinue | Where-Object { ($_.FriendlyName -match 'VB-Audio|CABLE|Virtual Audio|Speaker|Line') -and ($_.Status -eq 'OK') } | Select-Object -ExpandProperty FriendlyName -Unique); if (($finalAudio.Count) -gt 0) { "AUDIO_DEVICE_NAME=$($finalAudio -join ', ')" >> "$env:GITHUB_ENV" } else { "AUDIO_DEVICE_NAME=Windows Virtual Audio (Active)" >> "$env:GITHUB_ENV" } } catch { "AUDIO_DEVICE_NAME=N/A" >> "$env:GITHUB_ENV" }
           $global:LASTEXITCODE = 0
           $sunDir = 'C:\Program Files\Sunshine'; $sunExe = "$sunDir\sunshine.exe"; $sunCfg = "$sunDir\config"
-          if (-not (Test-Path "$sunExe")) { Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*Sunshine*' -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -Path 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*Sunshine*' -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -Path 'HKLM:\SOFTWARE\LizardByte*' -Recurse -Force -ErrorAction SilentlyContinue; & sc.exe stop SunshineService *> $null; & sc.exe delete SunshineService *> $null; & sc.exe stop sunshinesvc *> $null; & sc.exe delete sunshinesvc *> $null; $installJob = Start-Job -ScriptBlock { choco install sunshine -y --no-progress --limit-output --ignore-checksums }; $completed = Wait-Job -Job ($installJob) -Timeout 90; if (-not ($completed)) { Stop-Job -Job ($installJob) -ErrorAction SilentlyContinue; Get-Process | Where-Object { ($_.Name -match 'sunshine|choco') -and ($_.Name -ne 'sunshinesvc') } | Stop-Process -Force -ErrorAction SilentlyContinue } else { Receive-Job -Job ($installJob) | Out-Null }; Remove-Job -Job ($installJob) -Force -ErrorAction SilentlyContinue; $global:LASTEXITCODE = 0 }
+          if (-not (Test-Path "$sunExe")) { Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*Sunshine*' -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -Path 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*Sunshine*' -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -Path 'HKLM:\SOFTWARE\LizardByte*' -Recurse -Force -ErrorAction SilentlyContinue; & sc.exe stop SunshineService *> $null; & sc.exe delete SunshineService *> $null; & sc.exe stop sunshinesvc *> $null; & sc.exe delete sunshinesvc *> $null; $installJob = Start-Job -ScriptBlock { choco install sunshine -y --no-progress --limit-output --ignore-checksums 2>&1 | Out-Null }; $completed = Wait-Job -Job ($installJob) -Timeout 90; if (-not ($completed)) { Stop-Job -Job ($installJob) -ErrorAction SilentlyContinue; Get-Process | Where-Object { ($_.Name -match 'sunshine|choco') -and ($_.Name -ne 'sunshinesvc') } | Stop-Process -Force -ErrorAction SilentlyContinue } else { Receive-Job -Job ($installJob) | Out-Null }; Remove-Job -Job ($installJob) -Force -ErrorAction SilentlyContinue; $global:LASTEXITCODE = 0 }
           if (Test-Path "$sunExe") { Stop-Service -Name 'SunshineService' -Force -ErrorAction SilentlyContinue; Stop-Service -Name 'sunshinesvc' -Force -ErrorAction SilentlyContinue; Stop-Process -Name 'sunshine' -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; if (Test-Path "$sunCfg") { $item = Get-Item "$sunCfg" -Force; if (($item.Attributes) -notmatch 'ReparsePoint') { if ((@(Get-ChildItem "$sunPersistCfg" -Force -ErrorAction SilentlyContinue).Count) -eq 0) { Copy-Item -Path "$sunCfg\*" -Destination "$sunPersistCfg" -Recurse -Force -ErrorAction SilentlyContinue }; Remove-Item -Path "$sunCfg" -Recurse -Force -ErrorAction SilentlyContinue; New-Item -ItemType Junction -Path "$sunCfg" -Target "$sunPersistCfg" -Force | Out-Null } } else { New-Item -ItemType Junction -Path "$sunCfg" -Target "$sunPersistCfg" -Force | Out-Null }; $confFile = [System.IO.Path]::Combine("$sunPersistCfg", 'sunshine.conf'); if (-not (Test-Path "$confFile")) { @("sunshine_name = ALB-$($env:MACHINE_ID)","min_log_level = info","origin_web_ui_allowed = wan","upnp = disabled","address_family = both") | Set-Content -Path "$confFile" -Encoding UTF8 } }
           $global:LASTEXITCODE = 0; exit 0
 
@@ -376,7 +376,7 @@ jobs:
         run: |
           if (-not ("$env:TAILSCALE_AUTH_KEY")) { exit 1 }
           $ProgressPreference = 'SilentlyContinue'; $ts = 'C:\Program Files\Tailscale\tailscale.exe'
-          if (-not (Test-Path "$ts")) { Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*Tailscale*' -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -Path 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*Tailscale*' -Recurse -Force -ErrorAction SilentlyContinue; Get-Process -Name 'msiexec' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; $msiCache = [System.IO.Path]::Combine("$env:INSTALLER_CACHE", 'tailscale-premium.msi'); if ((Test-Path "$msiCache") -and ((Get-Item "$msiCache").Length -lt 5MB)) { Remove-Item -Path "$msiCache" -Force -ErrorAction SilentlyContinue }; if (-not (Test-Path "$msiCache")) { try { Invoke-WebRequest -Uri 'https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi' -OutFile "$msiCache" -UseBasicParsing } catch {} }; if (Test-Path "$msiCache") { $localMsi = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'tailscale-setup.msi'); Copy-Item -Path "$msiCache" -Destination "$localMsi" -Force; Start-Process msiexec.exe -ArgumentList "/i `"$localMsi`" /quiet /norestart" -Wait }; if (-not (Test-Path "$ts")) { $exePath = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'tailscale-setup-latest.exe'); try { Invoke-WebRequest -Uri 'https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe' -OutFile "$exePath" -UseBasicParsing; if (Test-Path "$exePath") { Start-Process -FilePath "$exePath" -ArgumentList '/S', '/norestart' -Wait } } catch {} }; if (-not (Test-Path "$ts")) { choco install tailscale -y --no-progress --limit-output --ignore-checksums; $global:LASTEXITCODE = 0 } }
+          if (-not (Test-Path "$ts")) { Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*Tailscale*' -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -Path 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*Tailscale*' -Recurse -Force -ErrorAction SilentlyContinue; Get-Process -Name 'msiexec' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; $msiCache = [System.IO.Path]::Combine("$env:INSTALLER_CACHE", 'tailscale-premium.msi'); if ((Test-Path "$msiCache") -and ((Get-Item "$msiCache").Length -lt 5MB)) { Remove-Item -Path "$msiCache" -Force -ErrorAction SilentlyContinue }; if (-not (Test-Path "$msiCache")) { try { Invoke-WebRequest -Uri 'https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi' -OutFile "$msiCache" -UseBasicParsing } catch {} }; if (Test-Path "$msiCache") { $localMsi = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'tailscale-setup.msi'); Copy-Item -Path "$msiCache" -Destination "$localMsi" -Force; Start-Process msiexec.exe -ArgumentList "/i `"$localMsi`" /quiet /norestart" -Wait }; if (-not (Test-Path "$ts")) { $exePath = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'tailscale-setup-latest.exe'); try { Invoke-WebRequest -Uri 'https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe' -OutFile "$exePath" -UseBasicParsing; if (Test-Path "$exePath") { Start-Process -FilePath "$exePath" -ArgumentList '/S', '/norestart' -Wait } } catch {} }; if (-not (Test-Path "$ts")) { choco install tailscale -y --no-progress --limit-output --ignore-checksums 2>&1 | Out-Null; $global:LASTEXITCODE = 0 } }
           if (-not (Test-Path "$ts")) { exit 1 }
           Set-Service -Name 'Tailscale' -StartupType Automatic -ErrorAction SilentlyContinue; Start-Service -Name 'Tailscale' -ErrorAction SilentlyContinue; Start-Sleep -Seconds 6
           $tsHost = "alb-$($env:MACHINE_ID)-$($env:GITHUB_RUN_ID)"; & "$ts" up "--authkey=$env:TAILSCALE_AUTH_KEY" "--hostname=$tsHost" --accept-routes --accept-dns --reset --unattended
@@ -420,24 +420,13 @@ jobs:
               Get-Process -Name "Discord*", "DiscordSetup*", "Update*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
               Start-Sleep -Seconds 1
               Remove-Item -Path "$env:LOCALAPPDATA\Discord" -Recurse -Force -ErrorAction SilentlyContinue
-
               $discord = "$tmp\DiscordSetup.exe"
               Invoke-WebRequest -Uri "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x64" -OutFile $discord -UseBasicParsing -TimeoutSec 45
-
               if (Test-Path $discord) {
-                  # KHONG dung /S — Squirrel can init day du
                   $proc = Start-Process -FilePath $discord -PassThru -NoNewWindow
                   $waited = 0
-                  while ((-not $proc.HasExited) -and ($waited -lt 75)) {
-                      Start-Sleep -Seconds 1
-                      $waited += 1
-                  }
-                  if (-not $proc.HasExited) {
-                      Write-Host "  WARN: Discord qua 75s, kill..." -ForegroundColor Yellow
-                      Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-                  } else {
-                      Write-Host "  OK: Discord (${waited}s)" -ForegroundColor Green
-                  }
+                  while ((-not $proc.HasExited) -and ($waited -lt 75)) { Start-Sleep -Seconds 1; $waited += 1 }
+                  if (-not $proc.HasExited) { Write-Host "  WARN: Discord qua 75s, kill..." -ForegroundColor Yellow; Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } else { Write-Host "  OK: Discord (${waited}s)" -ForegroundColor Green }
               }
           } catch { Write-Host "  WARN: Discord - $($_.Exception.Message)" -ForegroundColor Yellow }
 
@@ -446,34 +435,23 @@ jobs:
               Write-Host "  [2/2] StarDesk..." -ForegroundColor Cyan
               $sd = "$tmp\StarDeskSetup.exe"
               Invoke-WebRequest -Uri "https://stardesk.net/download/windows" -OutFile $sd -UseBasicParsing -TimeoutSec 45
-
               if (Test-Path $sd) {
                   $proc = Start-Process -FilePath $sd -ArgumentList "/S" -PassThru -NoNewWindow
                   $waited = 0
-                  while ((-not $proc.HasExited) -and ($waited -lt 45)) {
-                      Start-Sleep -Seconds 1
-                      $waited += 1
-                  }
-                  if (-not $proc.HasExited) {
-                      Write-Host "  WARN: StarDesk qua 45s, kill..." -ForegroundColor Yellow
-                      Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-                  } else {
-                      Write-Host "  OK: StarDesk (${waited}s)" -ForegroundColor Green
-                  }
+                  while ((-not $proc.HasExited) -and ($waited -lt 45)) { Start-Sleep -Seconds 1; $waited += 1 }
+                  if (-not $proc.HasExited) { Write-Host "  WARN: StarDesk qua 45s, kill..." -ForegroundColor Yellow; Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } else { Write-Host "  OK: StarDesk (${waited}s)" -ForegroundColor Green }
               }
           } catch { Write-Host "  WARN: StarDesk - $($_.Exception.Message)" -ForegroundColor Yellow }
 
-          # ═══ VERIFY ═══
           Start-Sleep -Seconds 2
           Write-Host ""
           Write-Host "KIEM TRA:" -ForegroundColor Cyan
           if (Test-Path "$env:LOCALAPPDATA\Discord\Update.exe") { Write-Host "  OK: Discord" -ForegroundColor Green } else { Write-Host "  WARN: Discord not found" -ForegroundColor Yellow }
           if (Test-Path "C:\Program Files\StarDesk\StarDesk.exe") { Write-Host "  OK: StarDesk" -ForegroundColor Green } else { Write-Host "  WARN: StarDesk not found" -ForegroundColor Yellow }
-
           $global:LASTEXITCODE = 0
           exit 0
 
-      - name: 🌐 Web Panel (Service)
+      - name: 🌐 Web Panel (FIX SERVY)
         shell: pwsh
         env:
           WINDOWS_IMAGE: ${{ inputs.windows_image }}
@@ -506,15 +484,75 @@ jobs:
           $webScriptPath = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'web-panel.ps1')
           Set-Content -Path "$webScriptPath" -Value $webScript -Encoding UTF8
 
+          # ============================================================
+          # FIX: CAI SERVY (KIEM TRA + CAI + REFRESH PATH)
+          # ============================================================
+          $servyCliPath = "$env:ProgramFiles\Servy\servy-cli.exe"
           $servyOk = $false
-          try { servy-cli --version 2>&1 | Out-Null; if ($LASTEXITCODE -eq 0) { $servyOk = $true } } catch {}
-          if (-not $servyOk) { try { choco install servy -y --no-progress 2>&1 | Out-Null; $servyOk = $true } catch {} }
 
-          if ($servyOk) { servy-cli install --name="ALB-WebPanel" --path="C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" --params="-NoProfile -File `"$webScriptPath`"" --startupType="Automatic" 2>&1 | Out-Null; Start-Service -Name "ALB-WebPanel" -ErrorAction SilentlyContinue; Write-Host "  OK: Web Panel service" -ForegroundColor Green }
-          else { Start-Job -ScriptBlock { & pwsh -NoProfile -File $using:webScriptPath } | Out-Null; Write-Host "  OK: Web Panel background" -ForegroundColor Green }
-          Start-Sleep -Seconds 3
-          $test = Test-NetConnection -ComputerName 127.0.0.1 -Port $env:WEB_PORT -WarningAction SilentlyContinue
-          if ($test.TcpTestSucceeded) { Write-Host "  OK: Port $env:WEB_PORT listen" -ForegroundColor Green } else { Write-Host "  WARN: Port $env:WEB_PORT khong listen" -ForegroundColor Yellow }
+          # 1. Kiểm tra servy-cli đã có sẵn chưa
+          if (Test-Path $servyCliPath) {
+              $servyOk = $true
+              Write-Host "  OK: Servy da co san tai $servyCliPath" -ForegroundColor Green
+          } else {
+              # 2. Thử cài qua Chocolatey
+              Write-Host "  Cai Servy qua Chocolatey..." -ForegroundColor Cyan
+              try {
+                  choco install servy -y --no-progress 2>&1 | Out-Null
+                  Start-Sleep -Seconds 5
+                  # Refresh PATH sau khi cài
+                  $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine")
+                  if (Test-Path $servyCliPath) {
+                      $servyOk = $true
+                      Write-Host "  OK: Servy da cai qua Chocolatey" -ForegroundColor Green
+                  }
+              } catch {
+                  Write-Host "  WARN: Chocolatey fail - $($_.Exception.Message)" -ForegroundColor Yellow
+              }
+          }
+
+          # 3. Nếu vẫn chưa có, tải installer trực tiếp từ GitHub
+          if (-not $servyOk) {
+              Write-Host "  Fallback: Tai Servy installer truc tiep tu GitHub..." -ForegroundColor Yellow
+              try {
+                  $servyInstaller = "$env:TEMP\servy-installer.exe"
+                  # Dùng bản .NET 4.8 (tương thích rộng hơn trên Server 2022)
+                  $servyUrl = "https://github.com/aelassas/servy/releases/latest/download/servy-net48-x64-installer.exe"
+                  Invoke-WebRequest -Uri $servyUrl -OutFile $servyInstaller -UseBasicParsing -TimeoutSec 120
+                  if (Test-Path $servyInstaller) {
+                      # Silent install theo tài liệu chính thức
+                      Start-Process -FilePath $servyInstaller -ArgumentList '/VERYSILENT /NORESTART /SUPPRESSMSGBOXES /SP- /CLOSEAPPLICATIONS /NOCANCEL' -Wait -NoNewWindow
+                      Start-Sleep -Seconds 5
+                      $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine")
+                      if (Test-Path $servyCliPath) {
+                          $servyOk = $true
+                          Write-Host "  OK: Servy da cai qua installer" -ForegroundColor Green
+                      }
+                  }
+              } catch {
+                  Write-Host "  WARN: Tai installer fail - $($_.Exception.Message)" -ForegroundColor Yellow
+              }
+          }
+
+          # ============================================================
+          # KHOI CHAY WEB PANEL
+          # ============================================================
+          if ($servyOk -and (Test-Path $servyCliPath)) {
+              Write-Host "  Dung Servy de tao service..." -ForegroundColor Cyan
+              & $servyCliPath install --name="ALB-WebPanel" --path="C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" --params="-NoProfile -File `"$webScriptPath`"" --startupType="Automatic" 2>&1 | Out-Null
+              & $servyCliPath start --name="ALB-WebPanel" 2>&1 | Out-Null
+              Start-Sleep -Seconds 3
+              $test = Test-NetConnection -ComputerName 127.0.0.1 -Port $env:WEB_PORT -WarningAction SilentlyContinue
+              if ($test.TcpTestSucceeded) { Write-Host "  OK: Web Panel service dang chay (port $env:WEB_PORT listen)" -ForegroundColor Green }
+              else { Write-Host "  WARN: Port $env:WEB_PORT khong listen, fallback Start-Job..." -ForegroundColor Yellow; Start-Job -ScriptBlock { & pwsh -NoProfile -File $using:webScriptPath } | Out-Null }
+          } else {
+              Write-Host "  Fallback: Chay Web Panel bang Start-Job (khong can Servy)..." -ForegroundColor Yellow
+              Start-Job -ScriptBlock { & pwsh -NoProfile -File $using:webScriptPath } | Out-Null
+              Start-Sleep -Seconds 3
+              $test = Test-NetConnection -ComputerName 127.0.0.1 -Port $env:WEB_PORT -WarningAction SilentlyContinue
+              if ($test.TcpTestSucceeded) { Write-Host "  OK: Web Panel dang chay (Start-Job, port $env:WEB_PORT listen)" -ForegroundColor Green }
+              else { Write-Host "  WARN: Port $env:WEB_PORT khong listen" -ForegroundColor Yellow }
+          }
           exit 0
 
       - name: 🎉 Thông tin kết nối
@@ -524,7 +562,7 @@ jobs:
         run: |
           $passText = "$env:RDP_PASS"; $audioName = if ($env:AUDIO_DEVICE_NAME) { $env:AUDIO_DEVICE_NAME } else { 'N/A' }
           Write-Host "============================================================" -ForegroundColor Cyan
-          Write-Host "  ALB ULTIMATE RDP v10.0 — TỐI THƯỢNG" -ForegroundColor Cyan
+          Write-Host "  ALB ULTIMATE RDP v11.0 — FIX SERVY" -ForegroundColor Cyan
           Write-Host "============================================================" -ForegroundColor Cyan
           Write-Host "  May         : $env:MACHINE_ID" -ForegroundColor Cyan
           Write-Host "  Creator     : $env:CREATOR" -ForegroundColor Cyan
@@ -538,6 +576,7 @@ jobs:
           Write-Host "  Discord     : Da cai san (khong silent + timeout 75s)" -ForegroundColor Green
           Write-Host "  StarDesk    : Da cai san (NSIS /S + timeout 45s)" -ForegroundColor Green
           Write-Host "  RDP Prompt  : NLA=1, TLS=2, fPromptForPassword=1 (2 vi tri), cmdkey cleaned" -ForegroundColor Yellow
+          Write-Host "  Servy       : Da fix (kiem tra + cai + refresh PATH + fallback)" -ForegroundColor Yellow
           Write-Host "============================================================" -ForegroundColor Cyan
           exit 0
 
