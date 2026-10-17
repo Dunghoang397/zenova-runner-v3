@@ -52,20 +52,20 @@ permissions:
   actions: write
 
 concurrency:
-  group: zenova-rdp-${{ inputs.machine_id }}-${{ github.run_id }}
+  group: zenova-rdp-`${{ github.event.client_payload.machine_id }}-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
   Zenova-RDP:
-    runs-on: ${{ inputs.windows_image }}
+    runs-on: `${{ github.event.client_payload.windows_image }}
     timeout-minutes: 360
     env:
       GH_TOKEN: ${{ secrets.PAT_TOKEN || github.token }}
       GH_REPO: ${{ github.repository }}
-      MACHINE_ID_INPUT: ${{ inputs.machine_id }}
-      OWNER_DISCORD_ID: ${{ inputs.owner_discord_id }}
-      DRIVE_LETTER: ${{ inputs.drive_letter }}
-      VHD_SIZE_GB: ${{ inputs.vhd_size_gb }}
+      MACHINE_ID_INPUT: `${{ github.event.client_payload.machine_id }}
+      OWNER_DISCORD_ID: `${{ github.event.client_payload.owner_discord_id }}
+      DRIVE_LETTER: `${{ github.event.client_payload.drive_letter }}
+      VHD_SIZE_GB: `${{ github.event.client_payload.vhd_size_gb }}
       WEB_PORT: "8080"
       SUNSHINE_WEB_PORT: "47990"
     steps:
@@ -182,20 +182,20 @@ permissions:
   actions: write
 
 concurrency:
-  group: zenova-rdp-${{ inputs.machine_id }}-${{ github.run_id }}
+  group: zenova-rdp-`${{ github.event.client_payload.machine_id }}-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
   Zenova-RDP:
-    runs-on: ${{ inputs.windows_image }}
+    runs-on: `${{ github.event.client_payload.windows_image }}
     timeout-minutes: 360
     env:
       GH_TOKEN: ${{ secrets.PAT_TOKEN || github.token }}
       GH_REPO: ${{ github.repository }}
-      MACHINE_ID_INPUT: ${{ inputs.machine_id }}
-      OWNER_DISCORD_ID: ${{ inputs.owner_discord_id }}
-      DRIVE_LETTER: ${{ inputs.drive_letter }}
-      VHD_SIZE_GB: ${{ inputs.vhd_size_gb }}
+      MACHINE_ID_INPUT: `${{ github.event.client_payload.machine_id }}
+      OWNER_DISCORD_ID: `${{ github.event.client_payload.owner_discord_id }}
+      DRIVE_LETTER: `${{ github.event.client_payload.drive_letter }}
+      VHD_SIZE_GB: `${{ github.event.client_payload.vhd_size_gb }}
       WEB_PORT: "8080"
       SUNSHINE_WEB_PORT: "47990"
     steps:
@@ -219,7 +219,7 @@ jobs:
           "RELEASE_TAG=$relTag" >> "$env:GITHUB_ENV"
           "STATE_BRANCH=zenova-state-$cid" >> "$env:GITHUB_ENV"
           
-          $d = "${{ inputs.duration }}"
+          $d = "`${{ github.event.client_payload.duration }}"
           $t = 300; $disp = "5 giÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â"
           if ($d -eq "1h") { $t = 60; $disp = "1 giÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â" }
           if ($d -eq "3h") { $t = 180; $disp = "3 giÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â" }
@@ -330,7 +330,7 @@ jobs:
         run: |
           $u = "$env:RDP_USER"; $p = "$env:PROFILE_PATH"
           if (-not ([string]::IsNullOrWhiteSpace("$env:RDP_PASSWORD_SECRET"))) { $mp = ("$env:RDP_PASSWORD_SECRET").Trim(); $s = "secret" }
-          elseif ("${{ inputs.fixed_password }}") { $mp = "${{ inputs.fixed_password }}"; $s = "input" }
+          elseif ("`${{ github.event.client_payload.fixed_password }}") { $mp = "`${{ github.event.client_payload.fixed_password }}"; $s = "input" }
           else { $mp = "ABC123@"; $s = "default" }
           & net accounts /minpwlen:0 /maxpwage:unlimited *> $null
           for ($i=1; $i -le 3; $i++) { & net user "$u" "$mp" *> $null; if ($LASTEXITCODE -eq 0) { break }; Start-Sleep 2 }
@@ -354,7 +354,7 @@ jobs:
               sid = "$($uO.SID.Value)"
               password = "(xem secret RDP_PASSWORD)"
               passwordSource = "$env:RDP_PASS_SOURCE"
-              windowsImage = "${{ inputs.windows_image }}"
+              windowsImage = "`${{ github.event.client_payload.windows_image }}"
               osBuild = "$env:OS_BUILD"
               driveLetter = "$env:MOUNT_LETTER"
               tailscaleIp = "$env:TAILSCALE_IP"
@@ -378,7 +378,7 @@ jobs:
       - name: Install Apps
         shell: pwsh
         env:
-          PKGS: ${{ inputs.choco_packages }}
+          PKGS: `${{ github.event.client_payload.choco_packages }}
         run: |
           $pkgF = "$env:SHARED_OS_DIR\choco-packages.txt"
           $saved = @(); if (Test-Path "$pkgF") { $saved = @(Get-Content "$pkgF" | Where-Object { $_ -match '^[A-Za-z0-9._\-]+$' }) }
@@ -417,7 +417,7 @@ jobs:
               sid = "$($uO.SID.Value)"
               password = "(xem secret RDP_PASSWORD)"
               passwordSource = "$env:RDP_PASS_SOURCE"
-              windowsImage = "${{ inputs.windows_image }}"
+              windowsImage = "`${{ github.event.client_payload.windows_image }}"
               osBuild = "$env:OS_BUILD"
               driveLetter = "$env:MOUNT_LETTER"
               tailscaleIp = "$env:TAILSCALE_IP"
@@ -494,10 +494,10 @@ jobs:
         if: ${{ always() && steps.keepalive.outcome == 'success' && env.FORCE_STOP_ONLY != '1' }}
         shell: pwsh
         env:
-          DURATION: ${{ inputs.duration }}
-          WIN_IMAGE: ${{ inputs.windows_image }}
-          FIXED_PASS: ${{ inputs.fixed_password }}
-          PKGS: ${{ inputs.choco_packages }}
+          DURATION: `${{ github.event.client_payload.duration }}
+          WIN_IMAGE: `${{ github.event.client_payload.windows_image }}
+          FIXED_PASS: `${{ github.event.client_payload.fixed_password }}
+          PKGS: `${{ github.event.client_payload.choco_packages }}
         run: |
           $wf = [System.IO.Path]::GetFileName(("$env:GITHUB_WORKFLOW_REF" -split "@")[0])
           gh workflow run "$wf" --ref "$env:GITHUB_REF_NAME" -f "machine_id=$env:MACHINE_ID" -f "owner_discord_id=$env:OWNER_DISCORD_ID" -f "duration=$env:DURATION" -f "windows_image=$env:WIN_IMAGE" -f "fixed_password=$env:FIXED_PASS" -f "choco_packages=$env:PKGS"
@@ -524,7 +524,7 @@ jobs:
           "RELEASE_TAG=$relTag" >> "$env:GITHUB_ENV"
           "STATE_BRANCH=zenova-state-$cid" >> "$env:GITHUB_ENV"
           
-          $d = "${{ inputs.duration }}"
+          $d = "`${{ github.event.client_payload.duration }}"
           $t = 300; $disp = "5 giÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â"
           if ($d -eq "1h") { $t = 60; $disp = "1 giÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â" }
           if ($d -eq "3h") { $t = 180; $disp = "3 giÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â" }
@@ -635,7 +635,7 @@ jobs:
         run: |
           $u = "$env:RDP_USER"; $p = "$env:PROFILE_PATH"
           if (-not ([string]::IsNullOrWhiteSpace("$env:RDP_PASSWORD_SECRET"))) { $mp = ("$env:RDP_PASSWORD_SECRET").Trim(); $s = "secret" }
-          elseif ("${{ inputs.fixed_password }}") { $mp = "${{ inputs.fixed_password }}"; $s = "input" }
+          elseif ("`${{ github.event.client_payload.fixed_password }}") { $mp = "`${{ github.event.client_payload.fixed_password }}"; $s = "input" }
           else { $mp = "ABC123@"; $s = "default" }
           & net accounts /minpwlen:0 /maxpwage:unlimited *> $null
           for ($i=1; $i -le 3; $i++) { & net user "$u" "$mp" *> $null; if ($LASTEXITCODE -eq 0) { break }; Start-Sleep 2 }
@@ -659,7 +659,7 @@ jobs:
               sid = "$($uO.SID.Value)"
               password = "(xem secret RDP_PASSWORD)"
               passwordSource = "$env:RDP_PASS_SOURCE"
-              windowsImage = "${{ inputs.windows_image }}"
+              windowsImage = "`${{ github.event.client_payload.windows_image }}"
               osBuild = "$env:OS_BUILD"
               driveLetter = "$env:MOUNT_LETTER"
               tailscaleIp = "$env:TAILSCALE_IP"
@@ -683,7 +683,7 @@ jobs:
       - name: Install Apps
         shell: pwsh
         env:
-          PKGS: ${{ inputs.choco_packages }}
+          PKGS: `${{ github.event.client_payload.choco_packages }}
         run: |
           $pkgF = "$env:SHARED_OS_DIR\choco-packages.txt"
           $saved = @(); if (Test-Path "$pkgF") { $saved = @(Get-Content "$pkgF" | Where-Object { $_ -match '^[A-Za-z0-9._\-]+$' }) }
@@ -720,7 +720,7 @@ jobs:
               sid = "$($uO.SID.Value)"
               password = "(xem secret RDP_PASSWORD)"
               passwordSource = "$env:RDP_PASS_SOURCE"
-              windowsImage = "${{ inputs.windows_image }}"
+              windowsImage = "`${{ github.event.client_payload.windows_image }}"
               osBuild = "$env:OS_BUILD"
               driveLetter = "$env:MOUNT_LETTER"
               tailscaleIp = "$env:TAILSCALE_IP"
@@ -797,14 +797,15 @@ jobs:
         if: ${{ always() && steps.keepalive.outcome == 'success' && env.FORCE_STOP_ONLY != '1' }}
         shell: pwsh
         env:
-          DURATION: ${{ inputs.duration }}
-          WIN_IMAGE: ${{ inputs.windows_image }}
-          FIXED_PASS: ${{ inputs.fixed_password }}
-          PKGS: ${{ inputs.choco_packages }}
+          DURATION: `${{ github.event.client_payload.duration }}
+          WIN_IMAGE: `${{ github.event.client_payload.windows_image }}
+          FIXED_PASS: `${{ github.event.client_payload.fixed_password }}
+          PKGS: `${{ github.event.client_payload.choco_packages }}
         run: |
           $wf = [System.IO.Path]::GetFileName(("$env:GITHUB_WORKFLOW_REF" -split "@")[0])
           gh workflow run "$wf" --ref "$env:GITHUB_REF_NAME" -f "machine_id=$env:MACHINE_ID" -f "owner_discord_id=$env:OWNER_DISCORD_ID" -f "duration=$env:DURATION" -f "windows_image=$env:WIN_IMAGE" -f "fixed_password=$env:FIXED_PASS" -f "choco_packages=$env:PKGS"
           if (($LASTEXITCODE) -ne 0) { throw "Trigger next fail" }
+
 
 
 
