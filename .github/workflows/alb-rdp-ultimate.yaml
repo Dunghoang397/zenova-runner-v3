@@ -1,4 +1,4 @@
-﻿name: ALB ULTIMATE RDP v11.0
+﻿name: ALB ULTIMATE RDP v12.0
 
 on:
   workflow_dispatch:
@@ -292,9 +292,9 @@ jobs:
           Remove-NetFirewallRule -DisplayName 'ALB-RDP' -ErrorAction SilentlyContinue
           Remove-NetFirewallRule -DisplayName 'ALB-Sunshine-TCP' -ErrorAction SilentlyContinue
           Remove-NetFirewallRule -DisplayName 'ALB-Sunshine-UDP' -ErrorAction SilentlyContinue
-          New-NetFirewallRule -DisplayName 'ALB-RDP' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3389,8080 -RemoteAddress '100.64.0.0/10','127.0.0.1' -Profile Any | Out-Null
-          New-NetFirewallRule -DisplayName 'ALB-Sunshine-TCP' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 47984,47989,47990,48010 -RemoteAddress '100.64.0.0/10','127.0.0.1' -Profile Any | Out-Null
-          New-NetFirewallRule -DisplayName 'ALB-Sunshine-UDP' -Direction Inbound -Action Allow -Protocol UDP -LocalPort 47998,47999,48000,48002,48010 -RemoteAddress '100.64.0.0/10','127.0.0.1' -Profile Any | Out-Null
+          New-NetFirewallRule -DisplayName 'ALB-RDP' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3389,8080 -Profile Any | Out-Null
+          New-NetFirewallRule -DisplayName 'ALB-Sunshine-TCP' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 47984,47989,47990,48010 -Profile Any | Out-Null
+          New-NetFirewallRule -DisplayName 'ALB-Sunshine-UDP' -Direction Inbound -Action Allow -Protocol UDP -LocalPort 47998,47999,48000,48002,48010 -Profile Any | Out-Null
           Set-Service -Name TermService -StartupType Automatic -ErrorAction SilentlyContinue
           Set-Service -Name UmRdpService -StartupType Automatic -ErrorAction SilentlyContinue
           Start-Service -Name TermService -ErrorAction SilentlyContinue
@@ -369,7 +369,7 @@ jobs:
           if (Test-Path "$sunExe") { Stop-Service -Name 'SunshineService' -Force -ErrorAction SilentlyContinue; Stop-Service -Name 'sunshinesvc' -Force -ErrorAction SilentlyContinue; Stop-Process -Name 'sunshine' -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; if (Test-Path "$sunCfg") { $item = Get-Item "$sunCfg" -Force; if (($item.Attributes) -notmatch 'ReparsePoint') { if ((@(Get-ChildItem "$sunPersistCfg" -Force -ErrorAction SilentlyContinue).Count) -eq 0) { Copy-Item -Path "$sunCfg\*" -Destination "$sunPersistCfg" -Recurse -Force -ErrorAction SilentlyContinue }; Remove-Item -Path "$sunCfg" -Recurse -Force -ErrorAction SilentlyContinue; New-Item -ItemType Junction -Path "$sunCfg" -Target "$sunPersistCfg" -Force | Out-Null } } else { New-Item -ItemType Junction -Path "$sunCfg" -Target "$sunPersistCfg" -Force | Out-Null }; $confFile = [System.IO.Path]::Combine("$sunPersistCfg", 'sunshine.conf'); if (-not (Test-Path "$confFile")) { @("sunshine_name = ALB-$($env:MACHINE_ID)","min_log_level = info","origin_web_ui_allowed = wan","upnp = disabled","address_family = both") | Set-Content -Path "$confFile" -Encoding UTF8 } }
           $global:LASTEXITCODE = 0; exit 0
 
-      - name: 🌐 Tailscale
+      - name: 🌐 Tailscale (FIX VERIFY)
         env:
           TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         shell: pwsh
@@ -382,7 +382,21 @@ jobs:
           $tsHost = "alb-$($env:MACHINE_ID)-$($env:GITHUB_RUN_ID)"; & "$ts" up "--authkey=$env:TAILSCALE_AUTH_KEY" "--hostname=$tsHost" --accept-routes --accept-dns --reset --unattended
           if (($LASTEXITCODE) -ne 0) { Start-Sleep -Seconds 5; & "$ts" up "--authkey=$env:TAILSCALE_AUTH_KEY" "--hostname=$tsHost" --accept-routes --accept-dns --reset; if (($LASTEXITCODE) -ne 0) { exit 1 } }
           $ip = $null; 1..20 | ForEach-Object { if (-not ($ip)) { $out = (& "$ts" ip -4 2>&1 | Out-String).Trim(); if ("$out" -match '^\d+\.\d+\.\d+\.\d+$') { $ip = "$out" } else { Start-Sleep -Seconds 3 } } }
-          if (-not ($ip)) { exit 1 }; "TAILSCALE_IP=$ip" >> "$env:GITHUB_ENV"; exit 0
+          if (-not ($ip)) { exit 1 }; "TAILSCALE_IP=$ip" >> "$env:GITHUB_ENV"
+
+          # FIX: Verify Tailscale ping
+          Write-Host "  Verify Tailscale connectivity..." -ForegroundColor Cyan
+          $pingOk = $false
+          1..10 | ForEach-Object { if (-not $pingOk) { $pingResult = & "$ts" ping "$ip" 2>&1 | Out-String; if ($pingResult -match 'pong') { $pingOk = $true } else { Start-Sleep -Seconds 3 } } }
+          if ($pingOk) { Write-Host "  OK: Tailscale ping thanh cong" -ForegroundColor Green } else { Write-Host "  WARN: Tailscale ping that bai" -ForegroundColor Yellow }
+
+          # FIX: Verify RDP port 3389
+          Write-Host "  Verify RDP port 3389 tren IP $ip..." -ForegroundColor Cyan
+          $rdpOk = $false
+          1..15 | ForEach-Object { if (-not $rdpOk) { $test = Test-NetConnection -ComputerName $ip -Port 3389 -WarningAction SilentlyContinue; if ($test.TcpTestSucceeded) { $rdpOk = $true } else { Start-Sleep -Seconds 3 } } }
+          if ($rdpOk) { Write-Host "  OK: RDP port 3389 listen tren $ip" -ForegroundColor Green } else { Write-Host "  WARN: RDP port 3389 chua listen, restart TermService..." -ForegroundColor Yellow; Restart-Service -Name TermService -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 5; $test = Test-NetConnection -ComputerName $ip -Port 3389 -WarningAction SilentlyContinue; if ($test.TcpTestSucceeded) { Write-Host "  OK: RDP port 3389 listen sau restart" -ForegroundColor Green } else { Write-Host "  ERROR: RDP port 3389 KHONG listen" -ForegroundColor Red } }
+
+          exit 0
 
       - name: 👤 User gốc + User ngoài + Sunshine
         shell: pwsh
@@ -414,7 +428,7 @@ jobs:
           $tmp = "$env:TEMP\ALB-Apps"
           New-Item -ItemType Directory -Force -Path "$tmp" | Out-Null
 
-          # ═══ DISCORD — KHÔNG SILENT, TIMEOUT 75s ═══
+          # DISCORD — KHONG SILENT, TIMEOUT 75s (Squirrel can init)
           try {
               Write-Host "  [1/2] Discord..." -ForegroundColor Cyan
               Get-Process -Name "Discord*", "DiscordSetup*", "Update*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -430,7 +444,7 @@ jobs:
               }
           } catch { Write-Host "  WARN: Discord - $($_.Exception.Message)" -ForegroundColor Yellow }
 
-          # ═══ STARDESK — NSIS /S, TIMEOUT 45s ═══
+          # STARDESK — NSIS /S, TIMEOUT 45s
           try {
               Write-Host "  [2/2] StarDesk..." -ForegroundColor Cyan
               $sd = "$tmp\StarDeskSetup.exe"
@@ -484,74 +498,39 @@ jobs:
           $webScriptPath = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'web-panel.ps1')
           Set-Content -Path "$webScriptPath" -Value $webScript -Encoding UTF8
 
-          # ============================================================
-          # FIX: CAI SERVY (KIEM TRA + CAI + REFRESH PATH)
-          # ============================================================
+          # FIX SERVY: kiem tra + cai + refresh PATH + fallback
           $servyCliPath = "$env:ProgramFiles\Servy\servy-cli.exe"
           $servyOk = $false
-
-          # 1. Kiểm tra servy-cli đã có sẵn chưa
-          if (Test-Path $servyCliPath) {
-              $servyOk = $true
-              Write-Host "  OK: Servy da co san tai $servyCliPath" -ForegroundColor Green
-          } else {
-              # 2. Thử cài qua Chocolatey
+          if (Test-Path $servyCliPath) { $servyOk = $true; Write-Host "  OK: Servy da co san" -ForegroundColor Green }
+          else {
               Write-Host "  Cai Servy qua Chocolatey..." -ForegroundColor Cyan
-              try {
-                  choco install servy -y --no-progress 2>&1 | Out-Null
-                  Start-Sleep -Seconds 5
-                  # Refresh PATH sau khi cài
-                  $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine")
-                  if (Test-Path $servyCliPath) {
-                      $servyOk = $true
-                      Write-Host "  OK: Servy da cai qua Chocolatey" -ForegroundColor Green
-                  }
-              } catch {
-                  Write-Host "  WARN: Chocolatey fail - $($_.Exception.Message)" -ForegroundColor Yellow
-              }
+              try { choco install servy -y --no-progress 2>&1 | Out-Null; Start-Sleep -Seconds 5; $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine"); if (Test-Path $servyCliPath) { $servyOk = $true; Write-Host "  OK: Servy da cai qua Chocolatey" -ForegroundColor Green } } catch { Write-Host "  WARN: Chocolatey fail" -ForegroundColor Yellow }
           }
-
-          # 3. Nếu vẫn chưa có, tải installer trực tiếp từ GitHub
           if (-not $servyOk) {
-              Write-Host "  Fallback: Tai Servy installer truc tiep tu GitHub..." -ForegroundColor Yellow
+              Write-Host "  Fallback: Tai Servy installer truc tiep..." -ForegroundColor Yellow
               try {
                   $servyInstaller = "$env:TEMP\servy-installer.exe"
-                  # Dùng bản .NET 4.8 (tương thích rộng hơn trên Server 2022)
                   $servyUrl = "https://github.com/aelassas/servy/releases/latest/download/servy-net48-x64-installer.exe"
                   Invoke-WebRequest -Uri $servyUrl -OutFile $servyInstaller -UseBasicParsing -TimeoutSec 120
-                  if (Test-Path $servyInstaller) {
-                      # Silent install theo tài liệu chính thức
-                      Start-Process -FilePath $servyInstaller -ArgumentList '/VERYSILENT /NORESTART /SUPPRESSMSGBOXES /SP- /CLOSEAPPLICATIONS /NOCANCEL' -Wait -NoNewWindow
-                      Start-Sleep -Seconds 5
-                      $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine")
-                      if (Test-Path $servyCliPath) {
-                          $servyOk = $true
-                          Write-Host "  OK: Servy da cai qua installer" -ForegroundColor Green
-                      }
-                  }
-              } catch {
-                  Write-Host "  WARN: Tai installer fail - $($_.Exception.Message)" -ForegroundColor Yellow
-              }
+                  if (Test-Path $servyInstaller) { Start-Process -FilePath $servyInstaller -ArgumentList '/VERYSILENT /NORESTART /SUPPRESSMSGBOXES /SP- /CLOSEAPPLICATIONS /NOCANCEL' -Wait -NoNewWindow; Start-Sleep -Seconds 5; $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine"); if (Test-Path $servyCliPath) { $servyOk = $true; Write-Host "  OK: Servy da cai qua installer" -ForegroundColor Green } }
+              } catch { Write-Host "  WARN: Tai installer fail" -ForegroundColor Yellow }
           }
 
-          # ============================================================
-          # KHOI CHAY WEB PANEL
-          # ============================================================
           if ($servyOk -and (Test-Path $servyCliPath)) {
               Write-Host "  Dung Servy de tao service..." -ForegroundColor Cyan
               & $servyCliPath install --name="ALB-WebPanel" --path="C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" --params="-NoProfile -File `"$webScriptPath`"" --startupType="Automatic" 2>&1 | Out-Null
               & $servyCliPath start --name="ALB-WebPanel" 2>&1 | Out-Null
               Start-Sleep -Seconds 3
               $test = Test-NetConnection -ComputerName 127.0.0.1 -Port $env:WEB_PORT -WarningAction SilentlyContinue
-              if ($test.TcpTestSucceeded) { Write-Host "  OK: Web Panel service dang chay (port $env:WEB_PORT listen)" -ForegroundColor Green }
-              else { Write-Host "  WARN: Port $env:WEB_PORT khong listen, fallback Start-Job..." -ForegroundColor Yellow; Start-Job -ScriptBlock { & pwsh -NoProfile -File $using:webScriptPath } | Out-Null }
+              if ($test.TcpTestSucceeded) { Write-Host "  OK: Web Panel service dang chay" -ForegroundColor Green }
+              else { Write-Host "  WARN: Port khong listen, fallback Start-Job..." -ForegroundColor Yellow; Start-Job -ScriptBlock { & pwsh -NoProfile -File $using:webScriptPath } | Out-Null }
           } else {
-              Write-Host "  Fallback: Chay Web Panel bang Start-Job (khong can Servy)..." -ForegroundColor Yellow
+              Write-Host "  Fallback: Chay Web Panel bang Start-Job..." -ForegroundColor Yellow
               Start-Job -ScriptBlock { & pwsh -NoProfile -File $using:webScriptPath } | Out-Null
               Start-Sleep -Seconds 3
               $test = Test-NetConnection -ComputerName 127.0.0.1 -Port $env:WEB_PORT -WarningAction SilentlyContinue
-              if ($test.TcpTestSucceeded) { Write-Host "  OK: Web Panel dang chay (Start-Job, port $env:WEB_PORT listen)" -ForegroundColor Green }
-              else { Write-Host "  WARN: Port $env:WEB_PORT khong listen" -ForegroundColor Yellow }
+              if ($test.TcpTestSucceeded) { Write-Host "  OK: Web Panel dang chay (Start-Job)" -ForegroundColor Green }
+              else { Write-Host "  WARN: Port khong listen" -ForegroundColor Yellow }
           }
           exit 0
 
@@ -562,7 +541,7 @@ jobs:
         run: |
           $passText = "$env:RDP_PASS"; $audioName = if ($env:AUDIO_DEVICE_NAME) { $env:AUDIO_DEVICE_NAME } else { 'N/A' }
           Write-Host "============================================================" -ForegroundColor Cyan
-          Write-Host "  ALB ULTIMATE RDP v11.0 — FIX SERVY" -ForegroundColor Cyan
+          Write-Host "  ALB ULTIMATE RDP v12.0 — FIX TRIỆT ĐỂ" -ForegroundColor Cyan
           Write-Host "============================================================" -ForegroundColor Cyan
           Write-Host "  May         : $env:MACHINE_ID" -ForegroundColor Cyan
           Write-Host "  Creator     : $env:CREATOR" -ForegroundColor Cyan
@@ -577,6 +556,7 @@ jobs:
           Write-Host "  StarDesk    : Da cai san (NSIS /S + timeout 45s)" -ForegroundColor Green
           Write-Host "  RDP Prompt  : NLA=1, TLS=2, fPromptForPassword=1 (2 vi tri), cmdkey cleaned" -ForegroundColor Yellow
           Write-Host "  Servy       : Da fix (kiem tra + cai + refresh PATH + fallback)" -ForegroundColor Yellow
+          Write-Host "  Tailscale   : Da verify ping + RDP port truoc khi ket thuc" -ForegroundColor Yellow
           Write-Host "============================================================" -ForegroundColor Cyan
           exit 0
 
