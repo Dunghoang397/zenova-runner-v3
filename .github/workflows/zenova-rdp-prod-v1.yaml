@@ -1,6 +1,8 @@
 ﻿name: Zenova RDP Final 2026
 
 on:
+  repository_dispatch:
+    types: [zenova-create]
   workflow_dispatch:
     inputs:
       machine_id:
@@ -129,6 +131,8 @@ jobs:
                       $propKey = Join-Path name: Zenova RDP v26
 
 on:
+  repository_dispatch:
+    types: [zenova-create]
   workflow_dispatch:
     inputs:
       machine_id:
@@ -801,5 +805,6 @@ jobs:
           $wf = [System.IO.Path]::GetFileName(("$env:GITHUB_WORKFLOW_REF" -split "@")[0])
           gh workflow run "$wf" --ref "$env:GITHUB_REF_NAME" -f "machine_id=$env:MACHINE_ID" -f "owner_discord_id=$env:OWNER_DISCORD_ID" -f "duration=$env:DURATION" -f "windows_image=$env:WIN_IMAGE" -f "fixed_password=$env:FIXED_PASS" -f "choco_packages=$env:PKGS"
           if (($LASTEXITCODE) -ne 0) { throw "Trigger next fail" }
+
 
 

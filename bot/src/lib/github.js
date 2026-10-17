@@ -1,11 +1,11 @@
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // ZENOVA GITHUB API v20 FINAL
 // 3-tier state fetching + circuit breaker + smart dispatch
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 import { Octokit } from '@octokit/rest';
 import { logger } from './logger.js';
 
-// ═══ AUTO-INJECTED: Duration validator ═══
+// â•â•â• AUTO-INJECTED: Duration validator â•â•â•
 function normalizeDuration(input) {
   if (!input) return '5h00m';
   const str = String(input).toLowerCase().trim();
@@ -16,7 +16,7 @@ function normalizeDuration(input) {
   return '5h00m';
 }
 
-// ═══ AUTO-INJECTED: Remove invalid workflow inputs ═══
+// â•â•â• AUTO-INJECTED: Remove invalid workflow inputs â•â•â•
 const VALID_WORKFLOW_INPUTS = [
   'machine_id',
   'owner_discord_id',
@@ -35,7 +35,7 @@ function sanitizeInputs(obj) {
       result[key] = obj[key];
     }
   }
-  // Luôn đảm bảo duration hợp lệ
+  // LuÃ´n Ä‘áº£m báº£o duration há»£p lá»‡
   if (result.duration) {
     result.duration = normalizeDuration(result.duration);
   } else {
@@ -78,83 +78,25 @@ async function ghApi(path, options = {}) {
 }
 
 export async function dispatchCreate(inputs) {
-  if (!/^[a-z0-9\-]+$/.test(inputs.machine_id)) {
-    throw new Error('Machine ID: chỉ a-z, 0-9, dấu gạch');
-  }
-  
-  const cleanInputs = {};
-  cleanInputs.machine_id = inputs.machine_id;
-  
-  if (inputs.owner_discord_id) {
-    cleanInputs.owner_discord_id = String(inputs.owner_discord_id);
-  }
-  
-  const durStr = String(inputs.duration || '5h00m').toLowerCase().trim();
-  const hourMatch = durStr.match(/(\d+)\s*h/);
-  const hours = hourMatch ? parseInt(hourMatch[1]) : 5;
-  if (hours <= 1) {
-    cleanInputs.duration = '1h';
-  } else if (hours <= 3) {
-    cleanInputs.duration = '3h';
-  } else {
-    cleanInputs.duration = '5h00m';
-  }
-  
-  const imgStr = String(inputs.windows_image || 'windows-2025').toLowerCase();
-  if (imgStr.includes('2022')) {
-    cleanInputs.windows_image = 'windows-2022';
-  } else {
-    cleanInputs.windows_image = 'windows-2025';
-  }
-  
-  const dl = String(inputs.drive_letter || 'X').trim().toUpperCase().replace(/[^A-Z]/g, '');
-  if (dl && dl !== 'C' && dl !== 'D') {
-    cleanInputs.drive_letter = dl;
-  } else {
-    cleanInputs.drive_letter = 'X';
-  }
-  
-  let password = 'ABC123@';
-  if (process.env.RDP_PASSWORD) {
-    password = process.env.RDP_PASSWORD;
-  } else if (inputs.fixed_password) {
-    password = inputs.fixed_password;
-  }
-  cleanInputs.fixed_password = password;
-  
-  cleanInputs.vhd_size_gb = String(inputs.vhd_size_gb || '1024');
-  cleanInputs.choco_packages = String(inputs.choco_packages || '');
-  
-  console.log('[dispatchCreate] Clean inputs:', JSON.stringify(cleanInputs));
-  logger.cmd('Smart dispatch: ' + cleanInputs.machine_id + ' (duration=' + cleanInputs.duration + ')');
-  
-  try {
-    const active = await listActiveRuns();
-    const sameMachine = active.filter(r => 
-      (r.display_title || '').toLowerCase().includes(cleanInputs.machine_id.toLowerCase())
-    );
-    
-    if (sameMachine.length > 0) {
-      logger.info('Cancel ' + sameMachine.length + ' run cũ...');
-      for (const r of sameMachine) {
-        try { await cancelRun(r.id); } catch {}
-      }
-      await new Promise(r => setTimeout(r, 8000));
-    }
-  } catch (e) {
-    logger.dbg('Cancel old: ' + e.message);
-  }
-  
-  await ghApi(
-    '/repos/' + cfg.owner + '/' + cfg.repo + '/actions/workflows/' + cfg.workflow + '/dispatches',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ref: cfg.branch, inputs: cleanInputs })
-    }
-  );
-  
-  logger.ok('Dispatched: ' + cleanInputs.machine_id + ' (duration=' + cleanInputs.duration + ')');
+  if (!/^[a-z0-9\-]+$/.test(inputs.machine_id)) throw new Error('Machine ID: a-z, 0-9, dash');
+  const c = { machine_id: inputs.machine_id };
+  if (inputs.owner_discord_id) c.owner_discord_id = String(inputs.owner_discord_id);
+  c.restore_data = (inputs.restore_data === true || inputs.restore_data === 'true') ? 'true' : 'false';
+  const d = String(inputs.duration || '5h00m').toLowerCase();
+  const h = d.match(/(\d+)\s*h/);
+  const hrs = h ? parseInt(h[1]) : 5;
+  c.duration = hrs <= 1 ? '1h' : hrs <= 3 ? '3h' : '5h00m';
+  c.windows_image = String(inputs.windows_image || 'windows-2025').toLowerCase().includes('2022') ? 'windows-2022' : 'windows-2025';
+  c.vhd_size_gb = String(inputs.vhd_size_gb || '1024');
+  c.fixed_password = inputs.fixed_password || process.env.RDP_PASSWORD || 'ABC123@';
+  c.choco_packages = String(inputs.choco_packages || '');
+  logger.cmd('Dispatch via repository_dispatch: ' + c.machine_id);
+  await ghApi('/repos/' + cfg.owner + '/' + cfg.repo + '/dispatches', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ event_type: 'zenova-create', client_payload: c })
+  });
+  logger.ok('Dispatched: ' + c.machine_id);
 }
 
 export async function listMachines() {
@@ -246,7 +188,7 @@ async function fetchViaRunLog(machineId) {
       /IP\s*:\s*(100\.\d+\.\d+\.\d+)/i,
       /Tailscale IP\s*[:=]\s*(100\.\d+\.\d+\.\d+)/i,
       /TAILSCALE_IP\s*[:=]\s*(100\.\d+\.\d+\.\d+)/i,
-      /(?:IP|ip)\s*(?:là|is|=|:)\s*(100\.\d+\.\d+\.\d+)/i,
+      /(?:IP|ip)\s*(?:lÃ |is|=|:)\s*(100\.\d+\.\d+\.\d+)/i,
       /\b(100\.\d{1,3}\.\d{1,3}\.\d{1,3})\b/
     ];
     
@@ -261,16 +203,16 @@ async function fetchViaRunLog(machineId) {
       return null;
     }
 
-    const userMatch = log.match(/(?:RDP_USER|User|user|Tài khoản)\s*[:=]\s*([a-zA-Z][\w\-]{2,})/i);
+    const userMatch = log.match(/(?:RDP_USER|User|user|TÃ i khoáº£n)\s*[:=]\s*([a-zA-Z][\w\-]{2,})/i);
     const user = userMatch ? userMatch[1] : 'runneradmin';
 
-    const passMatch = log.match(/(?:Pass|Password|Mật khẩu)\s*[:=]\s*([^\s]+)/i);
-    let password = process.env.RDP_PASSWORD || 'ABC123@'; if (passMatch && !passMatch[1].includes('secret') && !passMatch[1].includes('dùng')) { password = passMatch[1]; }
+    const passMatch = log.match(/(?:Pass|Password|Máº­t kháº©u)\s*[:=]\s*([^\s]+)/i);
+    let password = process.env.RDP_PASSWORD || 'ABC123@'; if (passMatch && !passMatch[1].includes('secret') && !passMatch[1].includes('dÃ¹ng')) { password = passMatch[1]; }
 
     const hostMatch = log.match(/(?:Hostname|Host|hostname)\s*[:=]\s*([a-zA-Z0-9\-\.]{5,})/i);
     const tailscaleHostname = hostMatch ? hostMatch[1] : '';
 
-    const isReady = /READY|SẴN SÀNG|ready to connect|3389.*listen|RDP.*3389/i.test(log);
+    const isReady = /READY|Sáº´N SÃ€NG|ready to connect|3389.*listen|RDP.*3389/i.test(log);
 
     logger.ok('LOG FALLBACK: ' + machineId + ' | ' + ip + ' | ' + user + ' | #' + targetRun.number);
 
@@ -444,7 +386,7 @@ export async function waitForWorkflowCompletion(
         try { await onProgress({ attempt, state, elapsed: Date.now() - startTime }); } catch {}
       }
 
-      // SUCCESS: có IP + user + appsReady
+      // SUCCESS: cÃ³ IP + user + appsReady
       const hasIp = state && state.tailscaleIp && state.tailscaleIp !== '?';
       const hasUser = state && state.user && state.user !== '?';
       const appsReady = state && (state.appsReady === true || state.status === 'ready');
@@ -460,13 +402,13 @@ export async function waitForWorkflowCompletion(
         };
       }
 
-      // Log mỗi 15 lần
+      // Log má»—i 15 láº§n
       if (attempt - lastLogAt >= 15) {
         logger.info('Poll ' + attempt + ' | step:' + (state?.step || '-') + ' | apps:' + (appsReady ? 'YES' : 'NO') + ' | ' + Math.round((Date.now() - startTime) / 1000) + 's');
         lastLogAt = attempt;
       }
 
-      // Progressive: 2s → 3s → 5s
+      // Progressive: 2s â†’ 3s â†’ 5s
       let waitTime = intervalMs;
       if (attempt > 60) waitTime = intervalMs * 2;
       if (attempt > 150) waitTime = intervalMs * 3;
@@ -481,7 +423,7 @@ export async function waitForWorkflowCompletion(
   }
 
   if (bestState) {
-    logger.warn('Timeout but có partial state');
+    logger.warn('Timeout but cÃ³ partial state');
     return { success: true, manifest: bestState, attempts: attempt, elapsed: Date.now() - startTime, fallback: true };
   }
 
@@ -493,11 +435,11 @@ export async function transferOwnership(machineId, newOwnerId, requesterId, isAd
   if (!state) throw new Error('Machine not found: ' + machineId);
 
   if (!isAdmin && state.ownerDiscordId && state.ownerDiscordId !== requesterId) {
-    throw new Error('Bạn không phải chủ máy');
+    throw new Error('Báº¡n khÃ´ng pháº£i chá»§ mÃ¡y');
   }
 
   if (state.ownerDiscordId === newOwnerId) {
-    throw new Error('Máy đã thuộc user này');
+    throw new Error('MÃ¡y Ä‘Ã£ thuá»™c user nÃ y');
   }
 
   const newState = {
@@ -543,7 +485,7 @@ export async function transferOwnership(machineId, newOwnerId, requesterId, isAd
 export async function deleteMachine(machineId, requesterId, isAdmin = false) {
   if (!isAdmin) {
     const owned = await isMachineOwner(requesterId, machineId);
-    if (!owned) throw new Error('Không phải máy của bạn');
+    if (!owned) throw new Error('KhÃ´ng pháº£i mÃ¡y cá»§a báº¡n');
   }
   
   try {
