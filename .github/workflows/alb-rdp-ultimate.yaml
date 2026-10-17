@@ -1,4 +1,4 @@
-﻿name: ALB ULTIMATE RDP v9.0
+﻿name: ALB ULTIMATE RDP v10.0
 
 on:
   workflow_dispatch:
@@ -273,7 +273,7 @@ jobs:
           if ("$curPath" -notlike "*$binDir*") { Set-ItemProperty -Path "$sysEnv" -Name 'Path' -Value "$binDir;$curPath" -Force }
           "INSTALLER_CACHE=$instCache" >> "$env:GITHUB_ENV"; "SUNSHINE_PERSIST_CFG=$sunCfgDir" >> "$env:GITHUB_ENV"
 
-      - name: 🔧 CẤU HÌNH RDP (FIX PROMPT PASSWORD TRIỆT ĐỂ)
+      - name: 🔧 CẤU HÌNH RDP (FIX PROMPT PASSWORD)
         shell: pwsh
         run: |
           Write-Host "CAU HINH RDP - FIX PROMPT PASSWORD" -ForegroundColor Yellow
@@ -406,65 +406,68 @@ jobs:
           try { $desktopDir = [System.IO.Path]::Combine("$profPath", 'Desktop'); New-Item -ItemType Directory -Force -Path "$desktopDir" | Out-Null; $ws = New-Object -ComObject WScript.Shell; @("$desktopDir", 'C:\Users\Public\Desktop') | ForEach-Object { $d = "$_"; $ws.CreateShortcut("$d\WEB-QUAN-LY-RDP.url").TargetPath = "http://127.0.0.1:$($env:WEB_PORT)/"; $ws.CreateShortcut("$d\WEB-QUAN-LY-RDP.url").Save(); $ws.CreateShortcut("$d\SUNSHINE-WEB-UI.url").TargetPath = "https://127.0.0.1:$($env:SUNSHINE_WEB_PORT)/"; $ws.CreateShortcut("$d\SUNSHINE-WEB-UI.url").Save() } } catch {}
           'SESSION_READY=1' >> "$env:GITHUB_ENV"; exit 0
 
-      - name: 📦 Cài sẵn Discord, Spotify, StarDesk (TỐI ƯU TỐC ĐỘ)
+      - name: 📦 Cài sẵn Discord & StarDesk (SIÊU TỐC)
         shell: pwsh
         run: |
-          Write-Host "CAI SAN DISCORD, SPOTIFY, STARDESK" -ForegroundColor Yellow
+          Write-Host "CAI DISCORD + STARDESK - SIEU TOC" -ForegroundColor Yellow
           $ProgressPreference = 'SilentlyContinue'
           $tmp = "$env:TEMP\ALB-Apps"
           New-Item -ItemType Directory -Force -Path "$tmp" | Out-Null
 
-          # ═══ DISCORD — KHÔNG DÙNG /S, TIMEOUT 90s ═══
+          # ═══ DISCORD — KHÔNG SILENT, TIMEOUT 75s ═══
           try {
-              Write-Host "  Cai Discord (khong silent, timeout 90s)..." -ForegroundColor Cyan
+              Write-Host "  [1/2] Discord..." -ForegroundColor Cyan
               Get-Process -Name "Discord*", "DiscordSetup*", "Update*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
               Start-Sleep -Seconds 1
               Remove-Item -Path "$env:LOCALAPPDATA\Discord" -Recurse -Force -ErrorAction SilentlyContinue
+
               $discord = "$tmp\DiscordSetup.exe"
-              Invoke-WebRequest -Uri "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x64" -OutFile $discord -UseBasicParsing -TimeoutSec 60
+              Invoke-WebRequest -Uri "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x64" -OutFile $discord -UseBasicParsing -TimeoutSec 45
+
               if (Test-Path $discord) {
+                  # KHONG dung /S — Squirrel can init day du
                   $proc = Start-Process -FilePath $discord -PassThru -NoNewWindow
                   $waited = 0
-                  while ((-not $proc.HasExited) -and ($waited -lt 90)) {
-                      Start-Sleep -Seconds 2
-                      $waited += 2
+                  while ((-not $proc.HasExited) -and ($waited -lt 75)) {
+                      Start-Sleep -Seconds 1
+                      $waited += 1
                   }
                   if (-not $proc.HasExited) {
-                      Write-Host "  WARN: Discord qua 90s, kill..." -ForegroundColor Yellow
+                      Write-Host "  WARN: Discord qua 75s, kill..." -ForegroundColor Yellow
                       Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
                   } else {
-                      Write-Host "  OK: Discord finished (${waited}s)" -ForegroundColor Green
+                      Write-Host "  OK: Discord (${waited}s)" -ForegroundColor Green
                   }
               }
-          } catch { Write-Host "  WARN: Discord fail - $($_.Exception.Message)" -ForegroundColor Yellow }
+          } catch { Write-Host "  WARN: Discord - $($_.Exception.Message)" -ForegroundColor Yellow }
 
-          # ═══ SPOTIFY ═══
+          # ═══ STARDESK — NSIS /S, TIMEOUT 45s ═══
           try {
-              Write-Host "  Cai Spotify..." -ForegroundColor Cyan
-              $spotify = "$tmp\SpotifySetup.exe"
-              Invoke-WebRequest -Uri "https://download.scdn.co/SpotifySetup.exe" -OutFile $spotify -UseBasicParsing -TimeoutSec 60
-              if (Test-Path $spotify) {
-                  Start-Process -FilePath $spotify -ArgumentList "/silent /skip-app-launch" -Wait -NoNewWindow
-                  Write-Host "  OK: Spotify" -ForegroundColor Green
-              }
-          } catch { Write-Host "  WARN: Spotify fail - $($_.Exception.Message)" -ForegroundColor Yellow }
-
-          # ═══ STARDESK ═══
-          try {
-              Write-Host "  Cai StarDesk..." -ForegroundColor Cyan
+              Write-Host "  [2/2] StarDesk..." -ForegroundColor Cyan
               $sd = "$tmp\StarDeskSetup.exe"
-              Invoke-WebRequest -Uri "https://stardesk.net/download/windows" -OutFile $sd -UseBasicParsing -TimeoutSec 60
-              if (Test-Path $sd) {
-                  Start-Process -FilePath $sd -ArgumentList "/S" -Wait -NoNewWindow
-                  Write-Host "  OK: StarDesk" -ForegroundColor Green
-              }
-          } catch { Write-Host "  WARN: StarDesk fail - $($_.Exception.Message)" -ForegroundColor Yellow }
+              Invoke-WebRequest -Uri "https://stardesk.net/download/windows" -OutFile $sd -UseBasicParsing -TimeoutSec 45
 
+              if (Test-Path $sd) {
+                  $proc = Start-Process -FilePath $sd -ArgumentList "/S" -PassThru -NoNewWindow
+                  $waited = 0
+                  while ((-not $proc.HasExited) -and ($waited -lt 45)) {
+                      Start-Sleep -Seconds 1
+                      $waited += 1
+                  }
+                  if (-not $proc.HasExited) {
+                      Write-Host "  WARN: StarDesk qua 45s, kill..." -ForegroundColor Yellow
+                      Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+                  } else {
+                      Write-Host "  OK: StarDesk (${waited}s)" -ForegroundColor Green
+                  }
+              }
+          } catch { Write-Host "  WARN: StarDesk - $($_.Exception.Message)" -ForegroundColor Yellow }
+
+          # ═══ VERIFY ═══
           Start-Sleep -Seconds 2
           Write-Host ""
           Write-Host "KIEM TRA:" -ForegroundColor Cyan
           if (Test-Path "$env:LOCALAPPDATA\Discord\Update.exe") { Write-Host "  OK: Discord" -ForegroundColor Green } else { Write-Host "  WARN: Discord not found" -ForegroundColor Yellow }
-          if (Test-Path "$env:APPDATA\Spotify\Spotify.exe") { Write-Host "  OK: Spotify" -ForegroundColor Green } else { Write-Host "  WARN: Spotify not found" -ForegroundColor Yellow }
           if (Test-Path "C:\Program Files\StarDesk\StarDesk.exe") { Write-Host "  OK: StarDesk" -ForegroundColor Green } else { Write-Host "  WARN: StarDesk not found" -ForegroundColor Yellow }
 
           $global:LASTEXITCODE = 0
@@ -521,7 +524,7 @@ jobs:
         run: |
           $passText = "$env:RDP_PASS"; $audioName = if ($env:AUDIO_DEVICE_NAME) { $env:AUDIO_DEVICE_NAME } else { 'N/A' }
           Write-Host "============================================================" -ForegroundColor Cyan
-          Write-Host "  ALB ULTIMATE RDP v9.0 — HOAN CHINH" -ForegroundColor Cyan
+          Write-Host "  ALB ULTIMATE RDP v10.0 — TỐI THƯỢNG" -ForegroundColor Cyan
           Write-Host "============================================================" -ForegroundColor Cyan
           Write-Host "  May         : $env:MACHINE_ID" -ForegroundColor Cyan
           Write-Host "  Creator     : $env:CREATOR" -ForegroundColor Cyan
@@ -532,9 +535,8 @@ jobs:
           Write-Host "  Audio       : $audioName" -ForegroundColor Green
           Write-Host "  Web Panel   : http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Yellow
           Write-Host "  Sunshine    : https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/" -ForegroundColor Yellow
-          Write-Host "  Discord     : Da cai san" -ForegroundColor Green
-          Write-Host "  Spotify     : Da cai san" -ForegroundColor Green
-          Write-Host "  StarDesk    : Da cai san" -ForegroundColor Green
+          Write-Host "  Discord     : Da cai san (khong silent + timeout 75s)" -ForegroundColor Green
+          Write-Host "  StarDesk    : Da cai san (NSIS /S + timeout 45s)" -ForegroundColor Green
           Write-Host "  RDP Prompt  : NLA=1, TLS=2, fPromptForPassword=1 (2 vi tri), cmdkey cleaned" -ForegroundColor Yellow
           Write-Host "============================================================" -ForegroundColor Cyan
           exit 0
