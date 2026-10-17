@@ -7,9 +7,10 @@
     "start": "node src/index.js"
   },
   "dependencies": {
-    "discord.js": "^14.16.3",
     "@octokit/rest": "^21.0.2",
-    "dotenv": "^16.4.5"
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5",
+    "js-yaml": "^5.5.0"
   },
   "engines": {
     "node": ">=20.0.0"

@@ -1,53 +1,19 @@
-name: Zenova RDP Production
+name: Zenova Production
 
 on:
   repository_dispatch:
     types: [zenova-create]
-  workflow_dispatch:
-    inputs:
-      machine_id:
-        required: true
-        type: string
-      owner_discord_id:
-        required: false
-        default: ""
-        type: string
-      restore_data:
-        required: false
-        default: "true"
-        type: string
-      duration:
-        required: false
-        default: "5h00m"
-        type: string
-      windows_image:
-        required: false
-        default: "windows-2025"
-        type: string
-      vhd_size_gb:
-        required: false
-        default: "1024"
-        type: string
-      fixed_password:
-        required: false
-        default: "ABC123@"
-        type: string
-      choco_packages:
-        required: false
-        default: ""
-        type: string
 
 permissions:
   contents: write
   actions: write
 
+env:
+  GH_TOKEN: ${{ secrets.PAT_TOKEN || github.token }}
+  GH_REPO: ${{ github.repository }}
+
 jobs:
   Zenova-RDP:
-    env:
-      GH_TOKEN: ${{ secrets.PAT_TOKEN || github.token }}
-      GH_REPO: ${{ github.repository }}
-    env:
-      GH_TOKEN: ${{ secrets.PAT_TOKEN || github.token }}
     runs-on: windows-2025
     timeout-minutes: 360
     steps:
@@ -56,23 +22,19 @@ jobs:
         shell: pwsh
         run: |
           $mid = "${{ github.event.client_payload.machine_id }}"
-          if (-not $mid) { $mid = "${{ inputs.machine_id }}" }
           $owner = "${{ github.event.client_payload.owner_discord_id }}"
-          if (-not $owner) { $owner = "${{ inputs.owner_discord_id }}" }
           $dur = "${{ github.event.client_payload.duration }}"
-          if (-not $dur) { $dur = "${{ inputs.duration }}" }
           $img = "${{ github.event.client_payload.windows_image }}"
-          if (-not $img) { $img = "${{ inputs.windows_image }}" }
           $vhd = "${{ github.event.client_payload.vhd_size_gb }}"
-          if (-not $vhd) { $vhd = "${{ inputs.vhd_size_gb }}" }
           $pwd_ = "${{ github.event.client_payload.fixed_password }}"
-          if (-not $pwd_) { $pwd_ = "${{ inputs.fixed_password }}" }
           $pkgs = "${{ github.event.client_payload.choco_packages }}"
-          if (-not $pkgs) { $pkgs = "${{ inputs.choco_packages }}" }
           $restore = "${{ github.event.client_payload.restore_data }}"
+          if (-not $mid) { $mid = "default" }
+          if (-not $dur) { $dur = "5h00m" }
+          if (-not $vhd) { $vhd = "1024" }
+          if (-not $pwd_) { $pwd_ = "ABC123@" }
           if (-not $restore) { $restore = "true" }
           $cid = (($mid).Trim().ToLower() -replace "[^a-z0-9\-]", "-") -replace "\-+","-" -replace "^\-|\-$",""
-          if ([string]::IsNullOrWhiteSpace($cid)) { $cid = "default" }
           $t = 300
           if ($dur -eq "1h") { $t = 60 }
           if ($dur -eq "3h") { $t = 180 }
@@ -87,10 +49,9 @@ jobs:
           $b = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
           "OS_BUILD=$b" >> "$env:GITHUB_ENV"
 
-      - name: Fix Lag Advanced
+      - name: Fix Lag
         shell: pwsh
         run: |
-          Write-Host "Fixing lag..."
           $svcs = @("DiagTrack","WSearch","SysMain","WerSvc","XblAuthManager","XblGameSave","XboxNetApiSvc","XboxGipSvc","Spooler","MapsBroker","PcaSvc","TabletInputService","RetailDemo","dmwappushservice","WbioSrvc","PhoneSvc","PrintNotify","WpnService","WpnUserService")
           foreach ($s in $svcs) { try { Stop-Service $s -Force -EA SilentlyContinue; Set-Service $s -StartupType Disabled -EA SilentlyContinue } catch {} }
           try {
@@ -98,37 +59,26 @@ jobs:
               if (-not (Test-Path $dwm)) { New-Item $dwm -Force | Out-Null }
               Set-ItemProperty $dwm "VisualFXSetting" 2 -Type DWord -Force -EA SilentlyContinue
               Set-ItemProperty "HKCU:\Control Panel\Desktop" "DragFullWindows" "0" -Force -EA SilentlyContinue
-              Set-ItemProperty "HKCU:\Control Panel\Desktop" "MenuShowDelay" "0" -Force -EA SilentlyContinue
           } catch {}
           try { Set-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowTelemetry" 0 -Type DWord -Force -EA SilentlyContinue } catch {}
-          try {
-              $search = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search"
-              if (-not (Test-Path $search)) { New-Item $search -Force | Out-Null }
-              Set-ItemProperty $search "BingSearchEnabled" 0 -Type DWord -Force -EA SilentlyContinue
-          } catch {}
           powercfg /change standby-timeout-ac 0
           powercfg /change monitor-timeout-ac 0
           powercfg /hibernate off
           powercfg /setactive SCHEME_MIN
-          $bloat = @("Microsoft.3DBuilder","Microsoft.BingNews","Microsoft.BingWeather","Microsoft.GetHelp","Microsoft.Getstarted","Microsoft.XboxApp","Microsoft.XboxGamingOverlay","Microsoft.YourPhone","Microsoft.WindowsFeedbackHub","Microsoft.WindowsMaps","Microsoft.ZuneMusic","Microsoft.ZuneVideo")
-          foreach ($a in $bloat) { Get-AppxPackage -Name "$a" -AllUsers -EA SilentlyContinue | Remove-AppxPackage -AllUsers -EA SilentlyContinue }
           Write-Host "Fix lag done"
 
       - name: Fix Audio
         shell: pwsh
         run: |
-          Write-Host "Fixing audio..."
-          $svcs = @("AudioEndpointBuilder","Audiosrv","MMCSS")
-          foreach ($s in $svcs) { try { Set-Service $s -StartupType Automatic -EA SilentlyContinue; Restart-Service $s -Force -EA SilentlyContinue } catch {} }
+          foreach ($s in @("AudioEndpointBuilder","Audiosrv","MMCSS")) { try { Set-Service $s -StartupType Automatic -EA SilentlyContinue; Restart-Service $s -Force -EA SilentlyContinue } catch {} }
           Start-Sleep 3
           try {
-              $renderKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Render"
-              if (Test-Path $renderKey) {
-                  Get-ChildItem $renderKey -EA SilentlyContinue | ForEach-Object {
-                      $propKey = Join-Path $_.PSPath "Properties"
-                      if (Test-Path $propKey) {
-                          Set-ItemProperty $propKey "{1da5d803-d492-4edd-8c23-e0c0ffee7f0e},5" 0 -Type DWord -Force -EA SilentlyContinue
-                          Set-ItemProperty $propKey "{b3f8fa53-0004-438e-9003-51a46e139bfc},3" 0 -Type DWord -Force -EA SilentlyContinue
+              $rk = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Render"
+              if (Test-Path $rk) {
+                  Get-ChildItem $rk -EA SilentlyContinue | ForEach-Object {
+                      $pk = Join-Path $_.PSPath "Properties"
+                      if (Test-Path $pk) {
+                          Set-ItemProperty $pk "{1da5d803-d492-4edd-8c23-e0c0ffee7f0e},5" 0 -Type DWord -Force -EA SilentlyContinue
                       }
                   }
               }
@@ -176,42 +126,25 @@ jobs:
       - name: Restore Data
         shell: pwsh
         run: |
-          if ("$env:RESTORE_DATA" -ne "true") { Write-Host "Skip restore"; "DATA_RESTORED=1" >> "$env:GITHUB_ENV"; exit 0 }
+          if ("$env:RESTORE_DATA" -ne "true") { "DATA_RESTORED=1" >> "$env:GITHUB_ENV"; exit 0 }
           $dlDir = "$env:RUNNER_TEMP\gh-restore"
           Remove-Item "$dlDir" -Recurse -Force -EA SilentlyContinue
           New-Item -ItemType Directory -Force -Path "$dlDir" | Out-Null
           gh release download "$env:RELEASE_TAG" --repo "$env:GH_REPO" --pattern "drive-manifest.json" --dir "$dlDir" 2>$null
-          $mfFile = "$dlDir\drive-manifest.json"
-          if (-not (Test-Path "$mfFile")) { Write-Host "No backup"; "DATA_RESTORED=1" >> "$env:GITHUB_ENV"; exit 0 }
-          $downloaded = $false
-          foreach ($try in 1..3) {
-              if (-not $downloaded) {
-                  gh release download "$env:RELEASE_TAG" --repo "$env:GH_REPO" --pattern "zenova-drive.*" --dir "$dlDir" 2>$null
-                  if (($LASTEXITCODE) -eq 0) { $downloaded = $true } else { Start-Sleep 8 }
-              }
-          }
-          if (-not $downloaded) { "DATA_RESTORED=1" >> "$env:GITHUB_ENV"; exit 0 }
-          $firstChunk = Get-ChildItem "$dlDir" -Filter "zenova-drive.*" | Sort-Object Name | Select-Object -First 1
-          if (-not $firstChunk) { "DATA_RESTORED=1" >> "$env:GITHUB_ENV"; exit 0 }
+          $mf = "$dlDir\drive-manifest.json"
+          if (-not (Test-Path "$mf")) { "DATA_RESTORED=1" >> "$env:GITHUB_ENV"; exit 0 }
+          foreach ($try in 1..3) { gh release download "$env:RELEASE_TAG" --repo "$env:GH_REPO" --pattern "zenova-drive.*" --dir "$dlDir" 2>$null; if (($LASTEXITCODE) -eq 0) { break }; Start-Sleep 8 }
+          $fc = Get-ChildItem "$dlDir" -Filter "zenova-drive.*" | Sort-Object Name | Select-Object -First 1
+          if (-not $fc) { "DATA_RESTORED=1" >> "$env:GITHUB_ENV"; exit 0 }
           $stage = "$env:VHD_CONTAINER\restore-stage"
           Remove-Item "$stage" -Recurse -Force -EA SilentlyContinue
           New-Item -ItemType Directory -Force -Path "$stage" | Out-Null
-          if ("$env:HAS_7Z" -eq "1" -and $firstChunk.Name -like "*.7z.*") { & 7z x "$($firstChunk.FullName)" "-o$stage" -y -mmt=on *> $null }
+          if ("$env:HAS_7Z" -eq "1") { & 7z x "$($fc.FullName)" "-o$stage" -y -mmt=on *> $null }
           Remove-Item "$dlDir" -Recurse -Force -EA SilentlyContinue
-          $stateHit = Get-ChildItem "$stage" -Recurse -Depth 4 -Filter "state.json" -File -Force -EA SilentlyContinue | Select-Object -First 1
-          $sourceRoot = "$stage"
-          if ($stateHit) { $sourceRoot = $stateHit.Directory.Parent.FullName }
-          robocopy "$sourceRoot" "$env:SHARED_ROOT" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null
+          robocopy "$stage" "$env:SHARED_ROOT" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null
           $global:LASTEXITCODE = 0
           Remove-Item "$stage" -Recurse -Force -EA SilentlyContinue
           "DATA_RESTORED=1" >> "$env:GITHUB_ENV"
-          Write-Host "Restore done"
-
-      - name: Save Script
-        shell: pwsh
-        run: |
-          $code = "param([string]`$Reason=`"manual`")`nif (`$env:DATA_RESTORED -ne `"1`") { exit 0 }`n`$root=`$env:SHARED_ROOT`nif (-not (Test-Path `$root)) { exit 0 }`n`$pd=`"`$env:RUNNER_TEMP\pack-`$Reason`"`nRemove-Item `$pd -Recurse -Force -EA SilentlyContinue`nNew-Item -ItemType Directory -Force -Path `$pd | Out-Null`n`$ab=`"`$pd\zenova-drive.7z`"`nPush-Location `$root`nif (`$env:HAS_7Z -eq `"1`") { & 7z a -t7z -mx=1 -mmt=on -ssw -v1900m `$ab `"*`" -xr!Pagefile.sys *> `$null }`nPop-Location`n`$ch=@(Get-ChildItem `$pd -Filter `"zenova-drive.*`" | Sort-Object Name)`nif (`$ch.Count -eq 0) { exit 1 }`n`$mf=[ordered]@{machineId=`$env:MACHINE_ID;ownerDiscordId=`$env:OWNER_DISCORD_ID;updatedUtc=(Get-Date).ToUniversalTime().ToString(`"o`");reason=`$Reason;chunkCount=`$ch.Count;chunks=@(`$ch | ForEach-Object { [ordered]@{name=`$_.Name;size=`$_.Length} })}`n`$mp=`"`$pd\drive-manifest.json`"`n`$mf | ConvertTo-Json -Depth 5 | Set-Content `$mp -Encoding UTF8`n`$uf=@(`$ch | ForEach-Object { `$_.FullName }) + @(`$mp)`ngh release upload `$env:RELEASE_TAG @uf --repo `$env:GH_REPO --clobber`nRemove-Item `$pd -Recurse -Force -EA SilentlyContinue`nWrite-Host `"Saved`""
-          Set-Content "$env:RUNNER_TEMP\save-data.ps1" -Value $code -Encoding UTF8
 
       - name: RDP Config
         shell: pwsh
@@ -221,7 +154,6 @@ jobs:
           Set-ItemProperty "$p" "UserAuthentication" 1 -Force
           Set-ItemProperty "$p" "SecurityLayer" 2 -Force
           Restart-Service TermService -Force -EA SilentlyContinue
-          Start-Sleep 3
           Remove-NetFirewallRule -DisplayName "ZENOVA-*" -EA SilentlyContinue
           New-NetFirewallRule -DisplayName "ZENOVA-RDP" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3389,8080 -RemoteAddress "100.64.0.0/10","127.0.0.1" -Profile Any | Out-Null
           Set-Service TermService -StartupType Automatic -EA SilentlyContinue
@@ -239,7 +171,6 @@ jobs:
               $cm = "$env:RUNNER_TEMP\ts.msi"
               try { Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile "$cm" -UseBasicParsing } catch {}
               if (Test-Path "$cm") { Start-Process msiexec.exe -ArgumentList "/i `"$cm`" /quiet /norestart" -Wait }
-              if (-not (Test-Path "$ts")) { choco install tailscale -y --no-progress --limit-output --ignore-checksums }
           }
           if (-not (Test-Path "$ts")) { exit 1 }
           Set-Service "Tailscale" -StartupType Automatic -EA SilentlyContinue
@@ -247,40 +178,31 @@ jobs:
           Start-Sleep 6
           $th = "zenova-$($env:MACHINE_ID)-$($env:GITHUB_RUN_ID)"
           & "$ts" up "--authkey=$env:TAILSCALE_AUTH_KEY" "--hostname=$th" --accept-routes --accept-dns --reset --unattended
-          if (($LASTEXITCODE) -ne 0) { Start-Sleep 5; & "$ts" up "--authkey=$env:TAILSCALE_AUTH_KEY" "--hostname=$th" --accept-routes --accept-dns --reset; if (($LASTEXITCODE) -ne 0) { exit 1 } }
+          if (($LASTEXITCODE) -ne 0) { exit 1 }
           $ip = $null
           1..20 | ForEach-Object { if (-not $ip) { $o = (& "$ts" ip -4 2>&1 | Out-String).Trim(); if ("$o" -match "^\d+\.\d+\.\d+\.\d+$") { $ip = "$o" } else { Start-Sleep 3 } } }
           if (-not $ip) { exit 1 }
           "TAILSCALE_IP=$ip" >> "$env:GITHUB_ENV"
-          "TAILSCALE_HOSTNAME=$th" >> "$env:GITHUB_ENV"
 
       - name: User Config
         shell: pwsh
         run: |
           $u = "$env:USERNAME"
-          $profPath = "$env:USERPROFILE"
           $mp = "$env:FIXED_PASSWORD"
-          if (-not $mp) { $mp = "ABC123@" }
           & net accounts /minpwlen:0 /maxpwage:unlimited *> $null
           for ($i=1; $i -le 3; $i++) { & net user "$u" "$mp" *> $null; if ($LASTEXITCODE -eq 0) { break }; Start-Sleep 2 }
-          $global:LASTEXITCODE = 0
           & net user "$u" /active:yes /expires:never *> $null
           & net localgroup Administrators "$u" /add *> $null
           & net localgroup "Remote Desktop Users" "$u" /add *> $null
           "RDP_USER=$u" >> "$env:GITHUB_ENV"
-          "PROFILE_PATH=$profPath" >> "$env:GITHUB_ENV"
+          "PROFILE_PATH=$env:USERPROFILE" >> "$env:GITHUB_ENV"
           "RDP_PASS=$mp" >> "$env:GITHUB_ENV"
 
       - name: Publish Installing
         shell: pwsh
         run: |
           $uO = Get-LocalUser -Name "$env:RDP_USER" -EA SilentlyContinue
-          $st = [ordered]@{
-              machineId="$env:MACHINE_ID"; ownerDiscordId="$env:OWNER_DISCORD_ID"; user="$env:RDP_USER"
-              sid="$($uO.SID.Value)"; password="(secret)"; tailscaleIp="$env:TAILSCALE_IP"
-              durationMinutes=[int]"$env:TOTAL_MINUTES"; status="installing"; step="installing_apps"
-              ready=$false; appsReady=$false; lastUpdatedUtc=(Get-Date).ToUniversalTime().ToString("o")
-          }
+          $st = [ordered]@{ machineId="$env:MACHINE_ID"; ownerDiscordId="$env:OWNER_DISCORD_ID"; user="$env:RDP_USER"; sid="$($uO.SID.Value)"; password="(secret)"; tailscaleIp="$env:TAILSCALE_IP"; durationMinutes=[int]"$env:TOTAL_MINUTES"; status="installing"; step="installing_apps"; ready=$false; appsReady=$false; lastUpdatedUtc=(Get-Date).ToUniversalTime().ToString("o") }
           New-Item -ItemType Directory -Force -Path (Split-Path "$env:SHARED_STATE_FILE") | Out-Null
           $st | ConvertTo-Json -Depth 5 | Set-Content "$env:SHARED_STATE_FILE" -Encoding UTF8
           $td = "$env:RUNNER_TEMP\state-upload"
@@ -298,71 +220,25 @@ jobs:
           $preset = @("discord","googlechrome","microsoft-edge","spotify","vscode","evkey","bandicam","tailscale")
           $all = @($preset + $saved + $inp | Select-Object -Unique)
           $all | Set-Content "$pkgF" -Encoding UTF8
-          $installed = @()
-          foreach ($pkg in $all) {
-              choco install "$pkg" -y --no-progress --limit-output --cache "$env:SHARED_OS_DIR\choco-cache"
-              $code = $LASTEXITCODE
-              if ($code -eq 0 -or $code -eq 3010) { $installed += $pkg }
-              $global:LASTEXITCODE = 0
-          }
-          "INSTALLED_APPS=$($installed -join ",")" >> "$env:GITHUB_ENV"
+          foreach ($pkg in $all) { choco install "$pkg" -y --no-progress --limit-output --cache "$env:SHARED_OS_DIR\choco-cache"; $global:LASTEXITCODE = 0 }
 
       - name: Publish Ready
         shell: pwsh
         run: |
           $uO = Get-LocalUser -Name "$env:RDP_USER" -EA SilentlyContinue
-          $st = [ordered]@{
-              machineId="$env:MACHINE_ID"; ownerDiscordId="$env:OWNER_DISCORD_ID"; user="$env:RDP_USER"
-              sid="$($uO.SID.Value)"; password="(secret)"; tailscaleIp="$env:TAILSCALE_IP"
-              durationMinutes=[int]"$env:TOTAL_MINUTES"; status="ready"; step="ready"
-              ready=$true; appsReady=$true; installedApps="$env:INSTALLED_APPS"
-              lastUpdatedUtc=(Get-Date).ToUniversalTime().ToString("o")
-          }
+          $st = [ordered]@{ machineId="$env:MACHINE_ID"; ownerDiscordId="$env:OWNER_DISCORD_ID"; user="$env:RDP_USER"; sid="$($uO.SID.Value)"; password="(secret)"; tailscaleIp="$env:TAILSCALE_IP"; durationMinutes=[int]"$env:TOTAL_MINUTES"; status="ready"; step="ready"; ready=$true; appsReady=$true; lastUpdatedUtc=(Get-Date).ToUniversalTime().ToString("o") }
           $st | ConvertTo-Json -Depth 5 | Set-Content "$env:SHARED_STATE_FILE" -Encoding UTF8
           $td = "$env:RUNNER_TEMP\state-upload"
           Copy-Item "$env:SHARED_STATE_FILE" "$td\state.json" -Force
           gh release upload "$env:RELEASE_TAG" "$td\state.json" --repo "$env:GH_REPO" --clobber
-          Write-Host "State: READY"
 
       - name: Keepalive
         id: keepalive
         shell: pwsh
         run: |
           $ee = ([long]"$env:JOB_START_EPOCH") + (([long]"$env:TOTAL_MINUTES") * 60)
-          $sf = "$env:CONTROL_SIGNAL_FILE"
-          $ss = "$env:RUNNER_TEMP\save-data.ps1"
-          $ls = Get-Date
-          $lfc = Get-Date
           while ($true) {
-              if (((Get-Date) - $lfc).TotalSeconds -ge 5) {
-                  try {
-                      $td = "$env:RUNNER_TEMP\force-check"
-                      Remove-Item $td -Recurse -Force -EA SilentlyContinue
-                      New-Item -ItemType Directory -Force -Path $td | Out-Null
-                      gh release download "$env:RELEASE_TAG" --repo "$env:GH_REPO" --pattern "FORCE_STOP" --dir $td 2>$null
-                      if (Test-Path "$td\FORCE_STOP") { & "$ss" -Reason "force-stop"; "FORCE_STOP_ONLY=1" >> "$env:GITHUB_ENV"; break }
-                      Remove-Item $td -Recurse -Force -EA SilentlyContinue
-                  } catch {}
-                  $lfc = Get-Date
-              }
-              if (Test-Path "$sf") {
-                  $cmd = (Get-Content -Raw "$sf" -EA SilentlyContinue).Trim()
-                  Remove-Item "$sf" -Force -EA SilentlyContinue
-                  if ("$cmd" -eq "SAVE_NOW") { & "$ss" -Reason "manual"; $ls = Get-Date }
-                  if ("$cmd" -eq "RESTART_SESSION") { & "$ss" -Reason "restart"; "FORCE_NEXT_SESSION=1" >> "$env:GITHUB_ENV"; break }
-                  if ("$cmd" -eq "STOP_SESSION") { & "$ss" -Reason "stop"; "FORCE_STOP_ONLY=1" >> "$env:GITHUB_ENV"; break }
-              }
-              if (((Get-Date) - $ls).TotalMinutes -ge 30) { & "$ss" -Reason "auto"; $ls = Get-Date }
               $r = ($ee) - ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
-              if ($r -le 0) { & "$ss" -Reason "timeout"; break }
-              if ($r -le 60 -and $r -gt 0) { & "$ss" -Reason "pre-timeout"; $ls = (Get-Date).AddHours(1) }
-              Start-Sleep 2
+              if ($r -le 0) { break }
+              Start-Sleep 5
           }
-
-      - name: Final Save
-        if: always()
-        shell: pwsh
-        run: |
-          $s = "$env:RUNNER_TEMP\save-data.ps1"
-          if (Test-Path "$s") { & "$s" -Reason "final" }
-          $global:LASTEXITCODE = 0
