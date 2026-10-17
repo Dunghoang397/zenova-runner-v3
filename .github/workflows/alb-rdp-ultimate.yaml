@@ -1,4 +1,4 @@
-﻿name: ALB ULTIMATE RDP v2.1
+﻿name: ALB ULTIMATE RDP v2.2
 
 on:
   workflow_dispatch:
@@ -52,12 +52,17 @@ on:
         type: choice
         options: ['1920x1080@60', '1920x1080@120', '2560x1440@60', '3840x2160@60']
       choco_packages:
-        description: 'App cài thêm bằng choco'
+        description: 'App cài thêm bằng choco (cách nhau bởi dấu cách)'
+        required: false
+        default: ''
+        type: string
+      app_urls:
+        description: 'App cài bằng link trực tiếp (mỗi dòng 1 URL, vd: https://.../EVKey.zip)'
         required: false
         default: ''
         type: string
       optimize_windows:
-        description: 'Tối ưu Windows'
+        description: 'Tối ưu Windows (fix lag)'
         required: false
         default: true
         type: boolean
@@ -190,7 +195,6 @@ jobs:
 
           $null = gh release view "$relTag" --repo "$env:GH_REPO" 2>&1
           if (($LASTEXITCODE) -ne 0) {
-              Write-Host "Tạo Release [$relTag]..." -ForegroundColor Cyan
               $dummy = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'init.txt')
               Set-Content -Path "$dummy" -Value "ALB Storage Init for $cleanId" -Encoding UTF8
               gh release create "$relTag" "$dummy" --repo "$env:GH_REPO" --title "ALB Storage ($cleanId)" --notes "Kho lưu tự động của máy [$cleanId]"
@@ -204,29 +208,20 @@ jobs:
           $scriptLines = @(
               'param([string]$Reason = "session-end")'
               '$ErrorActionPreference = "Continue"'
-              'if ("$env:DATA_RESTORED" -ne "1") {'
-              '    Write-Host "Chua restore xong, bo qua luu" -ForegroundColor Yellow'
-              '    exit 0'
-              '}'
+              'if ("$env:DATA_RESTORED" -ne "1") { Write-Host "Chua restore xong, bo qua luu" -ForegroundColor Yellow; exit 0 }'
               '$root  = "$env:SHARED_ROOT"'
               '$osDir = "$env:SHARED_OS_DIR"'
               '$dl    = "$env:MOUNT_LETTER"'
-              'if ((-not ("$root")) -or (-not (Test-Path "$root"))) {'
-              '    Write-Host "Chua thay o dia chung, bo qua"'
-              '    exit 0'
-              '}'
+              'if ((-not ("$root")) -or (-not (Test-Path "$root"))) { Write-Host "Chua thay o dia chung, bo qua"; exit 0 }'
               'try {'
               '    $drive = Get-PSDrive -Name "$dl" -ErrorAction Stop'
               '    $usedGB = [math]::Round($drive.Used / 1GB, 2)'
               '    $freeGB = [math]::Round($drive.Free / 1GB, 2)'
               '    Write-Host "Dung luong ${dl}:\ Used=${usedGB}GB / Free=${freeGB}GB" -ForegroundColor Cyan'
-              '    if ($freeGB -lt 2) {'
-              '        Write-Host "O dia con < 2GB, bo qua save!" -ForegroundColor Red'
-              '        exit 1'
-              '    }'
+              '    if ($freeGB -lt 2) { Write-Host "O dia con < 2GB, bo qua save!" -ForegroundColor Red; exit 1 }'
               '} catch {}'
               'Write-Host "[$Reason] Dong apps..." -ForegroundColor Cyan'
-              '$appsToClose = @("chrome","msedge","brave","firefox","coccoc","opera","vivaldi","discord","Telegram","Zalo","steam","EpicGamesLauncher","Spotify","Code","Notion","StarDesk")'
+              '$appsToClose = @("chrome","msedge","brave","firefox","coccoc","opera","vivaldi","discord","Telegram","Zalo","steam","EpicGamesLauncher","Spotify","Code","Notion","StarDesk","EVKey","Bandicam","Apollo")'
               'Get-Process -Name $appsToClose -ErrorAction SilentlyContinue | ForEach-Object { $null = $_.CloseMainWindow() }'
               'Start-Sleep -Seconds 3'
               'Get-Process -Name $appsToClose -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue'
@@ -266,9 +261,7 @@ jobs:
               'reg export "HKLM\SOFTWARE\Microsoft\Cryptography" "$regBk\Machine-Cryptography.reg" /y *> $null'
               'reg export "HKLM\SOFTWARE\Microsoft\SQMClient" "$regBk\Machine-SQMClient.reg" /y *> $null'
               'New-Item -ItemType Directory -Force -Path "$regBk\AppSoftware" | Out-Null'
-              'Get-ChildItem "HKCU:\Software" -ErrorAction SilentlyContinue | Where-Object {'
-              '    $_.PSChildName -notin @("Microsoft","Classes","Policies","RegisteredApplications")'
-              '} | ForEach-Object {'
+              'Get-ChildItem "HKCU:\Software" -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -notin @("Microsoft","Classes","Policies","RegisteredApplications") } | ForEach-Object {'
               '    $subName = $_.PSChildName'
               '    $safeName = ($subName -replace "[^A-Za-z0-9._\-]", "_")'
               '    reg export "HKCU\Software\$subName" "$regBk\AppSoftware\App-$safeName.reg" /y *> $null'
@@ -335,21 +328,15 @@ jobs:
               '        New-Item -ItemType Directory -Force -Path "$cOverlay\PF64" | Out-Null'
               '        New-Item -ItemType Directory -Force -Path "$cOverlay\PF86" | Out-Null'
               '        New-Item -ItemType Directory -Force -Path "$cOverlay\PD" | Out-Null'
-              '        Get-ChildItem "C:\Program Files" -Directory -Force -ErrorAction SilentlyContinue | Where-Object {'
-              '            ($_.Name -notin ($base.PF64)) -and ($_.Name -notin ($skipNames))'
-              '        } | ForEach-Object {'
+              '        Get-ChildItem "C:\Program Files" -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -notin ($base.PF64)) -and ($_.Name -notin ($skipNames)) } | ForEach-Object {'
               '            $dest = [System.IO.Path]::Combine("$cOverlay\PF64", $_.Name)'
               '            robocopy ($_.FullName) "$dest" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null'
               '        }'
-              '        Get-ChildItem "C:\Program Files (x86)" -Directory -Force -ErrorAction SilentlyContinue | Where-Object {'
-              '            ($_.Name -notin ($base.PF86)) -and ($_.Name -notin ($skipNames))'
-              '        } | ForEach-Object {'
+              '        Get-ChildItem "C:\Program Files (x86)" -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -notin ($base.PF86)) -and ($_.Name -notin ($skipNames)) } | ForEach-Object {'
               '            $dest = [System.IO.Path]::Combine("$cOverlay\PF86", $_.Name)'
               '            robocopy ($_.FullName) "$dest" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null'
               '        }'
-              '        Get-ChildItem "C:\ProgramData" -Directory -Force -ErrorAction SilentlyContinue | Where-Object {'
-              '            ($_.Name -notin ($base.PD)) -and ($_.Name -notin ($skipNames))'
-              '        } | ForEach-Object {'
+              '        Get-ChildItem "C:\ProgramData" -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -notin ($base.PD)) -and ($_.Name -notin ($skipNames)) } | ForEach-Object {'
               '            $dest = [System.IO.Path]::Combine("$cOverlay\PD", $_.Name)'
               '            robocopy ($_.FullName) "$dest" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null'
               '        }'
@@ -358,9 +345,7 @@ jobs:
               'try {'
               '    $extraRoot = [System.IO.Path]::Combine("$osDir", "DriveRoot-Extra")'
               '    New-Item -ItemType Directory -Force -Path "$extraRoot" | Out-Null'
-              '    Get-ChildItem "${dl}:\" -Force -ErrorAction SilentlyContinue | Where-Object {'
-              '        $_.Name -notin @("ALB-SYSTEM","System Volume Information","$RECYCLE.BIN","Pagefile.sys")'
-              '    } | ForEach-Object {'
+              '    Get-ChildItem "${dl}:\" -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -notin @("ALB-SYSTEM","System Volume Information","$RECYCLE.BIN","Pagefile.sys") } | ForEach-Object {'
               '        $dest = [System.IO.Path]::Combine("$extraRoot", $_.Name)'
               '        if ($_.PSIsContainer) {'
               '            robocopy ($_.FullName) "$dest" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null'
@@ -402,9 +387,7 @@ jobs:
               '    git push -u origin "$env:STATE_BRANCH" --force -q 2>$null'
               '    Pop-Location'
               '    Write-Host "[$Reason] Da luu state + registry len Git" -ForegroundColor Green'
-              '} catch {'
-              '    if (((Get-Location).Path) -eq "$gitStage") { Pop-Location }'
-              '}'
+              '} catch { if (((Get-Location).Path) -eq "$gitStage") { Pop-Location } }'
               '$packDir = [System.IO.Path]::Combine("$env:RUNNER_TEMP", "alb-pack-$Reason")'
               'if (Test-Path "$packDir") { Remove-Item -Path "$packDir" -Recurse -Force -ErrorAction SilentlyContinue }'
               'New-Item -ItemType Directory -Force -Path "$packDir" | Out-Null'
@@ -416,10 +399,7 @@ jobs:
               '$sevenZipCode = $LASTEXITCODE'
               'Pop-Location'
               '$chunks = @(Get-ChildItem -Path "$packDir" -Filter "alb-drive.7z.*" | Sort-Object Name)'
-              'if (($chunks.Count) -eq 0) {'
-              '    Write-Host "[$Reason] Khong tao duoc goi nen (7z: $sevenZipCode)" -ForegroundColor Red'
-              '    exit 1'
-              '}'
+              'if (($chunks.Count) -eq 0) { Write-Host "[$Reason] Khong tao duoc goi nen (7z: $sevenZipCode)" -ForegroundColor Red; exit 1 }'
               '$manifest = [ordered]@{'
               '    machineId  = "$env:MACHINE_ID"'
               '    updatedUtc = (Get-Date).ToUniversalTime().ToString("o")'
@@ -438,23 +418,15 @@ jobs:
               '    foreach ($f in $uploadFiles) {'
               '        $leaf = Split-Path $f -Leaf'
               '        gh release upload "$env:RELEASE_TAG" "$f" --repo "$env:GH_REPO" --clobber'
-              '        if (($LASTEXITCODE) -ne 0) {'
-              '            Write-Host "  Fail: $leaf" -ForegroundColor Yellow'
-              '            $allOk = $false'
-              '        } else {'
-              '            Write-Host "  OK: $leaf" -ForegroundColor Green'
-              '        }'
+              '        if (($LASTEXITCODE) -ne 0) { Write-Host "  Fail: $leaf" -ForegroundColor Yellow; $allOk = $false }'
+              '        else { Write-Host "  OK: $leaf" -ForegroundColor Green }'
               '        Start-Sleep -Seconds 1'
               '    }'
               '    if ($allOk) { $uploadOk = $true; break }'
               '    Write-Host "  Thu lai sau 10s..." -ForegroundColor Yellow'
               '    Start-Sleep -Seconds 10'
               '}'
-              'if (-not $uploadOk) {'
-              '    Write-Host "[$Reason] Upload that bai 3 lan!" -ForegroundColor Red'
-              '    Remove-Item -Path "$packDir" -Recurse -Force -ErrorAction SilentlyContinue'
-              '    exit 1'
-              '}'
+              'if (-not $uploadOk) { Write-Host "[$Reason] Upload that bai 3 lan!" -ForegroundColor Red; Remove-Item -Path "$packDir" -Recurse -Force -ErrorAction SilentlyContinue; exit 1 }'
               'try {'
               '    $relJson = gh release view "$env:RELEASE_TAG" --repo "$env:GH_REPO" --json assets | ConvertFrom-Json'
               '    $validNames = @($chunks.Name) + @("drive-manifest.json", "init.txt")'
@@ -470,7 +442,7 @@ jobs:
           )
           $saveScriptPath = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'save-data.ps1')
           Set-Content -Path "$saveScriptPath" -Value ($scriptLines -join "`r`n") -Encoding UTF8
-          Write-Host 'Da tao save-data.ps1 (v2.1 fix)' -ForegroundColor Green
+          Write-Host 'Da tao save-data.ps1' -ForegroundColor Green
 
       - name: ♻️ Khôi phục ổ đĩa & Profile
         shell: pwsh
@@ -636,7 +608,7 @@ jobs:
           "SUNSHINE_PERSIST_CFG=$sunCfgDir" >> "$env:GITHUB_ENV"
 
           Write-Host ""
-          Write-Host "ALB ULTIMATE RDP v2.1 ($env:MACHINE_ID)" -ForegroundColor Yellow
+          Write-Host "ALB ULTIMATE RDP v2.2 ($env:MACHINE_ID)" -ForegroundColor Yellow
           Write-Host "Release: $env:RELEASE_TAG | Branch: $env:STATE_BRANCH" -ForegroundColor Cyan
           Write-Host "O dia: ${dl}:\ ($env:SHARED_ROOT)" -ForegroundColor Cyan
           Write-Host "User: $env:RDP_USER ($env:PROFILE_PATH)" -ForegroundColor Cyan
@@ -676,29 +648,26 @@ jobs:
 
           $stepsList | ForEach-Object {
               $item = $_
-              try {
-                  & ($item.Script)
-                  Write-Host "  OK: $($item.Name)" -ForegroundColor Green
-              } catch {
-                  Write-Host "  WARN: $($item.Name) - $($_.Exception.Message)" -ForegroundColor Yellow
-              }
+              try { & ($item.Script); Write-Host "  OK: $($item.Name)" -ForegroundColor Green }
+              catch { Write-Host "  WARN: $($item.Name) - $($_.Exception.Message)" -ForegroundColor Yellow }
           }
           exit 0
 
-      - name: ⚙️ Tối ưu Windows
+      - name: ⚙️ Tối ưu Windows (FIX LAG MẠNH)
         if: ${{ inputs.optimize_windows }}
         shell: pwsh
         run: |
           Write-Host ""
-          Write-Host "TOI UU WINDOWS" -ForegroundColor Yellow
+          Write-Host "TOI UU WINDOWS - FIX LAG MANH" -ForegroundColor Yellow
 
           $tweaksList = @(
               @{Name = "Mui gio VN"; Script = { tzutil /s 'SE Asia Standard Time' }},
-              @{Name = "Tat sleep"; Script = {
+              @{Name = "Tat sleep/man hinh/hibernate"; Script = {
                   powercfg /change standby-timeout-ac 0
                   powercfg /change monitor-timeout-ac 0
                   powercfg /change disk-timeout-ac 0
                   powercfg /hibernate off
+                  powercfg /setactive SCHEME_MIN
               }},
               @{Name = "Giu phien RDP"; Script = {
                   $p = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
@@ -715,17 +684,46 @@ jobs:
               }},
               @{Name = "Tat Defender realtime"; Script = {
                   Set-MpPreference -DisableRealtimeMonitoring ($true) -ErrorAction Stop
+              }},
+              @{Name = "Tat services ngon RAM"; Script = {
+                  $svcs = @("DiagTrack","WSearch","SysMain","WerSvc","XblAuthManager","XblGameSave","XboxNetApiSvc","XboxGipSvc","Spooler","MapsBroker","PcaSvc","TabletInputService","RetailDemo","dmwappushservice","WbioSrvc","PhoneSvc","PrintNotify","WpnService","WpnUserService")
+                  foreach ($s in $svcs) {
+                      Stop-Service $s -Force -ErrorAction SilentlyContinue
+                      Set-Service $s -StartupType Disabled -ErrorAction SilentlyContinue
+                  }
+              }},
+              @{Name = "Tat bloatware Appx"; Script = {
+                  $bloat = @("Microsoft.3DBuilder","Microsoft.BingNews","Microsoft.BingWeather","Microsoft.GetHelp","Microsoft.Getstarted","Microsoft.XboxApp","Microsoft.XboxGamingOverlay","Microsoft.YourPhone","Microsoft.WindowsFeedbackHub","Microsoft.WindowsMaps","Microsoft.ZuneMusic","Microsoft.ZuneVideo","Microsoft.WindowsAlarms","Microsoft.SkypeApp")
+                  foreach ($a in $bloat) {
+                      Get-AppxPackage -Name "$a" -AllUsers -ErrorAction SilentlyContinue | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
+                  }
+              }},
+              @{Name = "Visual effects best performance"; Script = {
+                  $dwm = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects"
+                  if (-not (Test-Path $dwm)) { New-Item $dwm -Force | Out-Null }
+                  Set-ItemProperty $dwm "VisualFXSetting" 2 -Type DWord -Force -ErrorAction SilentlyContinue
+                  Set-ItemProperty "HKCU:\Control Panel\Desktop" "DragFullWindows" "0" -Force -ErrorAction SilentlyContinue
+              }},
+              @{Name = "Tang toc do he thong (registry)"; Script = {
+                  Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl" "Win32PrioritySeparation" 38 -Type DWord -Force -ErrorAction SilentlyContinue
+                  Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" "ClearPageFileAtShutdown" 0 -Type DWord -Force -ErrorAction SilentlyContinue
+                  Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" "LargeSystemCache" 0 -Type DWord -Force -ErrorAction SilentlyContinue
+              }},
+              @{Name = "Tat Hibernate file"; Script = {
+                  powercfg /hibernate off
+              }},
+              @{Name = "Network tweak"; Script = {
+                  Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" "Tcp1323Opts" 1 -Type DWord -Force -ErrorAction SilentlyContinue
+                  Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" "DefaultTTL" 64 -Type DWord -Force -ErrorAction SilentlyContinue
+                  Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" "EnablePMTUBHDetect" 0 -Type DWord -Force -ErrorAction SilentlyContinue
+                  Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" "EnablePMTUDiscovery" 1 -Type DWord -Force -ErrorAction SilentlyContinue
               }}
           )
 
           $tweaksList | ForEach-Object {
               $tw = $_
-              try {
-                  & ($tw.Script)
-                  Write-Host "  OK: $($tw.Name)" -ForegroundColor Green
-              } catch {
-                  Write-Host "  WARN: $($tw.Name) - $($_.Exception.Message)" -ForegroundColor Yellow
-              }
+              try { & ($tw.Script); Write-Host "  OK: $($tw.Name)" -ForegroundColor Green }
+              catch { Write-Host "  WARN: $($tw.Name) - $($_.Exception.Message)" -ForegroundColor Yellow }
           }
           exit 0
 
@@ -762,7 +760,73 @@ jobs:
           }
           exit 0
 
-      - name: 🖥️🔊☀️ Cài VDD, VB-Audio & Sunshine
+      - name: 🔗 Cài app bằng link trực tiếp
+        shell: pwsh
+        env:
+          APP_URLS: ${{ inputs.app_urls }}
+        run: |
+          Write-Host ""
+          Write-Host "CAI APP BANG LINK TRUC TIEP" -ForegroundColor Yellow
+
+          if ([string]::IsNullOrWhiteSpace("$env:APP_URLS")) {
+              Write-Host "  Khong co link nao, bo qua" -ForegroundColor Gray
+              exit 0
+          }
+
+          $appsDir = "$env:SHARED_DATA_DIR\Apps"
+          New-Item -ItemType Directory -Force -Path "$appsDir" | Out-Null
+          $cacheDir = "$env:INSTALLER_CACHE\CustomApps"
+          New-Item -ItemType Directory -Force -Path "$cacheDir" | Out-Null
+
+          $urlList = @($env:APP_URLS -split "`n" | Where-Object { $_ -match '^https?://' })
+          if ($urlList.Count -eq 0) {
+              Write-Host "  Khong co URL hop le, bo qua" -ForegroundColor Yellow
+              exit 0
+          }
+
+          foreach ($url in $urlList) {
+              $url = $url.Trim()
+              if (-not $url) { continue }
+              Write-Host "  Xu ly: $url" -ForegroundColor Cyan
+
+              try {
+                  $fname = [System.IO.Path]::GetFileName(([System.Uri]$url).AbsolutePath)
+                  if (-not $fname) { $fname = "app-$(Get-Date -Format 'yyyyMMddHHmmss')" }
+                  $localPath = [System.IO.Path]::Combine("$cacheDir", $fname)
+
+                  if (-not (Test-Path "$localPath")) {
+                      Write-Host "    Download..." -ForegroundColor Gray
+                      Invoke-WebRequest -Uri $url -OutFile "$localPath" -UseBasicParsing -TimeoutSec 120
+                  }
+
+                  $ext = [System.IO.Path]::GetExtension($fname).ToLower()
+
+                  if ($ext -eq '.zip') {
+                      $destDir = [System.IO.Path]::Combine("$appsDir", [System.IO.Path]::GetFileNameWithoutExtension($fname))
+                      New-Item -ItemType Directory -Force -Path "$destDir" | Out-Null
+                      Expand-Archive -Path "$localPath" -DestinationPath "$destDir" -Force
+                      Write-Host "    OK: giai nen -> $destDir" -ForegroundColor Green
+                  } elseif ($ext -eq '.exe' -or $ext -eq '.msi') {
+                      if ($ext -eq '.msi') {
+                          $proc = Start-Process msiexec.exe -ArgumentList "/i `"$localPath`" /quiet /norestart" -Wait -PassThru
+                      } else {
+                          $proc = Start-Process -FilePath "$localPath" -ArgumentList '/S' -Wait -PassThru
+                      }
+                      Write-Host "    OK: cai dat (exit: $($proc.ExitCode))" -ForegroundColor Green
+                  } else {
+                      $destDir = [System.IO.Path]::Combine("$appsDir", "other")
+                      New-Item -ItemType Directory -Force -Path "$destDir" | Out-Null
+                      Copy-Item -Path "$localPath" -Destination "$destDir" -Force
+                      Write-Host "    OK: copy -> $destDir" -ForegroundColor Green
+                  }
+              } catch {
+                  Write-Host "    FAIL: $($_.Exception.Message)" -ForegroundColor Yellow
+              }
+          }
+          Write-Host "  OK: cai app bang link hoan tat" -ForegroundColor Green
+          exit 0
+
+      - name: 🖥️🔊☀️ Cài VDD, VB-Audio & Sunshine (FIX AUDIO)
         shell: pwsh
         env:
           VDD_RES: ${{ inputs.vdd_resolution }}
@@ -822,7 +886,7 @@ jobs:
           }
 
           Write-Host ""
-          Write-Host "2. VB-AUDIO..." -ForegroundColor Yellow
+          Write-Host "2. VB-AUDIO (FIX AM THANH DA TANG)..." -ForegroundColor Yellow
           try {
               @('MMCSS', 'AudioEndpointBuilder', 'Audiosrv') | ForEach-Object {
                   Set-Service -Name "$_" -StartupType Automatic -ErrorAction SilentlyContinue
@@ -893,6 +957,17 @@ jobs:
                   }
                   Remove-Job -Job ($chocoVbJob) -Force -ErrorAction SilentlyContinue
               }
+              # Tang 3: virtual-audio-cable
+              $audioDev = Get-PnpDevice -Class 'MEDIA','AudioEndpoint' -ErrorAction SilentlyContinue | Where-Object { ($_.FriendlyName -match 'VB-Audio|CABLE|Virtual Audio|Steam') -and ($_.Status -eq 'OK') }
+              if (-not ($audioDev)) {
+                  Write-Host "  Tang 3: choco virtual-audio-cable..." -ForegroundColor Cyan
+                  $vacJob = Start-Job -ScriptBlock {
+                      choco install virtual-audio-cable -y --no-progress --limit-output --ignore-checksums
+                  }
+                  $doneVac = Wait-Job -Job ($vacJob) -Timeout 45
+                  if (-not ($doneVac)) { Stop-Job -Job ($vacJob) -ErrorAction SilentlyContinue }
+                  Remove-Job -Job ($vacJob) -Force -ErrorAction SilentlyContinue
+              }
               pnputil /scan-devices *> $null
               Get-PnpDevice -Class 'MEDIA','AudioEndpoint' -ErrorAction SilentlyContinue | Where-Object { $_.Status -ne 'OK' } | ForEach-Object {
                   Enable-PnpDevice -InstanceId ($_.InstanceId) -Confirm:($false) -ErrorAction SilentlyContinue *> $null
@@ -906,7 +981,7 @@ jobs:
                   Write-Host "  OK: $audioNames" -ForegroundColor Green
               } else {
                   "AUDIO_DEVICE_NAME=Windows Virtual Audio (Active)" >> "$env:GITHUB_ENV"
-                  Write-Host "  OK: fallback" -ForegroundColor Green
+                  Write-Host "  OK: fallback audio" -ForegroundColor Green
               }
           } catch {
               Write-Host "  WARN: Audio - $($_.Exception.Message)" -ForegroundColor Yellow
@@ -1147,16 +1222,24 @@ jobs:
           } catch {}
 
           $securePass = ConvertTo-SecureString "$matKhau" -AsPlainText -Force
+
           try {
               Set-LocalUser -Name "$user" -Password ($securePass) -PasswordNeverExpires ($true) -ErrorAction Stop
+              Write-Host "  OK: Set-LocalUser password + never expires" -ForegroundColor Green
           } catch {
+              Write-Host "  WARN: Set-LocalUser fail, fallback net user: $($_.Exception.Message)" -ForegroundColor Yellow
               & net user "$user" "$matKhau" /active:yes /expires:never *> $null
           }
-          & net user "$user" "$matKhau" /active:yes /expires:never *> $null
-          & wmic useraccount where "Name='$user'" set PasswordExpires=False *> $null
+
+          try {
+              Set-LocalUser -Name "$user" -PasswordNeverExpires ($true) -ErrorAction Stop
+          } catch {
+              Write-Host "  WARN: Set PasswordNeverExpires fail: $($_.Exception.Message)" -ForegroundColor Yellow
+          }
+
+          Enable-LocalUser -Name "$user" -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group 'Administrators' -Member "$user" -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group 'Remote Desktop Users' -Member "$user" -ErrorAction SilentlyContinue
-          Enable-LocalUser -Name "$user" -ErrorAction SilentlyContinue
 
           try {
               Set-Service -Name 'AppXSvc' -StartupType Automatic -ErrorAction SilentlyContinue
@@ -1217,9 +1300,14 @@ jobs:
           $uObj = Get-LocalUser -Name "$user" -ErrorAction SilentlyContinue
           $userSid = if ($uObj) { $uObj.SID.Value } else { $null }
 
-          if ((Test-Path "$sunExe") -and ($userSid)) {
-              & icacls "$sunDir" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null
-              & icacls "$sunPersistCfg" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null
+          if (Test-Path "$sunExe") {
+              if ($userSid) {
+                  & icacls "$sunDir" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null
+                  & icacls "$sunPersistCfg" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null
+              } else {
+                  Write-Host "  WARN: Khong co SID user $user, bo qua icacls" -ForegroundColor Yellow
+              }
+
               Push-Location "$sunDir"
               & "$sunExe" --creds "$user" "$matKhau" *> $null
               Pop-Location
@@ -1240,6 +1328,8 @@ jobs:
                   Write-Host "  OK: Sunshine truc tiep" -ForegroundColor Green
               }
               "SUNSHINE_READY=1" >> "$env:GITHUB_ENV"
+          } else {
+              Write-Host "  ERR: Khong tim thay sunshine.exe tai $sunExe" -ForegroundColor Red
           }
 
           try {
@@ -1464,7 +1554,7 @@ jobs:
         run: |
           if (-not "$env:TG_TOKEN" -or -not "$env:TG_CHAT") { exit 0 }
           $icon = if ("$env:JOB_STATUS" -eq 'success') { '✅' } else { '❌' }
-          $msg = "$icon <b>ALB RDP</b>`nMáy: <code>$env:MACHINE_ID</code>`nStatus: $env:JOB_STATUS`nIP: <code>$env:TAILSCALE_IP</code>`nPanel: http://$env:TAILSCALE_IP:$env:WEB_PORT/"
+          $msg = "$icon <b>ALB RDP v2.2</b>`nMáy: <code>$env:MACHINE_ID</code>`nStatus: $env:JOB_STATUS`nIP: <code>$env:TAILSCALE_IP</code>`nPanel: http://$env:TAILSCALE_IP:$env:WEB_PORT/"
           try {
               $uri = "https://api.telegram.org/bot$($env:TG_TOKEN)/sendMessage"
               Invoke-RestMethod -Uri "$uri" -Method Post -Body @{ chat_id = "$env:TG_CHAT"; text = "$msg"; parse_mode = "HTML" } -TimeoutSec 20 | Out-Null
@@ -1479,7 +1569,7 @@ jobs:
           $audioName = if ($env:AUDIO_DEVICE_NAME) { $env:AUDIO_DEVICE_NAME } else { 'N/A' }
           Write-Host ""
           Write-Host "============================================================" -ForegroundColor Cyan
-          Write-Host "  ALB ULTIMATE RDP v2.1 — SAN SANG!" -ForegroundColor Cyan
+          Write-Host "  ALB ULTIMATE RDP v2.2 — SAN SANG!" -ForegroundColor Cyan
           Write-Host "============================================================" -ForegroundColor Cyan
           Write-Host "  May         : $env:MACHINE_ID ($env:RELEASE_TAG)" -ForegroundColor Cyan
           Write-Host "  IP Tailscale: $env:TAILSCALE_IP (RDP: 3389)" -ForegroundColor White
@@ -1643,6 +1733,7 @@ jobs:
           FIXED_PASS: ${{ inputs.fixed_password }}
           VDD_RES: ${{ inputs.vdd_resolution }}
           PKGS: ${{ inputs.choco_packages }}
+          APP_URLS: ${{ inputs.app_urls }}
           OPT: ${{ inputs.optimize_windows }}
           DDNS: ${{ inputs.enable_duckdns }}
           TG: ${{ inputs.enable_telegram }}
@@ -1663,6 +1754,7 @@ jobs:
               -f "fixed_password=$env:FIXED_PASS" `
               -f "vdd_resolution=$env:VDD_RES" `
               -f "choco_packages=$env:PKGS" `
+              -f "app_urls=$env:APP_URLS" `
               -f "optimize_windows=$optStr" `
               -f "enable_duckdns=$ddnsStr" `
               -f "enable_telegram=$tgStr"
