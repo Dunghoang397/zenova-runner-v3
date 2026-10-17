@@ -76,7 +76,7 @@ jobs:
           $t = 300
           if ($dur -eq "1h") { $t = 60 }
           if ($dur -eq "3h") { $t = 180 }
-          @("MACHINE_ID=$cid","OWNER_DISCORD_ID=$owner","TOTAL_MINUTES=$t","WINDOWS_IMAGE=$img","VHD_SIZE_GB=$vhd","FIXED_PASSWORD=$pwd_","CHOCO_PACKAGES=$pkgs","RESTORE_DATA=$restore","GH_REPO=$env:GITHUB_REPOSITORY",""RELEASE_TAG=zenova-storage-$cid"","JOB_START_EPOCH=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())") | ForEach-Object { $_ >> "$env:GITHUB_ENV" }
+          @("MACHINE_ID=$cid","OWNER_DISCORD_ID=$owner","TOTAL_MINUTES=$t","WINDOWS_IMAGE=$img","VHD_SIZE_GB=$vhd","FIXED_PASSWORD=$pwd_","CHOCO_PACKAGES=$pkgs","RESTORE_DATA=$restore","RELEASE_TAG=zenova-storage-$cid","JOB_START_EPOCH=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())") | ForEach-Object { $_ >> "$env:GITHUB_ENV" }
           Write-Host "Machine: $cid | Duration: $t min | Restore: $restore"
 
       - name: Pre-flight
