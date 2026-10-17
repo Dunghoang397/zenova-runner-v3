@@ -1,10 +1,15 @@
-﻿name: ALB ULTIMATE RDP v2.2
+﻿name: ALB ULTIMATE RDP v4.0
 
 on:
   workflow_dispatch:
     inputs:
+      machine_ids:
+        description: 'Danh sách máy (VD: may1,may2,may3). Bỏ trống -> dùng machine_id'
+        required: false
+        default: ''
+        type: string
       machine_id:
-        description: 'Tên định danh máy'
+        description: 'Tên máy đơn (nếu không dùng machine_ids)'
         required: false
         default: 'may-phu-1'
         type: string
@@ -40,10 +45,20 @@ on:
         default: 'windows-2022'
         type: choice
         options: ['windows-2022', 'windows-2025']
-      fixed_password:
-        description: 'Mật khẩu cố định'
+      rdp_username:
+        description: 'Tên user ngoài RDP (mặc định: runneradmin)'
+        required: false
+        default: 'runneradmin'
+        type: string
+      rdp_password:
+        description: 'Mật khẩu RDP (mặc định: Aistv@2026)'
         required: false
         default: 'Aistv@2026'
+        type: string
+      creator_name:
+        description: 'Tên người tạo máy (lưu metadata)'
+        required: false
+        default: 'ALB'
         type: string
       vdd_resolution:
         description: 'Độ phân giải màn hình ảo'
@@ -52,12 +67,12 @@ on:
         type: choice
         options: ['1920x1080@60', '1920x1080@120', '2560x1440@60', '3840x2160@60']
       choco_packages:
-        description: 'App cài thêm bằng choco (cách nhau bởi dấu cách)'
+        description: 'App cài thêm bằng choco'
         required: false
         default: ''
         type: string
       app_urls:
-        description: 'App cài bằng link trực tiếp (mỗi dòng 1 URL, vd: https://.../EVKey.zip)'
+        description: 'App cài bằng link trực tiếp (mỗi dòng 1 URL)'
         required: false
         default: ''
         type: string
@@ -71,36 +86,52 @@ on:
         required: false
         default: false
         type: boolean
-      enable_telegram:
-        description: 'Thông báo Telegram'
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: write
   actions: write
 
-concurrency:
-  group: alb-rdp-${{ inputs.machine_id || 'may-phu-1' }}
-  cancel-in-progress: false
-
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - id: set
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.machine_ids }}" ]; then
+            IDS='${{ inputs.machine_ids }}'
+          else
+            IDS='${{ inputs.machine_id }}'
+          fi
+          JSON=$(echo "$IDS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "matrix=$JSON" >> $GITHUB_OUTPUT
+          echo "Matrix: $JSON"
+
   Ultimate-RDP:
+    needs: prepare
     runs-on: ${{ inputs.windows_image }}
     timeout-minutes: 355
-
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        machine_id: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    concurrency:
+      group: alb-rdp-${{ matrix.machine_id }}
+      cancel-in-progress: false
     env:
       GH_TOKEN: ${{ secrets.PAT_TOKEN || github.token }}
       GH_REPO: ${{ github.repository }}
-      MACHINE_ID: ${{ inputs.machine_id || 'may-phu-1' }}
+      MACHINE_ID: ${{ matrix.machine_id }}
       DRIVE_LETTER: ${{ inputs.drive_letter }}
       VHD_SIZE_GB: ${{ inputs.vhd_size_gb }}
       WEB_PORT: '8080'
       SUNSHINE_WEB_PORT: '47990'
 
     steps:
-      - name: 🧱 Dựng ổ đĩa & thông số máy
+      - name: 🧱 Dựng ổ đĩa riêng & thông số kho lưu theo máy
         shell: pwsh
         env:
           INPUT_DURATION: ${{ inputs.duration }}
@@ -193,6 +224,14 @@ jobs:
           $build = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').CurrentBuild
           "OS_BUILD=$build" >> "$env:GITHUB_ENV"
 
+          # FIX RATE LIMIT: delay theo machine_id
+          $delaySec = [int]($cleanId -replace '[^0-9]', '')
+          if ($delaySec -gt 0) { $delaySec = ($delaySec % 10) * 2 } else { $delaySec = 0 }
+          if ($delaySec -gt 0) {
+              Write-Host "Delay ${delaySec}s tranh rate limit..." -ForegroundColor Yellow
+              Start-Sleep -Seconds $delaySec
+          }
+
           $null = gh release view "$relTag" --repo "$env:GH_REPO" 2>&1
           if (($LASTEXITCODE) -ne 0) {
               $dummy = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'init.txt')
@@ -202,7 +241,7 @@ jobs:
           $global:LASTEXITCODE = 0
           Write-Host "OK mount ${dl}:\ | May: $cleanId | Release: $relTag" -ForegroundColor Green
 
-      - name: 🧰 Tạo save-data.ps1
+      - name: 🧰 Tạo script đóng gói & đẩy toàn bộ ổ đĩa lên GitHub
         shell: pwsh
         run: |
           $scriptLines = @(
@@ -402,6 +441,7 @@ jobs:
               'if (($chunks.Count) -eq 0) { Write-Host "[$Reason] Khong tao duoc goi nen (7z: $sevenZipCode)" -ForegroundColor Red; exit 1 }'
               '$manifest = [ordered]@{'
               '    machineId  = "$env:MACHINE_ID"'
+              '    creator    = "$env:CREATOR_NAME"'
               '    updatedUtc = (Get-Date).ToUniversalTime().ToString("o")'
               '    reason     = "$Reason"'
               '    osBuild    = "$env:OS_BUILD"'
@@ -444,7 +484,7 @@ jobs:
           Set-Content -Path "$saveScriptPath" -Value ($scriptLines -join "`r`n") -Encoding UTF8
           Write-Host 'Da tao save-data.ps1' -ForegroundColor Green
 
-      - name: ♻️ Khôi phục ổ đĩa & Profile
+      - name: ♻️ Khôi phục toàn bộ ổ đĩa & nạp thẳng vào user gốc
         shell: pwsh
         run: |
           $dl = "$env:MOUNT_LETTER"
@@ -481,7 +521,7 @@ jobs:
           }
 
           $manifest = Get-Content -Raw -Path "$manifestFile" | ConvertFrom-Json
-          Write-Host "Phat hien o dia tu phien truoc ($($manifest.chunkCount) manh)..." -ForegroundColor Cyan
+          Write-Host "Phat hien o dia tu phien truoc ($($manifest.chunkCount) manh, creator: $($manifest.creator))..." -ForegroundColor Cyan
 
           gh release download "$env:RELEASE_TAG" --repo "$env:GH_REPO" --pattern 'alb-drive.7z.*' --dir "$dlDir"
           if (($LASTEXITCODE) -ne 0) {
@@ -579,7 +619,7 @@ jobs:
           Write-Host "Khoi phuc o dia [$env:MACHINE_ID] hoan tat!" -ForegroundColor Green
           exit 0
 
-      - name: 🔗 Gắn kết OS & Apps
+      - name: 🔗 Gắn kết thư mục Hệ Điều Hành riêng & Phần mềm sang ổ đĩa riêng
         shell: pwsh
         run: |
           $osDir      = "$env:SHARED_OS_DIR"
@@ -608,12 +648,12 @@ jobs:
           "SUNSHINE_PERSIST_CFG=$sunCfgDir" >> "$env:GITHUB_ENV"
 
           Write-Host ""
-          Write-Host "ALB ULTIMATE RDP v2.2 ($env:MACHINE_ID)" -ForegroundColor Yellow
+          Write-Host "ALB ULTIMATE RDP v4.0 ($env:MACHINE_ID)" -ForegroundColor Yellow
           Write-Host "Release: $env:RELEASE_TAG | Branch: $env:STATE_BRANCH" -ForegroundColor Cyan
           Write-Host "O dia: ${dl}:\ ($env:SHARED_ROOT)" -ForegroundColor Cyan
           Write-Host "User: $env:RDP_USER ($env:PROFILE_PATH)" -ForegroundColor Cyan
 
-      - name: 🔧 Cấu hình RDP & Firewall
+      - name: 🔧 Cấu hình Hệ thống & Firewall (RDP + Sunshine + Web)
         shell: pwsh
         run: |
           Write-Host ""
@@ -630,7 +670,7 @@ jobs:
                   Set-ItemProperty -Path "$p" -Name 'fDisableAudioCapture' -Value 0 -Type DWord -Force
                   Set-ItemProperty -Path "$p" -Name 'fDisableCam' -Value 0 -Type DWord -Force
               }},
-              @{Name = "Mo port RDP/Sunshine"; Script = {
+              @{Name = "Mo port RDP/Sunshine/Web"; Script = {
                   Remove-NetFirewallRule -DisplayName 'ALB-RDP' -ErrorAction SilentlyContinue
                   Remove-NetFirewallRule -DisplayName 'ALB-Sunshine-TCP' -ErrorAction SilentlyContinue
                   Remove-NetFirewallRule -DisplayName 'ALB-Sunshine-UDP' -ErrorAction SilentlyContinue
@@ -653,12 +693,12 @@ jobs:
           }
           exit 0
 
-      - name: ⚙️ Tối ưu Windows (FIX LAG MẠNH)
+      - name: ⚙️ Tối ưu Windows
         if: ${{ inputs.optimize_windows }}
         shell: pwsh
         run: |
           Write-Host ""
-          Write-Host "TOI UU WINDOWS - FIX LAG MANH" -ForegroundColor Yellow
+          Write-Host "TOI UU WINDOWS" -ForegroundColor Yellow
 
           $tweaksList = @(
               @{Name = "Mui gio VN"; Script = { tzutil /s 'SE Asia Standard Time' }},
@@ -704,18 +744,13 @@ jobs:
                   Set-ItemProperty $dwm "VisualFXSetting" 2 -Type DWord -Force -ErrorAction SilentlyContinue
                   Set-ItemProperty "HKCU:\Control Panel\Desktop" "DragFullWindows" "0" -Force -ErrorAction SilentlyContinue
               }},
-              @{Name = "Tang toc do he thong (registry)"; Script = {
+              @{Name = "Tang toc he thong (registry)"; Script = {
                   Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl" "Win32PrioritySeparation" 38 -Type DWord -Force -ErrorAction SilentlyContinue
                   Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" "ClearPageFileAtShutdown" 0 -Type DWord -Force -ErrorAction SilentlyContinue
-                  Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" "LargeSystemCache" 0 -Type DWord -Force -ErrorAction SilentlyContinue
-              }},
-              @{Name = "Tat Hibernate file"; Script = {
-                  powercfg /hibernate off
               }},
               @{Name = "Network tweak"; Script = {
                   Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" "Tcp1323Opts" 1 -Type DWord -Force -ErrorAction SilentlyContinue
                   Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" "DefaultTTL" 64 -Type DWord -Force -ErrorAction SilentlyContinue
-                  Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" "EnablePMTUBHDetect" 0 -Type DWord -Force -ErrorAction SilentlyContinue
                   Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" "EnablePMTUDiscovery" 1 -Type DWord -Force -ErrorAction SilentlyContinue
               }}
           )
@@ -727,7 +762,7 @@ jobs:
           }
           exit 0
 
-      - name: 📦 Cài app choco
+      - name: 📦 Cài app choco (tự động lưu danh sách gói vào ổ đĩa riêng)
         shell: pwsh
         env:
           PKGS: ${{ inputs.choco_packages }}
@@ -826,7 +861,7 @@ jobs:
           Write-Host "  OK: cai app bang link hoan tat" -ForegroundColor Green
           exit 0
 
-      - name: 🖥️🔊☀️ Cài VDD, VB-Audio & Sunshine (FIX AUDIO)
+      - name: 🖥️🔊☀️ Cài Màn Hình Ảo (VDD), Âm Thanh Ảo Tự Động (VB-Audio + Fallback) & Sunshine
         shell: pwsh
         env:
           VDD_RES: ${{ inputs.vdd_resolution }}
@@ -957,7 +992,6 @@ jobs:
                   }
                   Remove-Job -Job ($chocoVbJob) -Force -ErrorAction SilentlyContinue
               }
-              # Tang 3: virtual-audio-cable
               $audioDev = Get-PnpDevice -Class 'MEDIA','AudioEndpoint' -ErrorAction SilentlyContinue | Where-Object { ($_.FriendlyName -match 'VB-Audio|CABLE|Virtual Audio|Steam') -and ($_.Status -eq 'OK') }
               if (-not ($audioDev)) {
                   Write-Host "  Tang 3: choco virtual-audio-cable..." -ForegroundColor Cyan
@@ -1056,7 +1090,7 @@ jobs:
           $global:LASTEXITCODE = 0
           exit 0
 
-      - name: 🌐 Tailscale
+      - name: 🌐 Thiết lập mạng Tailscale
         env:
           TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         shell: pwsh
@@ -1183,28 +1217,24 @@ jobs:
           }
           exit 0
 
-      - name: 👤 Mật khẩu & Bật Sunshine
+      - name: 👤 Đặt mật khẩu user gốc & user ngoài, bảo vệ Settings & bật Sunshine
         shell: pwsh
         env:
-          RDP_PASSWORD_SECRET: ${{ secrets.RDP_PASSWORD }}
-          FIXED_PASS_INPUT: ${{ inputs.fixed_password }}
+          RDP_USERNAME_INPUT: ${{ inputs.rdp_username }}
+          RDP_PASSWORD_INPUT: ${{ inputs.rdp_password }}
         run: |
           $user     = "$env:RDP_USER"
           $profPath = "$env:PROFILE_PATH"
+          $newUser  = "$env:RDP_USERNAME_INPUT"
+          if ([string]::IsNullOrWhiteSpace("$newUser")) { $newUser = 'runneradmin' }
 
-          if (-not ([string]::IsNullOrWhiteSpace("$env:RDP_PASSWORD_SECRET"))) {
-              $matKhau = ("$env:RDP_PASSWORD_SECRET").Trim()
-              $source  = 'secret'
-          } elseif (-not ([string]::IsNullOrWhiteSpace("$env:FIXED_PASS_INPUT"))) {
-              $matKhau = ("$env:FIXED_PASS_INPUT").Trim()
-              $source  = 'fixed_input'
-          } elseif ("$env:RESTORE_PASS") {
-              $matKhau = "$env:RESTORE_PASS"
-              $source  = 'restored'
-          } else {
-              $matKhau = 'Aistv@2026'
-              $source  = 'default_fixed'
-          }
+          $matKhau = "$env:RDP_PASSWORD_INPUT"
+          if ([string]::IsNullOrWhiteSpace("$matKhau")) { $matKhau = 'Aistv@2026' }
+          $source = 'input'
+
+          Write-Host ""
+          Write-Host "CAU HINH USER GOC + USER NGOAI" -ForegroundColor Yellow
+          Write-Host "  User goc: $user | User ngoai: $newUser" -ForegroundColor Cyan
 
           try {
               & net accounts /maxpwage:unlimited *> $null
@@ -1222,24 +1252,34 @@ jobs:
           } catch {}
 
           $securePass = ConvertTo-SecureString "$matKhau" -AsPlainText -Force
-
           try {
               Set-LocalUser -Name "$user" -Password ($securePass) -PasswordNeverExpires ($true) -ErrorAction Stop
-              Write-Host "  OK: Set-LocalUser password + never expires" -ForegroundColor Green
+              Write-Host "  OK: Set password user goc $user" -ForegroundColor Green
           } catch {
-              Write-Host "  WARN: Set-LocalUser fail, fallback net user: $($_.Exception.Message)" -ForegroundColor Yellow
+              Write-Host "  WARN: Set-LocalUser fail: $($_.Exception.Message)" -ForegroundColor Yellow
               & net user "$user" "$matKhau" /active:yes /expires:never *> $null
           }
 
-          try {
-              Set-LocalUser -Name "$user" -PasswordNeverExpires ($true) -ErrorAction Stop
-          } catch {
-              Write-Host "  WARN: Set PasswordNeverExpires fail: $($_.Exception.Message)" -ForegroundColor Yellow
+          $existingNew = Get-LocalUser -Name "$newUser" -ErrorAction SilentlyContinue
+          if (-not $existingNew) {
+              try {
+                  New-LocalUser -Name "$newUser" -Password ($securePass) -PasswordNeverExpires -AccountNeverExpires -ErrorAction Stop | Out-Null
+                  Write-Host "  OK: Da tao user ngoai $newUser" -ForegroundColor Green
+              } catch {
+                  Write-Host "  WARN: Tao user $newUser fail: $($_.Exception.Message)" -ForegroundColor Yellow
+              }
+          } else {
+              try {
+                  Set-LocalUser -Name "$newUser" -Password ($securePass) -PasswordNeverExpires ($true) -ErrorAction Stop
+                  Write-Host "  OK: Cap nhat password user ngoai $newUser" -ForegroundColor Green
+              } catch {}
           }
 
-          Enable-LocalUser -Name "$user" -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group 'Administrators' -Member "$user" -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group 'Remote Desktop Users' -Member "$user" -ErrorAction SilentlyContinue
+          foreach ($u in @($user, $newUser)) {
+              Add-LocalGroupMember -Group 'Administrators' -Member "$u" -ErrorAction SilentlyContinue
+              Add-LocalGroupMember -Group 'Remote Desktop Users' -Member "$u" -ErrorAction SilentlyContinue
+              Enable-LocalUser -Name "$u" -ErrorAction SilentlyContinue
+          }
 
           try {
               Set-Service -Name 'AppXSvc' -StartupType Automatic -ErrorAction SilentlyContinue
@@ -1255,6 +1295,7 @@ jobs:
           $global:LASTEXITCODE = 0
           "RDP_PASS=$matKhau" >> "$env:GITHUB_ENV"
           "RDP_PASS_SOURCE=$source" >> "$env:GITHUB_ENV"
+          "RDP_EXTRA_USER=$newUser" >> "$env:GITHUB_ENV"
 
           $winlogon = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
           Set-ItemProperty -Path "$winlogon" -Name 'AutoAdminLogon' -Value '1' -Force
@@ -1304,10 +1345,7 @@ jobs:
               if ($userSid) {
                   & icacls "$sunDir" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null
                   & icacls "$sunPersistCfg" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null
-              } else {
-                  Write-Host "  WARN: Khong co SID user $user, bo qua icacls" -ForegroundColor Yellow
               }
-
               Push-Location "$sunDir"
               & "$sunExe" --creds "$user" "$matKhau" *> $null
               Pop-Location
@@ -1325,11 +1363,8 @@ jobs:
                   Write-Host "  OK: Service $($svcObj.Name)" -ForegroundColor Green
               } else {
                   Start-Process -FilePath "$sunExe" -WorkingDirectory "$sunDir" -WindowStyle Hidden
-                  Write-Host "  OK: Sunshine truc tiep" -ForegroundColor Green
               }
               "SUNSHINE_READY=1" >> "$env:GITHUB_ENV"
-          } else {
-              Write-Host "  ERR: Khong tim thay sunshine.exe tai $sunExe" -ForegroundColor Red
           }
 
           try {
@@ -1354,26 +1389,26 @@ jobs:
           } catch {}
 
           'SESSION_READY=1' >> "$env:GITHUB_ENV"
-          Write-Host "User [$user] ready!" -ForegroundColor Green
+          Write-Host "User [$user] + [$newUser] ready!" -ForegroundColor Green
           exit 0
 
-      - name: 🌐 Web Panel
+      - name: 🌐 Khởi chạy Web Quản Lý RDP & Sunshine (Port 8080) & Ghi State
         shell: pwsh
         env:
           WINDOWS_IMAGE: ${{ inputs.windows_image }}
+          CREATOR: ${{ inputs.creator_name }}
         run: |
-          $savePass = $null
-          if ("$env:RDP_PASS_SOURCE" -ne 'secret') {
-              $savePass = "$env:RDP_PASS"
-          }
+          $savePass = "$env:RDP_PASS"
 
           $uObj = Get-LocalUser -Name "$env:RDP_USER" -ErrorAction SilentlyContinue
           $userSid = if ($uObj) { $uObj.SID.Value } else { $null }
 
           $state = [ordered]@{
               machineId       = "$env:MACHINE_ID"
+              creator         = "$env:CREATOR"
               releaseTag      = "$env:RELEASE_TAG"
               user            = "$env:RDP_USER"
+              extraUser       = "$env:RDP_EXTRA_USER"
               sid             = "$userSid"
               password        = $savePass
               passwordSource  = "$env:RDP_PASS_SOURCE"
@@ -1429,6 +1464,7 @@ jobs:
               '            $usedGB = if ($disk) { [math]::Round($disk.Used / 1GB, 2) } else { 0 }'
               '            $health = [ordered]@{'
               '                machineId = "$env:MACHINE_ID"'
+              '                creator = "$env:CREATOR"'
               '                status = "ok"'
               '                rdp = (Get-Service TermService -ErrorAction SilentlyContinue).Status.ToString()'
               '                sunshine = if (Test-Port 47990) { "ok" } else { "fail" }'
@@ -1465,10 +1501,11 @@ jobs:
               '            "<!DOCTYPE html><html><head><meta charset=''utf-8''><title>ALB Panel</title>"'
               '            "<style>body{background:#0f172a;color:#f8fafc;font-family:Segoe UI;padding:24px;display:flex;justify-content:center}.card{max-width:600px;background:#1e293b;border:1px solid #334155;border-radius:16px;padding:24px}h1{color:#38bdf8;margin:0 0 8px}.row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #1e293b}.val{color:#4ade80;font-weight:600}.alert{background:#065f46;color:#ecfdf5;padding:14px;border-radius:10px;margin:16px 0}button{width:100%;padding:14px;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;color:white;margin:6px 0}.btn-save{background:#0284c7}.btn-restart{background:#d97706}.btn-stop{background:#dc2626}.qr{text-align:center;margin-top:16px}</style></head><body><div class=''card''>"'
               '            "<h1>ALB Panel [$($env:MACHINE_ID)]</h1>"'
+              '            "<div class=''sub''>Creator: $($env:CREATOR)</div>"'
               '            "$bannerHtml"'
               '            "<div class=''row''><span>IP:</span><span class=''val''>$($env:TAILSCALE_IP)</span></div>"'
               '            "<div class=''row''><span>Sunshine:</span><span class=''val''><a style=''color:#facc15'' href=''https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/''>Mo</a></span></div>"'
-              '            "<div class=''row''><span>User:</span><span class=''val''>$($env:RDP_USER)</span></div>"'
+              '            "<div class=''row''><span>User:</span><span class=''val''>$($env:RDP_USER) / $($env:RDP_EXTRA_USER)</span></div>"'
               '            "<div class=''row''><span>Audio:</span><span class=''val''>$audioName</span></div>"'
               '            "<div class=''row''><span>O dia:</span><span class=''val''>$($env:MOUNT_LETTER):\</span></div>"'
               '            "<div class=''row''><span>Con lai:</span><span class=''val''>${h}h${m}m${s}s</span></div>"'
@@ -1493,7 +1530,7 @@ jobs:
           Write-Host "Web Panel: http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Green
           exit 0
 
-      - name: 🚀 StarDesk
+      - name: 🚀 Cài đặt & Mở StarDesk (sau khi mọi thứ đã cài xong)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue'
@@ -1544,46 +1581,34 @@ jobs:
           $global:LASTEXITCODE = 0
           exit 0
 
-      - name: 📢 Telegram
-        if: ${{ always() && inputs.enable_telegram }}
+      - name: 🎉 Thông tin kết nối (RDP + Sunshine + StarDesk + Âm thanh ảo)
         shell: pwsh
         env:
-          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
-          JOB_STATUS: ${{ job.status }}
-        run: |
-          if (-not "$env:TG_TOKEN" -or -not "$env:TG_CHAT") { exit 0 }
-          $icon = if ("$env:JOB_STATUS" -eq 'success') { '✅' } else { '❌' }
-          $msg = "$icon <b>ALB RDP v2.2</b>`nMáy: <code>$env:MACHINE_ID</code>`nStatus: $env:JOB_STATUS`nIP: <code>$env:TAILSCALE_IP</code>`nPanel: http://$env:TAILSCALE_IP:$env:WEB_PORT/"
-          try {
-              $uri = "https://api.telegram.org/bot$($env:TG_TOKEN)/sendMessage"
-              Invoke-RestMethod -Uri "$uri" -Method Post -Body @{ chat_id = "$env:TG_CHAT"; text = "$msg"; parse_mode = "HTML" } -TimeoutSec 20 | Out-Null
-          } catch {}
-          exit 0
-
-      - name: 🎉 Info
-        shell: pwsh
+          CREATOR: ${{ inputs.creator_name }}
         run: |
           $passText = "$env:RDP_PASS"
-          if ("$env:RDP_PASS_SOURCE" -eq 'secret') { $passText = '(secret)' }
           $audioName = if ($env:AUDIO_DEVICE_NAME) { $env:AUDIO_DEVICE_NAME } else { 'N/A' }
+          $sdStatus = if (Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue) { 'Running' } else { 'Not running' }
           Write-Host ""
           Write-Host "============================================================" -ForegroundColor Cyan
-          Write-Host "  ALB ULTIMATE RDP v2.2 — SAN SANG!" -ForegroundColor Cyan
+          Write-Host "  ALB ULTIMATE RDP v4.0 — SAN SANG!" -ForegroundColor Cyan
           Write-Host "============================================================" -ForegroundColor Cyan
           Write-Host "  May         : $env:MACHINE_ID ($env:RELEASE_TAG)" -ForegroundColor Cyan
+          Write-Host "  Creator     : $env:CREATOR" -ForegroundColor Cyan
           Write-Host "  IP Tailscale: $env:TAILSCALE_IP (RDP: 3389)" -ForegroundColor White
           Write-Host "  Sunshine    : https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/" -ForegroundColor Yellow
           Write-Host "  Panel       : http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Yellow
-          Write-Host "  User        : $env:RDP_USER" -ForegroundColor Green
+          Write-Host "  User goc    : $env:RDP_USER" -ForegroundColor Green
+          Write-Host "  User ngoai  : $env:RDP_EXTRA_USER" -ForegroundColor Green
           Write-Host "  Mat khau    : $passText" -ForegroundColor Green
           Write-Host "  Audio       : $audioName" -ForegroundColor Green
+          Write-Host "  StarDesk    : $sdStatus" -ForegroundColor Green
           Write-Host "  O dia       : $($env:MOUNT_LETTER):\" -ForegroundColor Green
           Write-Host "  Thoi gian   : $env:DISPLAY_TIME" -ForegroundColor White
           Write-Host "============================================================" -ForegroundColor Cyan
           exit 0
 
-      - name: ⏳ Keepalive
+      - name: ⏳ Duy trì phiên làm việc (lắng nghe web panel & giữ Sunshine/StarDesk/Audio)
         id: keepalive
         shell: pwsh
         run: |
@@ -1688,7 +1713,7 @@ jobs:
           }
           exit 0
 
-      - name: 💾 Lưu cuối phiên
+      - name: 💾 Tắt Sunshine, Kill StarDesk & Lưu toàn bộ ổ đĩa cuối phiên lên GitHub
         if: always()
         shell: pwsh
         run: |
@@ -1705,7 +1730,7 @@ jobs:
           }
           exit 0
 
-      - name: 🧹 Dọn dẹp
+      - name: 🧹 Dọn dẹp hệ thống
         if: always()
         shell: pwsh
         run: |
@@ -1724,39 +1749,40 @@ jobs:
           Stop-Service -Name TermService -Force -ErrorAction SilentlyContinue
           exit 0
 
-      - name: 🔁 Auto-restart
+      - name: 🔁 Kích hoạt phiên tiếp theo & Mở lại ổ đĩa
         if: ${{ always() && steps.keepalive.outcome == 'success' && env.FORCE_STOP_ONLY != '1' && inputs.auto_restart && !inputs.run_once }}
         shell: pwsh
         env:
           DURATION: ${{ inputs.duration }}
           WIN_IMAGE: ${{ inputs.windows_image }}
-          FIXED_PASS: ${{ inputs.fixed_password }}
+          RDP_USERNAME: ${{ inputs.rdp_username }}
+          RDP_PASSWORD: ${{ inputs.rdp_password }}
+          CREATOR: ${{ inputs.creator_name }}
           VDD_RES: ${{ inputs.vdd_resolution }}
           PKGS: ${{ inputs.choco_packages }}
           APP_URLS: ${{ inputs.app_urls }}
           OPT: ${{ inputs.optimize_windows }}
           DDNS: ${{ inputs.enable_duckdns }}
-          TG: ${{ inputs.enable_telegram }}
         run: |
           $wf      = [System.IO.Path]::GetFileName(("$env:GITHUB_WORKFLOW_REF" -split '@')[0])
           $optStr  = ("$env:OPT").ToLower()
           $ddnsStr = ("$env:DDNS").ToLower()
-          $tgStr   = ("$env:TG").ToLower()
           Write-Host "Restart: $wf may [$env:MACHINE_ID]" -ForegroundColor Cyan
           gh workflow run "$wf" --ref "$env:GITHUB_REF_NAME" `
-              -f "machine_id=$env:MACHINE_ID" `
+              -f "machine_ids=$env:MACHINE_ID" `
               -f "duration=$env:DURATION" `
               -f auto_restart=true `
               -f run_once=false `
               -f "drive_letter=$env:MOUNT_LETTER" `
               -f "vhd_size_gb=$env:VHD_SIZE_GB" `
               -f "windows_image=$env:WIN_IMAGE" `
-              -f "fixed_password=$env:FIXED_PASS" `
+              -f "rdp_username=$env:RDP_USERNAME" `
+              -f "rdp_password=$env:RDP_PASSWORD" `
+              -f "creator_name=$env:CREATOR" `
               -f "vdd_resolution=$env:VDD_RES" `
               -f "choco_packages=$env:PKGS" `
               -f "app_urls=$env:APP_URLS" `
               -f "optimize_windows=$optStr" `
-              -f "enable_duckdns=$ddnsStr" `
-              -f "enable_telegram=$tgStr"
+              -f "enable_duckdns=$ddnsStr"
           if (($LASTEXITCODE) -ne 0) { throw 'Khong restart duoc' }
           Write-Host "Restart OK" -ForegroundColor Green
