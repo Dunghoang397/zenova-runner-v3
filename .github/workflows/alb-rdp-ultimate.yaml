@@ -1,4 +1,4 @@
-name: ZENOVA-VPSFREE-ULTIMATE
+name: ALB-VPSFREE-ULTIMATE
 
 on:
   workflow_dispatch:
