@@ -15,7 +15,7 @@ on:
         type: choice
         options: ['1h', '3h', '5h00m']
       auto_restart:
-        description: '🔁 Tự khởi động phiên mới sau khi hết giờ'
+        description: '🔁 Tự khởi động phiên mới'
         required: false
         default: true
         type: boolean
@@ -57,7 +57,7 @@ on:
         default: true
         type: boolean
       enable_tailscale:
-        description: '🌐 Bật Tailscale Funnel (cần secret TAILSCALE_AUTH_KEY)'
+        description: '🌐 Bật Tailscale Funnel'
         required: false
         default: true
         type: boolean
@@ -133,7 +133,7 @@ jobs:
           }
           $global:LASTEXITCODE = 0; Write-Host "OK mount ${dl}:\ | May: $cleanId" -ForegroundColor Green
 
-      - name: 🧰 Tạo save-data.ps1 (LƯU STARDESK + 7Z TỐI ƯU)
+      - name: 🧰 Tạo save-data.ps1 (LƯU STARDESK + EVKEY + SPOTIFY)
         shell: pwsh
         run: |
           $scriptLines = @(
@@ -143,7 +143,7 @@ jobs:
               '$root = "$env:SHARED_ROOT"; $osDir = "$env:SHARED_OS_DIR"; $dl = "$env:MOUNT_LETTER"'
               'if ((-not ("$root")) -or (-not (Test-Path "$root"))) { exit 0 }'
               'try { $drive = Get-PSDrive -Name "$dl" -ErrorAction Stop; $freeGB = [math]::Round($drive.Free / 1GB, 2); if ($freeGB -lt 2) { exit 1 } } catch {}'
-              '$appsToClose = @("chrome","msedge","brave","firefox","coccoc","opera","vivaldi","discord","Telegram","Zalo","steam","EpicGamesLauncher","Spotify","Code","Notion","StarDesk")'
+              '$appsToClose = @("chrome","msedge","brave","firefox","coccoc","opera","vivaldi","discord","Telegram","Zalo","steam","EpicGamesLauncher","Spotify","Code","Notion","StarDesk","EVKey","EVKey64")'
               'Get-Process -Name $appsToClose -ErrorAction SilentlyContinue | ForEach-Object { $null = $_.CloseMainWindow() }; Start-Sleep -Seconds 3'
               'Get-Process -Name $appsToClose -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue'
               'if ("$Reason" -eq "session-end") { Get-Service -Name "*StarDesk*" -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue; Get-Process -Name "StarDesk*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; & taskkill.exe /F /IM "StarDesk*" /T *> $null }'
@@ -170,12 +170,13 @@ jobs:
               'if (Test-Path "$env:USERPROFILE\.stardesk") { robocopy "$env:USERPROFILE\.stardesk" "$sdBackupDir\DotStarDesk" /MIR /XJ /R:1 /W:1 /MT:4 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }'
               '$sdRegDir = [System.IO.Path]::Combine("$sdBackupDir", "Registry"); New-Item -ItemType Directory -Force -Path "$sdRegDir" | Out-Null'
               'reg export "HKCU\Software\StarDesk" "$sdRegDir\HKCU-StarDesk.reg" /y *> $null; reg export "HKLM\SOFTWARE\StarDesk" "$sdRegDir\HKLM-StarDesk.reg" /y *> $null; reg export "HKLM\SOFTWARE\WOW6432Node\StarDesk" "$sdRegDir\HKLM-WOW6432-StarDesk.reg" /y *> $null'
+              '$evKeyDir = [System.IO.Path]::Combine("$osDir", "EVKey"); if (Test-Path "$evKeyDir") { Remove-Item -Path "$evKeyDir" -Recurse -Force -ErrorAction SilentlyContinue }; New-Item -ItemType Directory -Force -Path "$evKeyDir" | Out-Null; if (Test-Path "C:\ALB-Apps\EVKey") { robocopy "C:\ALB-Apps\EVKey" "$evKeyDir" /MIR /XJ /R:1 /W:1 /MT:4 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }'
               '$gitStage = [System.IO.Path]::Combine("$env:RUNNER_TEMP", "git-state-sync")'
               'try { if (Test-Path "$gitStage") { Remove-Item -Path "$gitStage" -Recurse -Force -ErrorAction SilentlyContinue }; New-Item -ItemType Directory -Force -Path "$gitStage" | Out-Null; Push-Location "$gitStage"; git init -q; git config user.name "ALB-Bot"; git config user.email "bot@alb.local"; $encodedToken = [System.Uri]::EscapeDataString($env:GH_TOKEN); git remote add origin "https://x-access-token:$encodedToken@github.com/$($env:GH_REPO).git"; git fetch origin "$env:STATE_BRANCH" -q 2>$null; if (($LASTEXITCODE) -eq 0) { git checkout -B "$env:STATE_BRANCH" "origin/$env:STATE_BRANCH" -q } else { git checkout --orphan "$env:STATE_BRANCH" -q }; robocopy "$env:SHARED_SESSION_DIR" "$gitStage\sessions" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null; robocopy "$regBk" "$gitStage\registry" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0; git add -A; git commit -m "Sync state [$env:MACHINE_ID]" -q 2>$null; git push -u origin "$env:STATE_BRANCH" --force -q 2>$null; Pop-Location } catch { if (((Get-Location).Path) -eq "$gitStage") { Pop-Location } }'
               '$packDir = [System.IO.Path]::Combine("$env:RUNNER_TEMP", "alb-pack-$Reason"); if (Test-Path "$packDir") { Remove-Item -Path "$packDir" -Recurse -Force -ErrorAction SilentlyContinue }; New-Item -ItemType Directory -Force -Path "$packDir" | Out-Null'
               '$archiveBase = [System.IO.Path]::Combine("$packDir", "alb-drive.7z"); Push-Location "$root"; $sevenZipArgs = @("a", "-t7z", "-mx=1", "-mmt=2", "-ssw", "-v1900m", "$archiveBase", "*", "-xr!Pagefile.sys", "-xr!swapfile.sys", "-xr!System Volume Information"); & 7z @sevenZipArgs *> $null; $sevenZipCode = $LASTEXITCODE; Pop-Location'
               '$chunks = @(Get-ChildItem -Path "$packDir" -Filter "alb-drive.7z.*" | Sort-Object Name); if (($chunks.Count) -eq 0) { exit 1 }'
-              '$manifest = [ordered]@{ machineId = "$env:MACHINE_ID"; creator = "$env:CREATOR_NAME"; updatedUtc = (Get-Date).ToUniversalTime().ToString("o"); reason = "$Reason"; chunkCount = $chunks.Count; chunks = @($chunks | ForEach-Object { [ordered]@{ name = $_.Name; size = $_.Length } }) }'
+              '$manifest = [ordered]@{ machineId = "$env:MACHINE_ID"; updatedUtc = (Get-Date).ToUniversalTime().ToString("o"); reason = "$Reason"; chunkCount = $chunks.Count; chunks = @($chunks | ForEach-Object { [ordered]@{ name = $_.Name; size = $_.Length } }) }'
               '$manifestPath = [System.IO.Path]::Combine("$packDir", "drive-manifest.json"); $manifest | ConvertTo-Json -Depth 5 | Set-Content -Path "$manifestPath" -Encoding UTF8'
               '$uploadFiles = @($chunks | ForEach-Object { $_.FullName }) + @("$manifestPath"); $uploadOk = $false'
               'for ($i = 1; $i -le 3; $i++) { $allOk = $true; foreach ($f in $uploadFiles) { gh release upload "$env:RELEASE_TAG" "$f" --repo "$env:GH_REPO" --clobber; if (($LASTEXITCODE) -ne 0) { $allOk = $false }; Start-Sleep -Seconds 1 }; if ($allOk) { $uploadOk = $true; break }; Start-Sleep -Seconds 10 }'
@@ -237,6 +238,8 @@ jobs:
               $sdRegDir = [System.IO.Path]::Combine("$sdBackup", "Registry")
               if (Test-Path "$sdRegDir") { Get-ChildItem -Path "$sdRegDir" -Filter '*.reg' | ForEach-Object { reg import ($_.FullName) *>$null } }
           }
+          $evKeyBackup = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", "EVKey")
+          if (Test-Path "$evKeyBackup") { New-Item -ItemType Directory -Force -Path "C:\ALB-Apps\EVKey" | Out-Null; robocopy "$evKeyBackup" "C:\ALB-Apps\EVKey" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }
           if (Test-Path "$env:SHARED_STATE_FILE") { try { $state = Get-Content -Raw -Path "$env:SHARED_STATE_FILE" | ConvertFrom-Json; if ($state.password) { "RESTORE_PASS=$($state.password)" >> "$env:GITHUB_ENV" } } catch {} }
           'DATA_RESTORED=1' >> "$env:GITHUB_ENV"; exit 0
 
@@ -344,26 +347,19 @@ jobs:
           if (($LASTEXITCODE) -ne 0) { Start-Sleep -Seconds 5; & "$ts" up "--authkey=$env:TAILSCALE_AUTH_KEY" "--hostname=$tsHost" --accept-routes --accept-dns --reset --unattended; if (($LASTEXITCODE) -ne 0) { "TAILSCALE_IP=127.0.0.1" >> "$env:GITHUB_ENV"; "FUNNEL_URL=" >> "$env:GITHUB_ENV"; exit 0 } }
           & "$ts" set --unattended=true
           Start-Sleep -Seconds 2
-          try {
-              & "$ts" funnel --bg 8080 2>&1 | Out-Null
-              Start-Sleep -Seconds 3
-              $funnelStatus = (& "$ts" funnel status 2>&1 | Out-String)
-              if ($funnelStatus -match '(https://[^\s]+)') { $funnelUrl = $Matches[1].TrimEnd('/'); "FUNNEL_URL=$funnelUrl" >> "$env:GITHUB_ENV"; Write-Host "OK: Funnel URL = $funnelUrl" -ForegroundColor Green } else { "FUNNEL_URL=" >> "$env:GITHUB_ENV" }
-          } catch { "FUNNEL_URL=" >> "$env:GITHUB_ENV" }
+          try { & "$ts" funnel --bg 8080 2>&1 | Out-Null; Start-Sleep -Seconds 3; $funnelStatus = (& "$ts" funnel status 2>&1 | Out-String); if ($funnelStatus -match '(https://[^\s]+)') { $funnelUrl = $Matches[1].TrimEnd('/'); "FUNNEL_URL=$funnelUrl" >> "$env:GITHUB_ENV"; Write-Host "OK: Funnel URL = $funnelUrl" -ForegroundColor Green } else { "FUNNEL_URL=" >> "$env:GITHUB_ENV" } } catch { "FUNNEL_URL=" >> "$env:GITHUB_ENV" }
           $ip = $null; 1..20 | ForEach-Object { if (-not ($ip)) { $out = (& "$ts" ip -4 2>&1 | Out-String).Trim(); if ("$out" -match '^\d+\.\d+\.\d+\.\d+$') { $ip = "$out" } else { Start-Sleep -Seconds 3 } } }
           if (-not ($ip)) { "TAILSCALE_IP=127.0.0.1" >> "$env:GITHUB_ENV"; exit 0 }
           "TAILSCALE_IP=$ip" >> "$env:GITHUB_ENV"
           exit 0
 
-      - name: 👤 User gốc + Sunshine
+      - name: 👤 User gốc + Sunshine (Mật khẩu cố định Aistv@2026)
         shell: pwsh
         env:
-          RDP_PASSWORD_SECRET: ${{ secrets.RDP_PASSWORD }}
           FIXED_PASS_INPUT: ${{ inputs.fixed_password }}
         run: |
           $user = "$env:RDP_USER"; $profPath = "$env:PROFILE_PATH"
-          if (-not ([string]::IsNullOrWhiteSpace("$env:RDP_PASSWORD_SECRET"))) { $matKhau = ("$env:RDP_PASSWORD_SECRET").Trim(); $source = 'secret' }
-          elseif (-not ([string]::IsNullOrWhiteSpace("$env:FIXED_PASS_INPUT"))) { $matKhau = ("$env:FIXED_PASS_INPUT").Trim(); $source = 'fixed_input' }
+          if (-not ([string]::IsNullOrWhiteSpace("$env:FIXED_PASS_INPUT"))) { $matKhau = ("$env:FIXED_PASS_INPUT").Trim(); $source = 'fixed_input' }
           elseif ("$env:RESTORE_PASS") { $matKhau = "$env:RESTORE_PASS"; $source = 'restored' }
           else { $matKhau = 'Aistv@2026'; $source = 'default_fixed' }
           try { & net accounts /maxpwage:unlimited *> $null; $secCfg = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'secpol.cfg'); $secDb = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'secpol.sdb'); & secedit /export /cfg "$secCfg" *> $null; if (Test-Path "$secCfg") { $rawSec = Get-Content -Raw -Path "$secCfg"; $rawSec = $rawSec -replace 'PasswordComplexity\s*=\s*1', 'PasswordComplexity = 0'; $rawSec = $rawSec -replace 'MinimumPasswordLength\s*=\s*\d+', 'MinimumPasswordLength = 0'; Set-Content -Path "$secCfg" -Value "$rawSec" -Encoding Unicode; & secedit /configure /db "$secDb" /cfg "$secCfg" /areas SECURITYPOLICY *> $null; Remove-Item -Path "$secCfg", "$secDb" -Force -ErrorAction SilentlyContinue } } catch {}
@@ -377,27 +373,19 @@ jobs:
           $winlogon = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'; Set-ItemProperty -Path "$winlogon" -Name 'AutoAdminLogon' -Value '1' -Force; Set-ItemProperty -Path "$winlogon" -Name 'DefaultUserName' -Value "$user" -Force; Set-ItemProperty -Path "$winlogon" -Name 'DefaultPassword' -Value "$matKhau" -Force; Set-ItemProperty -Path "$winlogon" -Name 'DefaultDomainName' -Value "$env:COMPUTERNAME" -Force
           $sunDir = 'C:\Program Files\Sunshine'; $sunExe = "$sunDir\sunshine.exe"; $sunPersistCfg = "$env:SUNSHINE_PERSIST_CFG"; $uObj = Get-LocalUser -Name "$user" -ErrorAction SilentlyContinue; $userSid = if ($uObj) { $uObj.SID.Value } else { $null }
           if (Test-Path "$sunExe") { if ($userSid) { & icacls "$sunDir" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null; & icacls "$sunPersistCfg" /grant "*${userSid}:(OI)(CI)F" /T /C /Q *> $null }; Push-Location "$sunDir"; & "$sunExe" --creds "$user" "$matKhau" *> $null; Pop-Location; $svcExe = "$sunDir\tools\sunshinesvc.exe"; $svcObj = Get-Service -Name 'SunshineService', 'sunshinesvc' -ErrorAction SilentlyContinue | Select-Object -First 1; if ((-not ($svcObj)) -and (Test-Path "$svcExe")) { & sc.exe create SunshineService binPath= "`"$svcExe`"" start= auto DisplayName= "Sunshine Gamestream Service" *> $null; $svcObj = Get-Service -Name 'SunshineService' -ErrorAction SilentlyContinue }; if ($svcObj) { Set-Service -Name ($svcObj.Name) -StartupType Automatic -ErrorAction SilentlyContinue; Start-Service -Name ($svcObj.Name) -ErrorAction SilentlyContinue } else { Start-Process -FilePath "$sunExe" -WorkingDirectory "$sunDir" -WindowStyle Hidden }; "SUNSHINE_READY=1" >> "$env:GITHUB_ENV" }
+          try { $desktopDir = [System.IO.Path]::Combine($profPath, 'Desktop'); New-Item -ItemType Directory -Force -Path "$desktopDir" | Out-Null; $ws = New-Object -ComObject WScript.Shell; @("$desktopDir", 'C:\Users\Public\Desktop') | ForEach-Object { $d = "$_"; $ws.CreateShortcut("$d\WEB-QUAN-LY-RDP.url").TargetPath = "http://127.0.0.1:$($env:WEB_PORT)/"; $ws.CreateShortcut("$d\WEB-QUAN-LY-RDP.url").Save(); $ws.CreateShortcut("$d\SUNSHINE-WEB-UI.url").TargetPath = "https://127.0.0.1:$($env:SUNSHINE_WEB_PORT)/"; $ws.CreateShortcut("$d\SUNSHINE-WEB-UI.url").Save(); $tsconBat = "$d\NGAT-RDP-GIU-MAN-HINH-SUNSHINE.bat"; $batLines = @('@echo off', 'for /f "tokens=3-4" %%a in (''query session %USERNAME%'') do @if "%%b"=="Active" tscon %%a /dest:console'); Set-Content -Path "$tsconBat" -Value ($batLines -join "`r`n") -Encoding ASCII } } catch {}
           'SESSION_READY=1' >> "$env:GITHUB_ENV"; exit 0
 
-      - name: 📦 Cài StarDesk (BẢN MỚI NHẤT) + Discord
+      - name: 📦 Cài EVKey + Spotify + Discord + StarDesk (SIÊU NHANH)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue'; $ProgressPreference = 'SilentlyContinue'
-          $user = "$env:RDP_USER"; $appExe = 'C:\Program Files\StarDesk\StarDesk.exe'; $instCache = "$env:INSTALLER_CACHE"
-          New-Item -ItemType Directory -Force -Path "$instCache" | Out-Null
-          $sdBackup = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", "StarDesk-Backup")
-          if (Test-Path "$sdBackup\ProgramFiles") { robocopy "$sdBackup\ProgramFiles" "C:\Program Files\StarDesk" /E /XJ /R:1 /W:1 /MT:4 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0; if (Test-Path "$sdBackup\ProgramData") { robocopy "$sdBackup\ProgramData" "C:\ProgramData\StarDesk" /E /XJ /R:1 /W:1 /MT:4 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }; if (Test-Path "$sdBackup\LocalAppData") { robocopy "$sdBackup\LocalAppData" "$env:LOCALAPPDATA\StarDesk" /E /XJ /R:1 /W:1 /MT:4 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }; if (Test-Path "$sdBackup\RoamingAppData") { robocopy "$sdBackup\RoamingAppData" "$env:APPDATA\StarDesk" /E /XJ /R:1 /W:1 /MT:4 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }; $sdRegDir = [System.IO.Path]::Combine("$sdBackup", "Registry"); if (Test-Path "$sdRegDir") { Get-ChildItem -Path "$sdRegDir" -Filter '*.reg' | ForEach-Object { reg import ($_.FullName) *>$null } } }
-          if (-not (Test-Path "$appExe")) {
-              $wingetOk = $false
-              try { winget install Stardesk.Stardesk --exact --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null; $global:LASTEXITCODE = 0; Start-Sleep -Seconds 5; if (Test-Path "$appExe") { $wingetOk = $true } } catch {}
-              if (-not $wingetOk) {
-                  $cachedInstaller = Get-ChildItem -Path "$instCache" -Filter 'StarDesk*.exe' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-                  if ($cachedInstaller) { $proc = Start-Process -FilePath "$($cachedInstaller.FullName)" -ArgumentList '/S' -Wait -PassThru -ErrorAction SilentlyContinue; Start-Sleep -Seconds 5 }
-              }
-          }
-          Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue | ForEach-Object { Set-Service -Name ($_.Name) -StartupType Automatic -ErrorAction SilentlyContinue; Start-Service -Name ($_.Name) -ErrorAction SilentlyContinue }
-          if (Test-Path "$appExe") { try { & schtasks.exe /Create /TN "ALB-Launch-StarDesk" /TR "`"$appExe`"" /SC ONCE /ST 00:00 /RU "$user" /RL HIGHEST /IT /F *> $null; & schtasks.exe /Run /TN "ALB-Launch-StarDesk" *> $null; Start-Sleep -Seconds 3 } catch {}; if (-not (Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue)) { Start-Process -FilePath "$appExe" -WorkingDirectory 'C:\Program Files\StarDesk' -ErrorAction SilentlyContinue }; "STARDESK_READY=1" >> "$env:GITHUB_ENV" }
-          try { $discord = "$env:TEMP\DiscordSetup.exe"; Invoke-WebRequest -Uri "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x64" -OutFile $discord -UseBasicParsing -TimeoutSec 45; if (Test-Path $discord) { $proc = Start-Process -FilePath $discord -PassThru -NoNewWindow; $waited = 0; while ((-not $proc.HasExited) -and ($waited -lt 75)) { Start-Sleep -Seconds 1; $waited += 1 }; if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } } } catch {}
+          $user = "$env:RDP_USER"; $instCache = "$env:INSTALLER_CACHE"; $appsDir = "C:\ALB-Apps"
+          New-Item -ItemType Directory -Force -Path "$instCache", "$appsDir\EVKey" | Out-Null
+          try { Write-Host "  [1/4] EVKey..." -ForegroundColor Cyan; $evKeyZip = "$env:TEMP\EVKey.zip"; $evKeyDest = "$appsDir\EVKey"; if (-not (Test-Path "$evKeyDest\EVKey64.exe")) { Invoke-WebRequest -Uri "https://github.com/lamquangminh/EVKey/releases/download/Release/EVKey.zip" -OutFile $evKeyZip -UseBasicParsing -TimeoutSec 30; if (Test-Path $evKeyZip) { Expand-Archive -Path $evKeyZip -DestinationPath "$evKeyDest" -Force; $evKeyExe = if (Test-Path "$evKeyDest\EVKey64.exe") { "$evKeyDest\EVKey64.exe" } elseif (Test-Path "$evKeyDest\EVKey32.exe") { "$evKeyDest\EVKey32.exe" } else { $null }; if ($evKeyExe) { $startupDir = [System.IO.Path]::Combine($env:APPDATA, 'Microsoft\Windows\Start Menu\Programs\Startup'); New-Item -ItemType Directory -Force -Path "$startupDir" | Out-Null; $ws = New-Object -ComObject WScript.Shell; $ws.CreateShortcut("$startupDir\EVKey.lnk").TargetPath = "$evKeyExe"; $ws.CreateShortcut("$startupDir\EVKey.lnk").Save(); Write-Host "  OK: EVKey" -ForegroundColor Green } } } else { Write-Host "  OK: EVKey da co san" -ForegroundColor Green } } catch { Write-Host "  WARN: EVKey - $($_.Exception.Message)" -ForegroundColor Yellow }
+          try { Write-Host "  [2/4] Spotify..." -ForegroundColor Cyan; $spCacheDir = [System.IO.Path]::Combine("$instCache", 'Spotify'); New-Item -ItemType Directory -Force -Path "$spCacheDir" | Out-Null; $spInstaller = "$spCacheDir\SpotifySetup.exe"; $spInstalled = Test-Path "$env:LOCALAPPDATA\Spotify\Spotify.exe"; if ($spInstalled) { Write-Host "  OK: Spotify da cai san" -ForegroundColor Green } else { if (-not (Test-Path "$spInstaller")) { try { winget install Spotify.Spotify --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null; $global:LASTEXITCODE = 0 } catch {}; if (-not (Test-Path "$env:LOCALAPPDATA\Spotify\Spotify.exe")) { try { Invoke-WebRequest -Uri "https://download.scdn.co/SpotifyFullSetupX64.exe" -OutFile "$spInstaller" -UseBasicParsing -TimeoutSec 60 } catch {} } }; if ((Test-Path "$spInstaller") -and ((Get-Item "$spInstaller").Length -gt 5MB)) { $proc = Start-Process -FilePath "$spInstaller" -ArgumentList '/silent', '/skip-app-launch' -Wait -PassThru } } } catch { Write-Host "  WARN: Spotify - $($_.Exception.Message)" -ForegroundColor Yellow }
+          try { Write-Host "  [3/4] StarDesk..." -ForegroundColor Cyan; $sdBackup = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", "StarDesk-Backup"); $appExe = 'C:\Program Files\StarDesk\StarDesk.exe'; if (Test-Path "$sdBackup\ProgramFiles") { robocopy "$sdBackup\ProgramFiles" "C:\Program Files\StarDesk" /E /XJ /R:1 /W:1 /MT:4 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0; if (Test-Path "$sdBackup\ProgramData") { robocopy "$sdBackup\ProgramData" "C:\ProgramData\StarDesk" /E /XJ /R:1 /W:1 /MT:4 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }; if (Test-Path "$sdBackup\LocalAppData") { robocopy "$sdBackup\LocalAppData" "$env:LOCALAPPDATA\StarDesk" /E /XJ /R:1 /W:1 /MT:4 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }; $sdRegDir = [System.IO.Path]::Combine("$sdBackup", "Registry"); if (Test-Path "$sdRegDir") { Get-ChildItem -Path "$sdRegDir" -Filter '*.reg' | ForEach-Object { reg import ($_.FullName) *>$null } } }; if (-not (Test-Path "$appExe")) { $sdInstaller = "$instCache\StarDesk_latest.exe"; if (-not (Test-Path $sdInstaller)) { try { Invoke-WebRequest -Uri "https://api.stardesk.net/api/v1/release/dl/1?channel=official" -OutFile $sdInstaller -UseBasicParsing -TimeoutSec 60 } catch {} }; if ((Test-Path "$sdInstaller") -and ((Get-Item "$sdInstaller").Length -gt 5MB)) { $proc = Start-Process -FilePath "$sdInstaller" -ArgumentList '/S' -Wait -PassThru -ErrorAction SilentlyContinue; Start-Sleep -Seconds 5 } }; Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue | ForEach-Object { Set-Service -Name ($_.Name) -StartupType Automatic -ErrorAction SilentlyContinue; Start-Service -Name ($_.Name) -ErrorAction SilentlyContinue }; if (Test-Path "$appExe") { try { & schtasks.exe /Create /TN "ALB-Launch-StarDesk" /TR "`"$appExe`"" /SC ONCE /ST 00:00 /RU "$user" /RL HIGHEST /IT /F *> $null; & schtasks.exe /Run /TN "ALB-Launch-StarDesk" *> $null; Start-Sleep -Seconds 3 } catch {}; if (-not (Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue)) { Start-Process -FilePath "$appExe" -WorkingDirectory 'C:\Program Files\StarDesk' -ErrorAction SilentlyContinue }; "STARDESK_READY=1" >> "$env:GITHUB_ENV" } } catch { Write-Host "  WARN: StarDesk - $($_.Exception.Message)" -ForegroundColor Yellow }
+          try { Write-Host "  [4/4] Discord..." -ForegroundColor Cyan; Get-Process -Name "Discord*", "DiscordSetup*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; Remove-Item -Path "$env:LOCALAPPDATA\Discord" -Recurse -Force -ErrorAction SilentlyContinue; $discord = "$env:TEMP\DiscordSetup.exe"; Invoke-WebRequest -Uri "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x64" -OutFile $discord -UseBasicParsing -TimeoutSec 45; if (Test-Path $discord) { $proc = Start-Process -FilePath $discord -PassThru -NoNewWindow; $waited = 0; while ((-not $proc.HasExited) -and ($waited -lt 75)) { Start-Sleep -Seconds 1; $waited += 1 }; if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } } } catch { Write-Host "  WARN: Discord - $($_.Exception.Message)" -ForegroundColor Yellow }
           $global:LASTEXITCODE = 0; exit 0
 
       - name: 🌐 Web Panel (API + chống lag)
@@ -427,7 +415,7 @@ jobs:
                       if (-not $cacheTime[$cacheKey] -or ($now - $cacheTime[$cacheKey]) -gt 3) {
                           $ram = Get-CimInstance Win32_OperatingSystem
                           $disk = Get-PSDrive -Name "$env:MOUNT_LETTER" -ErrorAction SilentlyContinue
-                          $statusCache[$cacheKey] = [ordered]@{ machineId = "$env:MACHINE_ID"; creator = "ALB"; status = "ok"; rdp = (Get-Service TermService -ErrorAction SilentlyContinue).Status.ToString(); remaining_seconds = $remain; remaining_display = "$([math]::Floor($remain/3600))h$([math]::Floor(($remain%3600)/60))m$($remain%60)s"; tailscale_ip = "$env:TAILSCALE_IP"; funnel_url = "$env:FUNNEL_URL"; drive = "$env:MOUNT_LETTER"; ram_total_gb = [math]::Round($ram.TotalVisibleMemorySize / 1MB, 1); ram_free_gb = [math]::Round($ram.FreePhysicalMemory / 1MB, 1); disk_total_gb = if ($disk) { [math]::Round(($disk.Used + $disk.Free) / 1GB, 1) } else { 0 }; disk_free_gb = if ($disk) { [math]::Round($disk.Free / 1GB, 1) } else { 0 }; apps = @(@{ name = "StarDesk"; ok = (Test-Path "C:\Program Files\StarDesk\StarDesk.exe") }, @{ name = "Sunshine"; ok = (Get-Process -Name 'sunshine' -ErrorAction SilentlyContinue) -ne $null }) }
+                          $statusCache[$cacheKey] = [ordered]@{ machineId = "$env:MACHINE_ID"; creator = "ALB"; status = "ok"; rdp = (Get-Service TermService -ErrorAction SilentlyContinue).Status.ToString(); remaining_seconds = $remain; remaining_display = "$([math]::Floor($remain/3600))h$([math]::Floor(($remain%3600)/60))m$($remain%60)s"; tailscale_ip = "$env:TAILSCALE_IP"; funnel_url = "$env:FUNNEL_URL"; drive = "$env:MOUNT_LETTER"; ram_total_gb = [math]::Round($ram.TotalVisibleMemorySize / 1MB, 1); ram_free_gb = [math]::Round($ram.FreePhysicalMemory / 1MB, 1); disk_total_gb = if ($disk) { [math]::Round(($disk.Used + $disk.Free) / 1GB, 1) } else { 0 }; disk_free_gb = if ($disk) { [math]::Round($disk.Free / 1GB, 1) } else { 0 }; apps = @(@{ name = "StarDesk"; ok = (Test-Path "C:\Program Files\StarDesk\StarDesk.exe") }, @{ name = "EVKey"; ok = (Test-Path "C:\ALB-Apps\EVKey\EVKey64.exe") }, @{ name = "Spotify"; ok = (Test-Path "$env:LOCALAPPDATA\Spotify\Spotify.exe") }) }
                           $cacheTime[$cacheKey] = $now
                       }
                       $json = $statusCache[$cacheKey] | ConvertTo-Json -Compress -Depth 5
@@ -463,20 +451,21 @@ jobs:
       - name: 🎉 Thông tin kết nối
         shell: pwsh
         run: |
-          $passText = "$env:RDP_PASS"; if ("$env:RDP_PASS_SOURCE" -eq 'secret') { $passText = '(secret RDP_PASSWORD)' }
+          $passText = "$env:RDP_PASS"; if ("$env:RDP_PASS_SOURCE" -eq 'secret') { $passText = '(secret)' }
           Write-Host "============================================================" -ForegroundColor Cyan
-          Write-Host "  ALB-VPSFREE — TỐI THƯỢNG" -ForegroundColor Cyan
+          Write-Host "  ALB-VPSFREE — EVKEY + SPOTIFY + STARDESK MỚI NHẤT" -ForegroundColor Cyan
           Write-Host "============================================================" -ForegroundColor Cyan
           Write-Host "  May         : $env:MACHINE_ID" -ForegroundColor Cyan
           Write-Host "  IP Tailscale: $env:TAILSCALE_IP" -ForegroundColor White
           Write-Host "  Funnel URL  : $env:FUNNEL_URL" -ForegroundColor Yellow
           Write-Host "  User        : $env:RDP_USER" -ForegroundColor Green
-          Write-Host "  Mat khau    : $passText" -ForegroundColor Green
+          Write-Host "  Mat khau    : $passText (Aistv@2026)" -ForegroundColor Green
           Write-Host "  Web Panel   : http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Yellow
           Write-Host "  Sunshine    : https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/" -ForegroundColor Yellow
-          Write-Host "  StarDesk    : winget + backup + cache" -ForegroundColor Green
-          Write-Host "  7z          : -mx=1 -mmt=2 (chong lag)" -ForegroundColor Green
-          Write-Host "  API         : /api/status + /api/action/*" -ForegroundColor Green
+          Write-Host "  EVKey       : C:\ALB-Apps\EVKey" -ForegroundColor Green
+          Write-Host "  Spotify     : winget + fallback" -ForegroundColor Green
+          Write-Host "  StarDesk    : api.stardesk.net (bản mới nhất)" -ForegroundColor Green
+          Write-Host "  Ngat VPS    : NGAT-RDP-GIU-MAN-HINH-SUNSHINE.bat (Desktop)" -ForegroundColor Green
           Write-Host "============================================================" -ForegroundColor Cyan
           exit 0
 
