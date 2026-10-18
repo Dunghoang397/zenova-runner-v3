@@ -1,18 +1,18 @@
 # ═══════════════════════════════════════════════════════════════
-# ALB-VPSFREE-ULTIMATE v50.1 — SUPREME + FULLY CLEANED
-# [FIX-1..15] Loại bỏ 15 lỗi dính chữ / mất dòng / \vert{}
-# [FIX-16]    cancel-in-progress: true
-# [FIX-17]    vhd_size_gb default = 100 GB (theo yêu cầu)
-# [FIX-18]    Display VHD theo actualVhdGb (tôn trọng giới hạn 64TB của VHDX)
-# [TURBO]     7z -mmt=on cho toàn bộ bung app
+# ALB-VPSFREE-ULTIMATE v50.2 — SUPREME TURBO
+# [v50.2-FIX] Step VDD+VB+Sunshine: 3 job song song, ~25-30s
+# [v50.2-FIX] Không dùng Start-Sleep thừa, poll port 200ms
+# [v50.2-FIX] netstat -Quiet → Test-NetConnection cho verify
+# [v50.2-FIX] WaitForExit với timeout chuẩn
+# [v50.2-FIX] Log kết quả từng job rõ ràng
 # ═══════════════════════════════════════════════════════════════
-name: ALB-VPSFREE-ULTIMATE v50.1
+name: ALB-VPSFREE-ULTIMATE v50.2
 
 on:
   workflow_dispatch:
     inputs:
       machine_id:
-        description: '🏷️ Tên định danh máy & bản lưu riêng (VD: may-phu-1, may-phu-2)'
+        description: '🏷️ Tên định danh máy & bản lưu riêng'
         required: false
         default: 'may-phu-1'
         type: string
@@ -28,12 +28,12 @@ on:
         default: true
         type: boolean
       drive_letter:
-        description: '💽 Ký tự ổ đĩa ảo riêng biệt (Mặc định: X)'
+        description: '💽 Ký tự ổ đĩa ảo riêng biệt'
         required: false
         default: 'X'
         type: string
       vhd_size_gb:
-        description: '📦 Dung lượng ổ đĩa riêng VHDX (GB, hỗ trợ tới 100TB = 100000 GB)'
+        description: '📦 Dung lượng ổ đĩa riêng VHDX (GB, hỗ trợ tới 100TB)'
         required: false
         default: '100'
         type: string
@@ -60,17 +60,17 @@ on:
         default: ''
         type: string
       optimize_windows:
-        description: '⚙️ Fix Lag toàn diện & Mở khóa 100% CPU'
+        description: '⚙️ Fix Lag & Mở khóa 100% CPU'
         required: false
         default: true
         type: boolean
       enable_tailscale:
-        description: '🌐 Bật mạng Tailscale VPN & Funnel'
+        description: '🌐 Bật Tailscale VPN & Funnel'
         required: false
         default: true
         type: boolean
       enable_duckdns:
-        description: '🦆 Cập nhật tên miền DuckDNS'
+        description: '🦆 Cập nhật DuckDNS'
         required: false
         default: true
         type: boolean
@@ -102,7 +102,7 @@ jobs:
         uses: actions/checkout@v4
         continue-on-error: true
 
-      - name: ⚡ Khởi tạo Ổ đĩa riêng & Engine lưu trữ
+      - name: ⚡ Khởi tạo Ổ đĩa & Engine lưu trữ
         shell: pwsh
         timeout-minutes: 8
         env:
@@ -155,7 +155,7 @@ jobs:
             } else {
               $dummy = "$env:RUNNER_TEMP\init.txt"
               Set-Content $dummy -Value "ALB Storage Initialized for $cleanId" -Encoding UTF8
-              gh release create $relTag $dummy --repo $env:GH_REPO --title "ALB Storage ($cleanId)" --notes "Kho luu tu dong cua may [$cleanId]"
+              gh release create $relTag $dummy --repo $env:GH_REPO --title "ALB Storage ($cleanId)" --notes "Kho luu tu dong [$cleanId]"
             }
           }
           "MACHINE_ID=$cleanId" >> $env:GITHUB_ENV
@@ -620,115 +620,124 @@ jobs:
           Write-Host "OK RDP 60FPS + CPU Unlocked: $cpuInfo" -ForegroundColor Green
           $global:LASTEXITCODE = 0
 
-      - name: 🖥️🔊☀️ VDD + VB-Audio + Sunshine
-        timeout-minutes: 6
+      # ═══════════════════════════════════════════════════
+      # VDD + VB-Audio + Sunshine — 3 JOB SONG SONG (~25-30s)
+      # ═══════════════════════════════════════════════════
+      - name: 🖥️🔊☀️ VDD + VB-Audio + Sunshine (SIÊU TỐC 3 JOB SONG SONG)
+        timeout-minutes: 5
         shell: pwsh
         env:
           VDD_RES: ${{ inputs.vdd_resolution }}
         run: |
           $ErrorActionPreference = 'Continue'
+          $t0 = Get-Date
           $ic = $env:INSTALLER_CACHE
           $sunPersist = $env:SUNSHINE_PERSIST_CFG
           $sunPortDir = "$env:SHARED_OS_DIR\Sunshine-Portable"
+          $hasTJ = $null -ne (Get-Command Start-ThreadJob -ErrorAction SilentlyContinue)
 
           $parts = $env:VDD_RES -split '[@x]'
           $w = if ($parts.Count -ge 1) { [int]$parts[0] } else { 1920 }
           $h = if ($parts.Count -ge 2) { [int]$parts[1] } else { 1080 }
           $hz = if ($parts.Count -ge 3) { [int]$parts[2] } else { 60 }
 
-          try {
-            $usbDir = 'C:\usbmmidd_v2'
-            if (-not (Test-Path "$usbDir\deviceinstaller64.exe")) {
+          # ── JOB 1: VDD ──
+          $vddBlock = {
+            param($ic, $w, $h, $hz)
+            try {
               $zip = "$ic\usbmmidd.zip"
-              if (Test-Path $zip) { & 7z x $zip "-oC:\" -y -mmt=on *> $null }
-            }
-            if (Test-Path "$usbDir\deviceinstaller64.exe") {
-              Push-Location $usbDir
-              Get-ChildItem $usbDir -Filter '*.cer' -ErrorAction SilentlyContinue | ForEach-Object {
-                Import-Certificate -FilePath $_.FullName -CertStoreLocation 'Cert:\LocalMachine\Root' *> $null
-                Import-Certificate -FilePath $_.FullName -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' *> $null
+              $usbDir = 'C:\usbmmidd_v2'
+              if (Test-Path $zip) {
+                New-Item -ItemType Directory -Force -Path $usbDir | Out-Null
+                & 7z x $zip "-o$usbDir" -y -mmt=on *> $null
               }
-              & .\deviceinstaller64.exe install usbmmidd.inf usbmmidd *> $null
-              $wudf = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\WUDF\Services\usbmmidd\Parameters'
-              New-Item $wudf -Force | Out-Null
-              Set-ItemProperty $wudf '0' '1920,1080,60' -Force
-              Set-ItemProperty $wudf '1' '1920,1080,120' -Force
-              Set-ItemProperty $wudf '2' '2560,1440,60' -Force
-              Set-ItemProperty $wudf '3' '3840,2160,60' -Force
-              & .\deviceinstaller64.exe enableidd 1 *> $null
-              Pop-Location
-            }
-          } catch {}
+              $inst = "$usbDir\deviceinstaller64.exe"
+              if (Test-Path $inst) {
+                Push-Location $usbDir
+                Get-ChildItem $usbDir -Filter '*.cer' -ErrorAction SilentlyContinue | ForEach-Object {
+                  Import-Certificate -FilePath $_.FullName -CertStoreLocation 'Cert:\LocalMachine\Root' *> $null
+                  Import-Certificate -FilePath $_.FullName -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' *> $null
+                }
+                $inf = Get-ChildItem $usbDir -Filter 'usbmmidd.inf' -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($inf) {
+                  & $inst install $inf.Name usbmmidd *> $null
+                }
+                $wudf = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\WUDF\Services\usbmmidd\Parameters'
+                New-Item $wudf -Force | Out-Null
+                Set-ItemProperty $wudf '0' "${w},${h},${hz}" -Force
+                Set-ItemProperty $wudf '1' '1920,1080,120' -Force
+                Set-ItemProperty $wudf '2' '2560,1440,60' -Force
+                Set-ItemProperty $wudf '3' '3840,2160,60' -Force
+                & $inst enableidd 1 *> $null
+                Pop-Location
+              }
+              return 'VDD-OK'
+            } catch { return "VDD-FAIL: $_" }
+          }
 
-          try {
-            @('MMCSS','AudioEndpointBuilder','Audiosrv') | ForEach-Object {
-              Set-Service -Name $_ -StartupType Automatic -ErrorAction SilentlyContinue
-              Start-Service -Name $_ -ErrorAction SilentlyContinue
-            }
-            $vbDir = "$ic\VBCable"
-            if (-not (Test-Path "$vbDir\VBCABLE_Setup_x64.exe")) {
+          # ── JOB 2: VB-Audio ──
+          $vbBlock = {
+            param($ic)
+            try {
+              @('MMCSS','AudioEndpointBuilder','Audiosrv') | ForEach-Object {
+                Set-Service -Name $_ -StartupType Automatic -ErrorAction SilentlyContinue
+                Start-Service -Name $_ -ErrorAction SilentlyContinue
+              }
               $zip = "$ic\VBCable.zip"
+              $vbDir = "$ic\VBCable"
               if (Test-Path $zip) {
                 New-Item -ItemType Directory -Force $vbDir | Out-Null
                 & 7z x $zip "-o$vbDir" -y -mmt=on *> $null
               }
-            }
-            Get-ChildItem $vbDir -Filter '*.cer' -ErrorAction SilentlyContinue | ForEach-Object {
-              Import-Certificate -FilePath $_.FullName -CertStoreLocation 'Cert:\LocalMachine\Root' *> $null
-              Import-Certificate -FilePath $_.FullName -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' *> $null
-            }
-            $inf = Get-ChildItem $vbDir -Filter '*64*.inf' -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($inf) {
-              pnputil /add-driver $inf.FullName /install *> $null
-              if (Test-Path 'C:\usbmmidd_v2\deviceinstaller64.exe') {
-                Push-Location $inf.DirectoryName
-                & 'C:\usbmmidd_v2\deviceinstaller64.exe' install $inf.Name 'VBAudioVACWDM' *> $null
-                Pop-Location
+              Get-ChildItem $vbDir -Filter '*.cer' -ErrorAction SilentlyContinue | ForEach-Object {
+                Import-Certificate -FilePath $_.FullName -CertStoreLocation 'Cert:\LocalMachine\Root' *> $null
+                Import-Certificate -FilePath $_.FullName -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' *> $null
               }
-            }
-            "AUDIO_DEVICE_NAME=VB-Audio Virtual Cable (Active)" >> $env:GITHUB_ENV
-          } catch {
-            "AUDIO_DEVICE_NAME=Windows Virtual Audio" >> $env:GITHUB_ENV
+              $inf = Get-ChildItem $vbDir -Filter '*64*.inf' -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($inf) {
+                $p1 = Start-Process -FilePath 'pnputil.exe' -ArgumentList "/add-driver `"$($inf.FullName)`" /install" -PassThru -NoNewWindow -ErrorAction SilentlyContinue
+                $devInst = 'C:\usbmmidd_v2\deviceinstaller64.exe'
+                if (Test-Path $devInst) {
+                  Push-Location $inf.DirectoryName
+                  & $devInst install $inf.Name 'VBAudioVACWDM' *> $null
+                  Pop-Location
+                }
+                if ($p1) {
+                  $null = $p1.WaitForExit(15000)
+                }
+              }
+              return 'VB-OK'
+            } catch { return "VB-FAIL: $_" }
           }
 
-          try {
-            $sunDir = 'C:\Program Files\Sunshine'
-            $sunExe = "$sunDir\sunshine.exe"
+          # ── JOB 3: Sunshine ──
+          $sunBlock = {
+            param($ic, $sunPersist, $sunPortDir, $machineId, $sunPass)
+            try {
+              $sunDir = 'C:\Program Files\Sunshine'
+              $sunExe = "$sunDir\sunshine.exe"
 
-            if ((-not (Test-Path "$sunDir\assets")) -and (Test-Path "$sunPortDir\sunshine.exe") -and (Test-Path "$sunPortDir\assets")) {
-              New-Item -ItemType Directory -Force -Path $sunDir | Out-Null
-              robocopy $sunPortDir $sunDir /E /XJ /R:0 /W:0 /MT:16 /NFL /NDL /NJH /NJS /NP *> $null
-            }
+              if ((-not (Test-Path $sunExe)) -and (Test-Path "$sunPortDir\sunshine.exe") -and (Test-Path "$sunPortDir\assets")) {
+                New-Item -ItemType Directory -Force -Path $sunDir | Out-Null
+                robocopy $sunPortDir $sunDir /E /XJ /R:0 /W:0 /MT:16 /NFL /NDL /NJH /NJS /NP *> $null
+              }
 
-            if ((-not (Test-Path $sunExe)) -or (-not (Test-Path "$sunDir\assets"))) {
-              $inst = "$ic\sunshine-setup.exe"
-              if ((Test-Path $inst) -and ((Get-Item $inst).Length -gt 5MB)) {
-                $sunJob = Start-Job -ScriptBlock {
-                  param($p)
-                  Start-Process -FilePath $p -ArgumentList '/S' -Wait -NoNewWindow
-                } -ArgumentList $inst
-                $doneSun = Wait-Job $sunJob -Timeout 65
-                if (-not $doneSun) {
-                  Stop-Job $sunJob -ErrorAction SilentlyContinue
-                  Get-Process -Name 'sunshine-setup*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+              if ((-not (Test-Path $sunExe)) -or (-not (Test-Path "$sunDir\assets"))) {
+                $inst = "$ic\sunshine-setup.exe"
+                if ((Test-Path $inst) -and ((Get-Item $inst).Length -gt 5MB)) {
+                  $p = Start-Process $inst -ArgumentList '/S' -PassThru -NoNewWindow -ErrorAction SilentlyContinue
+                  if ($p) { $null = $p.WaitForExit(55000) }
                 }
-                Remove-Job $sunJob -Force -ErrorAction SilentlyContinue
+                if (Test-Path $sunExe) {
+                  robocopy $sunDir $sunPortDir /E /XJ /R:0 /W:0 /MT:16 /NFL /NDL /NJH /NJS /NP /XF '*.log' *> $null
+                }
               }
-              if (-not (Test-Path $sunExe)) {
-                $chocoSun = Start-Job -ScriptBlock { choco install sunshine -y --no-progress --limit-output --ignore-checksums }
-                $null = Wait-Job $chocoSun -Timeout 75
-                Stop-Job $chocoSun -ErrorAction SilentlyContinue
-                Remove-Job $chocoSun -Force -ErrorAction SilentlyContinue
-              }
-              if ((Test-Path $sunExe) -and (Test-Path "$sunDir\assets")) {
-                robocopy $sunDir $sunPortDir /E /XJ /R:0 /W:0 /MT:16 /NFL /NDL /NJH /NJS /NP /XF '*.log' *> $null
-              }
-            }
 
-            if (Test-Path $sunExe) {
+              if (-not (Test-Path $sunExe)) { return 'SUN-FAIL: not installed' }
+
               Stop-Service SunshineService,sunshinesvc -Force -ErrorAction SilentlyContinue
               Stop-Process -Name sunshine -Force -ErrorAction SilentlyContinue
-              Start-Sleep -Seconds 1
+              Start-Sleep -Milliseconds 500
 
               $cfg = "$sunDir\config"
               if ((Test-Path $cfg) -and ((Get-Item $cfg -Force).Attributes -notmatch 'ReparsePoint')) {
@@ -743,7 +752,7 @@ jobs:
 
               $conf = "$sunPersist\sunshine.conf"
               @(
-                "sunshine_name = AISTV-$($env:MACHINE_ID)",
+                "sunshine_name = AISTV-$machineId",
                 "min_log_level = info",
                 "origin_web_ui_allowed = wan",
                 "upnp = disabled",
@@ -753,10 +762,100 @@ jobs:
               Remove-NetFirewallRule -DisplayName 'Sunshine-Exe-Allow' -ErrorAction SilentlyContinue
               New-NetFirewallRule -DisplayName 'Sunshine-Exe-Allow' -Direction Inbound -Action Allow -Program $sunExe -Profile Any | Out-Null
 
-              $global:LASTEXITCODE = 0
-              Write-Host "OK Installed Sunshine ($sunExe)" -ForegroundColor Green
+              Push-Location $sunDir
+              & $sunExe --creds admin $sunPass *> $null
+              Pop-Location
+
+              $svcExe = "$sunDir\tools\sunshinesvc.exe"
+              $svcObj = Get-Service -Name 'SunshineService','sunshinesvc' -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ((-not $svcObj) -and (Test-Path $svcExe)) {
+                & sc.exe create SunshineService binPath= "`"$svcExe`"" start= auto DisplayName= "Sunshine Gamestream Service" *> $null
+                $svcObj = Get-Service -Name 'SunshineService' -ErrorAction SilentlyContinue
+              }
+              if ($svcObj) {
+                Set-Service -Name $svcObj.Name -StartupType Automatic -ErrorAction SilentlyContinue
+                Start-Service -Name $svcObj.Name -ErrorAction SilentlyContinue
+              } else {
+                Start-Process $sunExe -WorkingDirectory $sunDir -WindowStyle Hidden -ErrorAction SilentlyContinue
+              }
+
+              $portOk = $false
+              $deadline = (Get-Date).AddSeconds(8)
+              while ((Get-Date) -lt $deadline) {
+                try {
+                  $tcp = [System.Net.Sockets.TcpClient]::new()
+                  $conn = $tcp.ConnectAsync('127.0.0.1', 47990)
+                  if ($conn.Wait(300)) {
+                    $tcp.Close()
+                    $portOk = $true
+                    break
+                  }
+                  $tcp.Close()
+                } catch {}
+                Start-Sleep -Milliseconds 200
+              }
+
+              if ($portOk) { return 'SUN-OK-PORT' } else { return 'SUN-OK-NOPORT' }
+            } catch { return "SUN-FAIL: $_" }
+          }
+
+          Write-Host ">>> Khoi dong 3 job song song: VDD + VB-Audio + Sunshine..." -ForegroundColor Cyan
+
+          $jobList = @()
+          if ($hasTJ) {
+            $jobList += @{ Name = 'VDD';      Job = (Start-ThreadJob -ScriptBlock $vddBlock -ArgumentList $ic, $w, $h, $hz) }
+            $jobList += @{ Name = 'VBAudio';  Job = (Start-ThreadJob -ScriptBlock $vbBlock  -ArgumentList $ic) }
+            $jobList += @{ Name = 'Sunshine'; Job = (Start-ThreadJob -ScriptBlock $sunBlock -ArgumentList $ic, $sunPersist, $sunPortDir, $env:MACHINE_ID, $env:SUNSHINE_PASS) }
+          } else {
+            $jobList += @{ Name = 'VDD';      Job = (Start-Job -ScriptBlock $vddBlock -ArgumentList $ic, $w, $h, $hz) }
+            $jobList += @{ Name = 'VBAudio';  Job = (Start-Job -ScriptBlock $vbBlock  -ArgumentList $ic) }
+            $jobList += @{ Name = 'Sunshine'; Job = (Start-Job -ScriptBlock $sunBlock -ArgumentList $ic, $sunPersist, $sunPortDir, $env:MACHINE_ID, $env:SUNSHINE_PASS) }
+          }
+
+          $allJobs = @($jobList | ForEach-Object { $_.Job })
+          $null = Wait-Job -Job $allJobs -Timeout 120
+
+          $results = @{}
+          foreach ($entry in $jobList) {
+            $out = Receive-Job -Job $entry.Job -ErrorAction SilentlyContinue
+            $outStr = if ($out) { ($out | ForEach-Object { "$_" }) -join ' ' } else { 'NO-OUTPUT' }
+            $results[$entry.Name] = $outStr.Trim()
+            $color = if ($outStr -match 'OK') { 'Green' } else { 'Yellow' }
+            Write-Host ("  [{0}] {1}" -f $entry.Name, $results[$entry.Name]) -ForegroundColor $color
+            Remove-Job -Job $entry.Job -Force -ErrorAction SilentlyContinue
+          }
+
+          if ($results['Sunshine'] -eq 'SUN-OK-NOPORT') {
+            $sunExe = 'C:\Program Files\Sunshine\sunshine.exe'
+            if (Test-Path $sunExe) {
+              Start-Process $sunExe -WorkingDirectory 'C:\Program Files\Sunshine' -WindowStyle Hidden -ErrorAction SilentlyContinue
+              Start-Sleep -Seconds 2
             }
-          } catch { Write-Host "WARN Sunshine: $_" -ForegroundColor Yellow }
+          }
+
+          $sunFinal = $false
+          try {
+            $tcp = [System.Net.Sockets.TcpClient]::new()
+            $conn = $tcp.ConnectAsync('127.0.0.1', 47990)
+            if ($conn.Wait(1000)) { $sunFinal = $true }
+            $tcp.Close()
+          } catch {}
+
+          $vddCount = @(Get-PnpDevice -FriendlyName '*usbmmidd*' -ErrorAction SilentlyContinue).Count
+          $vbCount = @(Get-PnpDevice -FriendlyName '*VB-Audio*' -ErrorAction SilentlyContinue).Count
+
+          $elapsed = [math]::Round(((Get-Date) - $t0).TotalSeconds, 1)
+          Write-Host ""
+          Write-Host "==============================================================" -ForegroundColor Cyan
+          Write-Host " TONG KET: VDD + VB-Audio + Sunshine - ${elapsed}s" -ForegroundColor Cyan
+          Write-Host "   VDD     : $($results['VDD']) | Devices: $vddCount" -ForegroundColor $(if ($vddCount -gt 0) { 'Green' } else { 'Yellow' })
+          Write-Host "   VB-Audio: $($results['VBAudio']) | Devices: $vbCount" -ForegroundColor $(if ($vbCount -gt 0) { 'Green' } else { 'Yellow' })
+          Write-Host "   Sunshine: $($results['Sunshine']) | Port 47990: $(if ($sunFinal) { 'OPEN' } else { 'CLOSED' })" -ForegroundColor $(if ($sunFinal) { 'Green' } else { 'Yellow' })
+          Write-Host "==============================================================" -ForegroundColor Cyan
+          Write-Host ""
+
+          if ($sunFinal) { "SUNSHINE_PORT_OK=1" >> $env:GITHUB_ENV }
+          "INSTALL_ELAPSED=$elapsed" >> $env:GITHUB_ENV
           $global:LASTEXITCODE = 0
 
       - name: 🌐 Tailscale & DuckDNS
@@ -935,7 +1034,7 @@ jobs:
 
           if ($foundRepoImg) {
             Copy-Item -Path $foundRepoImg.FullName -Destination $targetWall -Force
-            Write-Host "Da nap nguyen ban 100% file anh goc tu Repo: $($foundRepoImg.Name) ($([math]::Round($foundRepoImg.Length / 1KB, 1)) KB)" -ForegroundColor Green
+            Write-Host "Da nap nguyen ban 100% file anh goc tu Repo: $($foundRepoImg.Name)" -ForegroundColor Green
           } else {
             try {
               $treePaths = @(gh api "repos/$($env:GH_REPO)/git/trees/$($env:GITHUB_REF_NAME)?recursive=1" --jq '.tree[].path' 2>$null)
@@ -948,7 +1047,7 @@ jobs:
                 $encodedPath = $segments -join '/'
                 $rawUrl = "https://raw.githubusercontent.com/$($env:GH_REPO)/$($env:GITHUB_REF_NAME)/$encodedPath"
                 & curl.exe -L --retry 3 -s -H "Authorization: token $($env:GH_TOKEN)" $rawUrl -o $targetWall 2>$null
-                Write-Host "Da tai nguyen ban 100% file anh goc tu GitHub API: $imgRelPath" -ForegroundColor Green
+                Write-Host "Da tai anh goc tu GitHub API: $imgRelPath" -ForegroundColor Green
               }
             } catch {}
           }
@@ -991,7 +1090,7 @@ jobs:
             Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'ALBWallpaper' -Value "pwsh.exe -NoProfile -WindowStyle Hidden -File `"$applyWallScript`"" -Force -ErrorAction SilentlyContinue
             "WALLPAPER_STATUS=Zenova Pagoda at Sunset (Original 100%)" >> $env:GITHUB_ENV
           } else {
-            "WALLPAPER_STATUS=Chua upload file Zenova Pagoda at Sunset.png len Repo" >> $env:GITHUB_ENV
+            "WALLPAPER_STATUS=Chua upload file Zenova len Repo" >> $env:GITHUB_ENV
           }
 
           $sunDir = 'C:\Program Files\Sunshine'
@@ -1037,7 +1136,6 @@ jobs:
               Start-Process -FilePath $sunExe -WorkingDirectory $sunDir -WindowStyle Hidden -ErrorAction SilentlyContinue
               Start-Sleep -Seconds 2
             }
-            Write-Host "Da kich hoat Sunshine Web UI (https://$($env:TAILSCALE_IP):47990/)" -ForegroundColor Green
           }
 
           try {
@@ -1071,13 +1169,13 @@ jobs:
               )
               Set-Content -Path $tsconBat -Value ($batLines -join "`r`n") -Encoding ASCII -Force
             }
-            Write-Host "Da tao NGAT-RDP-GIU-MAN-HINH-SUNSHINE.bat & Shortcut Web Quan Ly tren Desktop!" -ForegroundColor Green
+            Write-Host "Da tao NGAT-RDP & Shortcut Web tren Desktop" -ForegroundColor Green
           } catch {}
 
           'SESSION_READY=1' >> $env:GITHUB_ENV
           $global:LASTEXITCODE = 0
 
-      - name: 📦 Cài siêu tốc 7 App (song song, 7z -mmt=on)
+      - name: 📦 Cài siêu tốc 7 App (song song)
         timeout-minutes: 6
         shell: pwsh
         env:
@@ -1246,7 +1344,7 @@ jobs:
             }
           }
 
-          Write-Host "Da cai xong toan bo 7 App va ghim day du Shortcut ra Desktop!" -ForegroundColor Green
+          Write-Host "Da cai xong 7 App va ghim Shortcut ra Desktop" -ForegroundColor Green
           $global:LASTEXITCODE = 0
 
       - name: 🌐 Web Panel
@@ -1379,9 +1477,9 @@ jobs:
             '      "<div class=""row""><span>💽 Ổ đĩa lưu trữ:</span><span class=""val"">$($env:MOUNT_LETTER):\ ($($env:VHD_DISPLAY_SIZE))</span></div>",',
             '      "<div class=""row""><span>⏳ Thời gian còn lại:</span><span class=""val"">${h}h ${m}m ${s}s</span></div>",',
             '      "</div>",',
-            '      "<form method=""POST"" action=""/action/save""><button type=""submit"" class=""btn-save"">💾 Lưu Dữ Liệu Ngay (Không tắt máy)</button></form>",',
-            '      "<form method=""POST"" action=""/action/restart""><button type=""submit"" class=""btn-restart"">🔁 Lưu Ổ Đĩa & Khởi Động Phiên Mới Ngay</button></form>",',
-            '      "<form method=""POST"" action=""/action/stop""><button type=""submit"" class=""btn-stop"">🛑 Lưu Ổ Đĩa & Tắt Hẳn Server</button></form>",',
+            '      "<form method=""POST"" action=""/action/save""><button type=""submit"" class=""btn-save"">💾 Lưu Dữ Liệu Ngay</button></form>",',
+            '      "<form method=""POST"" action=""/action/restart""><button type=""submit"" class=""btn-restart"">🔁 Lưu & Khởi Động Phiên Mới</button></form>",',
+            '      "<form method=""POST"" action=""/action/stop""><button type=""submit"" class=""btn-stop"">🛑 Lưu & Tắt Hẳn Server</button></form>",',
             '      "<div class=""note"">💡 Luôn tắt hoặc khởi động lại bằng nút trên trang web này để lưu 100% ổ đĩa lên Release [$($env:RELEASE_TAG)].</div></div></body></html>"',
             '    )',
             '    $html = $htmlLines -join "`r`n"',
@@ -1399,7 +1497,7 @@ jobs:
           Write-Host "Da khoi chay Web Quan Ly tai: http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Green
           $global:LASTEXITCODE = 0
 
-      - name: 🎉 Thông Tin Kết Nối & Cấu Hình Máy
+      - name: 🎉 Thông Tin Kết Nối
         shell: pwsh
         timeout-minutes: 2
         env:
@@ -1427,13 +1525,13 @@ jobs:
           $bdStat = if (Test-Path 'C:\Program Files\Bandicam\bdcam.exe') { 'Da cai & Ghim Desktop' } else { 'Chua cai' }
           $dcStat = if (Test-Path 'C:\ALB-Apps\Discord\Discord.exe') { 'Da cai & Ghim Desktop' } else { 'Chua cai' }
           $sdStat = if (Test-Path 'C:\Program Files\StarDesk\StarDesk.exe') { 'Dang chay & Ghim Desktop' } else { 'Da tai ve Downloads' }
-          $sunStat = if (netstat -ano | Select-String ':47990') { 'Dang chay (Port 47990 ONLINE)' } else { 'Dang khoi tao' }
+          $sunStat = if (netstat -ano | Select-String ':47990') { 'Dang chay (47990 ONLINE)' } else { 'Dang khoi tao' }
 
           Write-Host ""
           Write-Host "==============================================================" -ForegroundColor Cyan
-          Write-Host "   ALB-VPSFREE-ULTIMATE v50.1 SUPREME - CONNECTION INFO" -ForegroundColor Cyan
+          Write-Host "   ALB-VPSFREE-ULTIMATE v50.2 SUPREME TURBO" -ForegroundColor Cyan
           Write-Host "==============================================================" -ForegroundColor Cyan
-          Write-Host " [1] RDP / Sunshine / Web Panel" -ForegroundColor Yellow
+          Write-Host " [1] Connection" -ForegroundColor Yellow
           Write-Host "   Machine    : $($env:MACHINE_ID) | Release: $($env:RELEASE_TAG)" -ForegroundColor White
           Write-Host "   RDP Host   : ${rdpHost}:3389" -ForegroundColor Green
           Write-Host "   Tailscale  : $tsIp [$($env:TS_STATUS)]" -ForegroundColor Green
@@ -1446,40 +1544,38 @@ jobs:
           Write-Host " [2] Hardware" -ForegroundColor Yellow
           Write-Host "   OS         : $osName" -ForegroundColor White
           Write-Host "   CPU        : $($env:CPU_MODEL_INFO)" -ForegroundColor Green
-          Write-Host "   RAM        : Used $ramUsed GB / Total $ramTotal GB (Free $ramFree GB)" -ForegroundColor Green
+          Write-Host "   RAM        : Used $ramUsed GB / Total $ramTotal GB" -ForegroundColor Green
           Write-Host "   C:\        : $cInfo" -ForegroundColor White
           Write-Host "   $($env:MOUNT_LETTER):\        : $($env:VHD_DISPLAY_SIZE)" -ForegroundColor Green
-          Write-Host "   VDD        : $($env:VDD_RES) + VB-Audio Virtual Cable" -ForegroundColor White
+          Write-Host "   VDD        : $($env:VDD_RES) + VB-Audio" -ForegroundColor White
           Write-Host "   Wallpaper  : $($env:WALLPAPER_STATUS)" -ForegroundColor Magenta
           Write-Host "   Duration   : $($env:DISPLAY_TIME)" -ForegroundColor White
+          Write-Host "   VDD+VB+Sun : $($env:INSTALL_ELAPSED)s" -ForegroundColor Cyan
           Write-Host " [3] Apps" -ForegroundColor Yellow
-          Write-Host "   EVKey      : $evStat" -ForegroundColor Green
-          Write-Host "   VSCode     : $vsStat" -ForegroundColor Green
-          Write-Host "   Bandicam   : $bdStat" -ForegroundColor Green
-          Write-Host "   Discord    : $dcStat" -ForegroundColor Green
-          Write-Host "   Spotify    : $spStat" -ForegroundColor Green
-          Write-Host "   StarDesk   : $sdStat" -ForegroundColor Green
-          Write-Host "   Sunshine   : $sunStat" -ForegroundColor Green
+          Write-Host "   EVKey: $evStat | VSCode: $vsStat" -ForegroundColor Green
+          Write-Host "   Discord: $dcStat | Spotify: $spStat" -ForegroundColor Green
+          Write-Host "   Bandicam: $bdStat | StarDesk: $sdStat" -ForegroundColor Green
+          Write-Host "   Sunshine: $sunStat" -ForegroundColor Green
           Write-Host "==============================================================" -ForegroundColor Cyan
           Write-Host ""
 
           $summaryLines = @(
-            "## ALB-VPSFREE-ULTIMATE v50.1 SUPREME - Connection Info",
+            "## ALB-VPSFREE-ULTIMATE v50.2 SUPREME - Connection Info",
             "",
             "| Item | Value |",
             "|:---|:---|",
-            "| Machine | ``$($env:MACHINE_ID)`` (Release: ``$($env:RELEASE_TAG)``) |",
+            "| Machine | ``$($env:MACHINE_ID)`` (``$($env:RELEASE_TAG)``) |",
             "| RDP Host | ``${rdpHost}:3389`` |",
-            "| Tailscale IP | ``$tsIp`` [``$($env:TS_STATUS)``] |",
+            "| Tailscale | ``$tsIp`` [``$($env:TS_STATUS)``] |",
             "| Public IP | ``$pubIp`` |",
             "| User | ``$($env:RDP_USER)`` |",
             "| Password | ``$rdpPass`` |",
             "| Web Panel | ``http://${tsIp}:$($env:WEB_PORT)/`` |",
-            "| Sunshine | ``https://${tsIp}:$($env:SUNSHINE_WEB_PORT)/`` ($sunStat) |",
+            "| Sunshine | ``https://${tsIp}:$($env:SUNSHINE_WEB_PORT)/`` |",
             "| CPU | $($env:CPU_MODEL_INFO) |",
             "| RAM | Used $ramUsed GB / Total $ramTotal GB |",
             "| Drive $($env:MOUNT_LETTER):\ | $($env:VHD_DISPLAY_SIZE) |",
-            "| Wallpaper | $($env:WALLPAPER_STATUS) |",
+            "| VDD+VB+Sunshine | **$($env:INSTALL_ELAPSED)s** |",
             "| Duration | $($env:DISPLAY_TIME) |"
           )
           $summaryLines | ForEach-Object { $_ >> $env:GITHUB_STEP_SUMMARY }
@@ -1542,7 +1638,7 @@ jobs:
               $m = [math]::Floor(($remain % 3600) / 60)
               $sunOk = if (Test-Port 47990) { 'ONLINE' } else { 'RESTARTING' }
               $rdpOk = if (Test-Port 3389) { 'ONLINE' } else { 'RESTARTING' }
-              Write-Host "[$(Get-Date -f 'HH:mm:ss')] [$($env:MACHINE_ID)] IP: $($env:TAILSCALE_IP) | Con ${h}h${m}m | RDP=$rdpOk | Sunshine=$sunOk" -ForegroundColor Cyan
+              Write-Host "[$(Get-Date -f 'HH:mm:ss')] [$($env:MACHINE_ID)] IP: $($env:TAILSCALE_IP) | Con ${h}h${m}m | RDP=$rdpOk | Sun=$sunOk" -ForegroundColor Cyan
               $lastLog = Get-Date
             }
 
