@@ -1,16 +1,16 @@
 # ═══════════════════════════════════════════════════════════════
-# ALB-VPSFREE-ULTIMATE v29.0 — TỐI THƯỢNG TOÀN DIỆN
-# - FIX Web Panel: HTML tách file, không lỗi here-string
-# - FIX Sunshine: verify port 47990, fallback HTTP
+# ALB-VPSFREE-ULTIMATE v29.1 — TỐI THƯỢNG TOÀN DIỆN
+# - FIX Web Panel: array thay here-string, không lỗi thụt lề
+# - FIX Test-Port: đúng cú pháp
+# - FIX Sunshine: verify port 47990
 # - FIX Funnel: restart Tailscale service để sync control plane
-# - FIX Test-Port function: đúng cú pháp
 # - THÊM APP: Discord, VSCode, Bandicam, Spotify, Roblox, EVKey, Tailscale
 # - Ổ riêng 100TB giới hạn, validate input
 # - FIX LAG đầy đủ: GPU, MMCSS, TSFairShare, CPU unlock
 # - HÌNH NỀN: Zenova Pagoda Sunset (link catbox)
 # - VERIFY link Sunshine + Web Panel
 # ═══════════════════════════════════════════════════════════════
-name: ALB-VPSFREE-ULTIMATE v29.0
+name: ALB-VPSFREE-ULTIMATE v29.1
 
 on:
   workflow_dispatch:
@@ -488,7 +488,6 @@ jobs:
           if ($tsStatus -match '100\.\d+\.\d+\.\d+') { "TS_STATUS=CONNECTED" >> "$env:GITHUB_ENV" }
           else { "TS_STATUS=UNKNOWN" >> "$env:GITHUB_ENV" }
 
-          # Funnel + RESTART SERVICE để sync control plane
           $funnelOk = $false
           try {
               & $ts funnel reset 2>&1 | Out-Null; Start-Sleep -Seconds 2
@@ -663,7 +662,6 @@ jobs:
               if ($svcObj) { Set-Service $svcObj.Name -StartupType Automatic; Start-Service $svcObj.Name -ErrorAction SilentlyContinue }
               else { Start-Process $sunExe -WorkingDirectory $sunDir -WindowStyle Hidden }
 
-              # VERIFY PORT 47990
               Start-Sleep -Seconds 8
               $sunListen = netstat -ano | Select-String ':47990'
               if ($sunListen) { Write-Host '│ ✅ Sunshine port 47990 listen' -ForegroundColor Green; "SUNSHINE_PORT_OK=1" >> "$env:GITHUB_ENV" }
@@ -727,7 +725,6 @@ jobs:
           $wallPersist = "$env:WALLPAPER_DIR\Zenova-Pagoda-Sunset.jpg"
           $wallOk = $false
 
-          # Tải từ catbox
           if (-not [string]::IsNullOrWhiteSpace($env:WALLPAPER_URL_INPUT) -and $env:WALLPAPER_URL_INPUT -match '^https?://') {
               try {
                   & curl.exe -L --retry 3 --connect-timeout 20 -A 'Mozilla/5.0' $env:WALLPAPER_URL_INPUT -o $wallPersist 2>$null
@@ -735,7 +732,6 @@ jobs:
               } catch {}
           }
 
-          # Fallback ZENOVA gradient
           if (-not $wallOk) {
               try {
                   Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue
@@ -839,7 +835,6 @@ jobs:
           $dlJobs | ForEach-Object { Remove-Job $_ -Force -ErrorAction SilentlyContinue }
           Write-Host "✅ Download song song xong" -ForegroundColor Green
 
-          # EVKey
           try {
               $evDest = "$appsDir\EVKey"
               if (-not (Test-Path "$evDest\EVKey64.exe")) { $zip = "$instCache\EVKey.zip"; if (Test-Path $zip) { Expand-Archive $zip $evDest -Force } }
@@ -852,14 +847,12 @@ jobs:
               }
           } catch {}
 
-          # VSCode
           try {
               $vsExe = 'C:\Program Files\Microsoft VS Code\Code.exe'
               if (-not (Test-Path $vsExe)) { $inst = "$instCache\VSCodeSetup-x64.exe"; if ((Test-Path $inst) -and (Get-Item $inst).Length -gt 40MB) { Start-Process $inst -ArgumentList '/VERYSILENT','/NORESTART','/MERGETASKS=!runcode,addtopath' -Wait -ErrorAction SilentlyContinue } }
               if (Test-Path $vsExe) { $lnk = $ws.CreateShortcut("$desktopDir\Visual Studio Code.lnk"); $lnk.TargetPath = $vsExe; $lnk.Save(); Write-Host '│ ✅ VSCode' -ForegroundColor Green }
           } catch {}
 
-          # Discord
           try {
               $dcExe = "$env:LOCALAPPDATA\Discord\Update.exe"
               if (-not (Test-Path $dcExe)) { $inst = "$instCache\DiscordSetup.exe"; if ((Test-Path $inst) -and (Get-Item $inst).Length -gt 20MB) { Start-Process $inst -ArgumentList '--silent' -Wait -ErrorAction SilentlyContinue; Start-Sleep -Seconds 10 } }
@@ -868,20 +861,17 @@ jobs:
               else { choco install discord -y --no-progress --limit-output --ignore-checksums 2>&1 | Out-Null; $global:LASTEXITCODE = 0; Write-Host '│ ✅ Discord (choco)' -ForegroundColor Green }
           } catch {}
 
-          # Spotify
           try {
               if (-not (Test-Path "$env:LOCALAPPDATA\Spotify\Spotify.exe")) { $inst = "$instCache\SpotifySetup.exe"; if ((Test-Path $inst) -and (Get-Item $inst).Length -gt 5MB) { $p = Start-Process $inst -ArgumentList '/silent','/skip-app-launch' -PassThru -ErrorAction SilentlyContinue; $null = $p.WaitForExit(40) } }
               if (Test-Path "$env:LOCALAPPDATA\Spotify\Spotify.exe") { Write-Host '│ ✅ Spotify' -ForegroundColor Green }
           } catch {}
 
-          # Bandicam
           try {
               $bdExe = 'C:\Program Files\Bandicam\bdcam.exe'
               if (-not (Test-Path $bdExe)) { choco install bandicam -y --no-progress --limit-output --ignore-checksums 2>&1 | Out-Null; $global:LASTEXITCODE = 0 }
               if (Test-Path $bdExe) { $lnk = $ws.CreateShortcut("$desktopDir\Bandicam.lnk"); $lnk.TargetPath = $bdExe; $lnk.Save(); Write-Host '│ ✅ Bandicam' -ForegroundColor Green }
           } catch {}
 
-          # Roblox
           try {
               $robloxInstalled = Test-Path "$env:LOCALAPPDATA\Roblox\Versions" -ErrorAction SilentlyContinue
               if (-not $robloxInstalled) {
@@ -897,20 +887,16 @@ jobs:
               else { Write-Host '│ ⚠️ Roblox: cài trong Downloads khi vào máy' -ForegroundColor Yellow }
           } catch {}
 
-          # StarDesk → Downloads
           try { $src = "$instCache\StarDesk_latest.exe"; if (Test-Path $src) { $bytes = [System.IO.File]::ReadAllBytes($src)[0..1]; if ($bytes[0] -eq 0x4D -and $bytes[1] -eq 0x5A) { Copy-Item $src "$downloadsDir\StarDesk_latest.exe" -Force; Write-Host '│ ✅ StarDesk → Downloads' -ForegroundColor Green } } } catch {}
 
-          # Tailscale shortcut
           try { $tsExe = 'C:\Program Files\Tailscale\tailscale-ipn.exe'; if (Test-Path $tsExe) { $lnk = $ws.CreateShortcut("$desktopDir\Tailscale.lnk"); $lnk.TargetPath = $tsExe; $lnk.Save(); Write-Host '│ ✅ Tailscale shortcut' -ForegroundColor Green } } catch {}
 
-          # Microsoft Store (Win25)
           if ($env:WIN_IMG -match '2025') {
               $storePkg = Get-AppxPackage -Name '*WindowsStore*' -ErrorAction SilentlyContinue
               if (-not $storePkg) { try { winget install 9WZDNCRFJBMP --silent --accept-package-agreements 2>&1 | Out-Null; $global:LASTEXITCODE = 0 } catch {} }
               Write-Host '│ ✅ Store Win25' -ForegroundColor Green
           }
 
-          # Choco packages
           $pkgListFile = "$env:SHARED_OS_DIR\installed-choco-packages.txt"
           $savedPkgs   = @(); if (Test-Path $pkgListFile) { $savedPkgs = @(Get-Content $pkgListFile | Where-Object { $_ -match '^[A-Za-z0-9._\-]+$' }) }
           $inputPkgs   = @(); if (-not [string]::IsNullOrWhiteSpace($env:PKGS)) { $inputPkgs = @($env:PKGS -split '\s+' | Where-Object { $_ -match '^[A-Za-z0-9._\-]+$' }) }
@@ -942,7 +928,7 @@ jobs:
           }
           exit 0
 
-      - name: 🌐 Web Panel (FIX HOÀN TOÀN — HTML TÁCH FILE)
+      - name: 🌐 Web Panel (AN TOÀN - KHÔNG HERE-STRING)
         shell: pwsh
         env:
           WINDOWS_IMAGE: ${{ inputs.windows_image }}
@@ -978,36 +964,36 @@ jobs:
           }
           $state | ConvertTo-Json -Depth 5 -Compress | Set-Content $env:SHARED_STATE_FILE -Encoding UTF8
 
-          $html = @"
-<!DOCTYPE html><html><head><meta charset='utf-8'><title>ALB Panel v29.0</title>
-<link href='https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap' rel='stylesheet'>
-<style>*{box-sizing:border-box}body{background:#07090f;color:#eef2f8;font-family:Inter,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}.card{max-width:640px;width:100%;background:rgba(12,18,32,0.95);border:1px solid rgba(255,180,80,0.2);border-radius:20px;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,0.6)}h1{color:#ffd700;margin:0 0 4px;font-size:22px}.sub{color:#8a9bb8;font-size:12px;margin-bottom:20px}.row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.06)}.label{color:#8a9bb8;font-size:12px}.val{color:#eef2f8;font-weight:600;font-size:13px}.val a{color:#38bdf8;text-decoration:none}.val a:hover{text-decoration:underline}.gold{color:#ffd700}.green{color:#4ade80}.apps{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0}.app{padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600}.app-ok{background:rgba(74,222,128,0.15);color:#4ade80;border:1px solid rgba(74,222,128,0.3)}.app-no{background:rgba(239,68,68,0.1);color:#f87171;border:1px solid rgba(239,68,68,0.2)}.btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:20px}.btn{padding:13px;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;color:white;transition:opacity .2s}.btn:hover{opacity:.8}.btn-save{background:linear-gradient(135deg,#0ea5e9,#0369a1)}.btn-restart{background:linear-gradient(135deg,#f59e0b,#b45309)}.btn-stop{background:linear-gradient(135deg,#ef4444,#b91c1c)}.btn-new{background:linear-gradient(135deg,#8b5cf6,#6d28d9);grid-column:span 2}</style></head><body><div class='card'>
-<h1>🖥️ ALB PANEL v29.0</h1>
-<div class='sub'>$machineId &bull; $tsIp &bull; $winImage</div>
-<div class='row'><span class='label'>⏱️ Còn lại</span><span class='val gold' id='remain'>Loading...</span></div>
-<div class='row'><span class='label'>🌐 Web Panel</span><span class='val'><a href='$webPanelUrl' target='_blank'>$webPanelUrl</a></span></div>
-<div class='row'><span class='label'>☀️ Sunshine HTTPS</span><span class='val'><a href='$sunshineUrl' target='_blank'>$sunshineUrl</a></span></div>
-<div class='row'><span class='label'>🔑 RDP Pass</span><span class='val'>$rdpPass</span></div>
-<div class='row'><span class='label'>👤 RDP User</span><span class='val'>$rdpUser</span></div>
-<div class='row'><span class='label'>💽 Ổ riêng</span><span class='val'>${driveLetter}:\ ($vhdSize GB)</span></div>
-<div class='row'><span class='label'>🖥️ OS</span><span class='val'>$winImage (Build $osBuild)</span></div>
-<div class='row'><span class='label'>⚡ CPU</span><span class='val'>$cpuModel</span></div>
-<div style='margin-top:14px;margin-bottom:4px;color:#8a9bb8;font-size:12px'>📦 App status:</div>
-<div class='apps' id='apps'>Loading...</div>
-<div class='btns'>
-<button class='btn btn-save'    onclick='act("save")'>💾 Lưu ngay</button>
-<button class='btn btn-restart' onclick='act("restart")'>🔁 Phiên mới</button>
-<button class='btn btn-stop'    onclick='act("stop")'>🛑 Tắt hẳn</button>
-<button class='btn btn-new'     onclick='act("start-new")'>🚀 Khởi động phiên mới ngay</button>
-</div></div>
-<script>
-async function act(x){if(!confirm('Xác nhận: '+x+'?'))return;try{const r=await fetch('/api/action/'+x,{method:'POST'});const j=await r.json();alert(j.ok?'✅ Đã gửi lệnh '+x:'❌ Lỗi: '+j.error)}catch(e){alert('❌ Lỗi kết nối')}}
-async function loadStatus(){try{const r=await fetch('/api/status');const j=await r.json();if(j.apps){document.getElementById('apps').innerHTML=j.apps.map(a=>'<span class="app '+(a.ok?'app-ok':'app-no')+'">'+(a.ok?'✅':'❌')+' '+a.name+'</span>').join('')}if(j.remaining_display){document.getElementById('remain').textContent=j.remaining_display}}catch(e){}}
-loadStatus();setInterval(loadStatus,10000);
-</script></body></html>
-"@
+          $htmlLines = @(
+              '<!DOCTYPE html><html><head><meta charset="utf-8"><title>ALB Panel v29.1</title>'
+              '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">'
+              '<style>*{box-sizing:border-box}body{background:#07090f;color:#eef2f8;font-family:Inter,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}.card{max-width:640px;width:100%;background:rgba(12,18,32,0.95);border:1px solid rgba(255,180,80,0.2);border-radius:20px;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,0.6)}h1{color:#ffd700;margin:0 0 4px;font-size:22px}.sub{color:#8a9bb8;font-size:12px;margin-bottom:20px}.row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.06)}.label{color:#8a9bb8;font-size:12px}.val{color:#eef2f8;font-weight:600;font-size:13px}.val a{color:#38bdf8;text-decoration:none}.val a:hover{text-decoration:underline}.gold{color:#ffd700}.apps{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0}.app{padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600}.app-ok{background:rgba(74,222,128,0.15);color:#4ade80;border:1px solid rgba(74,222,128,0.3)}.app-no{background:rgba(239,68,68,0.1);color:#f87171;border:1px solid rgba(239,68,68,0.2)}.btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:20px}.btn{padding:13px;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;color:white}.btn:hover{opacity:.8}.btn-save{background:linear-gradient(135deg,#0ea5e9,#0369a1)}.btn-restart{background:linear-gradient(135deg,#f59e0b,#b45309)}.btn-stop{background:linear-gradient(135deg,#ef4444,#b91c1c)}.btn-new{background:linear-gradient(135deg,#8b5cf6,#6d28d9);grid-column:span 2}</style></head><body><div class="card">'
+              '<h1>🖥️ ALB PANEL v29.1</h1>'
+              "<div class='sub'>$machineId &bull; $tsIp &bull; $winImage</div>"
+              "<div class='row'><span class='label'>⏱️ Còn lại</span><span class='val gold' id='remain'>Loading...</span></div>"
+              "<div class='row'><span class='label'>🌐 Web Panel</span><span class='val'><a href='$webPanelUrl' target='_blank'>$webPanelUrl</a></span></div>"
+              "<div class='row'><span class='label'>☀️ Sunshine HTTPS</span><span class='val'><a href='$sunshineUrl' target='_blank'>$sunshineUrl</a></span></div>"
+              "<div class='row'><span class='label'>🔑 RDP Pass</span><span class='val'>$rdpPass</span></div>"
+              "<div class='row'><span class='label'>👤 RDP User</span><span class='val'>$rdpUser</span></div>"
+              "<div class='row'><span class='label'>💽 Ổ riêng</span><span class='val'>${driveLetter}:\ ($vhdSize GB)</span></div>"
+              "<div class='row'><span class='label'>🖥️ OS</span><span class='val'>$winImage (Build $osBuild)</span></div>"
+              "<div class='row'><span class='label'>⚡ CPU</span><span class='val'>$cpuModel</span></div>"
+              "<div style='margin-top:14px;margin-bottom:4px;color:#8a9bb8;font-size:12px'>📦 App status:</div>"
+              "<div class='apps' id='apps'>Loading...</div>"
+              "<div class='btns'>"
+              "<button class='btn btn-save'    onclick='act(\"save\")'>💾 Lưu ngay</button>"
+              "<button class='btn btn-restart' onclick='act(\"restart\")'>🔁 Phiên mới</button>"
+              "<button class='btn btn-stop'    onclick='act(\"stop\")'>🛑 Tắt hẳn</button>"
+              "<button class='btn btn-new'     onclick='act(\"start-new\")'>🚀 Khởi động phiên mới ngay</button>"
+              "</div></div>"
+              "<script>"
+              "async function act(x){if(!confirm('Xác nhận: '+x+'?'))return;try{const r=await fetch('/api/action/'+x,{method:'POST'});const j=await r.json();alert(j.ok?'✅ Đã gửi lệnh '+x:'❌ Lỗi: '+j.error)}catch(e){alert('❌ Lỗi kết nối')}}"
+              "async function loadStatus(){try{const r=await fetch('/api/status');const j=await r.json();if(j.apps){document.getElementById('apps').innerHTML=j.apps.map(a=>'<span class=\"app '+(a.ok?'app-ok':'app-no')+'\">'+(a.ok?'✅':'❌')+' '+a.name+'</span>').join('')}if(j.remaining_display){document.getElementById('remain').textContent=j.remaining_display}}catch(e){}}"
+              "loadStatus();setInterval(loadStatus,10000);"
+              "</script></body></html>"
+          )
           $htmlPath = "$env:RUNNER_TEMP\panel.html"
-          Set-Content $htmlPath -Value $html -Encoding UTF8
+          Set-Content -Path $htmlPath -Value ($htmlLines -join "`r`n") -Encoding UTF8
 
           $webScriptLines = @(
               '$ErrorActionPreference = "Continue"'
@@ -1071,7 +1057,7 @@ loadStatus();setInterval(loadStatus,10000);
               '}'
           )
           $webScriptPath = "$env:RUNNER_TEMP\web-panel.ps1"
-          Set-Content $webScriptPath -Value ($webScriptLines -join "`r`n") -Encoding UTF8
+          Set-Content -Path $webScriptPath -Value ($webScriptLines -join "`r`n") -Encoding UTF8
           Start-Process pwsh.exe -ArgumentList '-NoProfile','-WindowStyle','Hidden','-File',"`"$webScriptPath`""
           Start-Sleep -Seconds 4
           $test = Test-NetConnection 127.0.0.1 -Port $webPort -WarningAction SilentlyContinue
@@ -1102,14 +1088,14 @@ loadStatus();setInterval(loadStatus,10000);
           }
           exit 0
 
-      - name: 🎉 THÔNG TIN KẾT NỐI ĐẦY ĐỦ v29.0
+      - name: 🎉 THÔNG TIN KẾT NỐI ĐẦY ĐỦ v29.1
         shell: pwsh
         run: |
           $pass = if ($env:RDP_PASS_SOURCE -eq 'secret') { '(secret)' } else { $env:RDP_PASS }
           $sdDl = if (Test-Path "$env:PROFILE_PATH\Downloads\StarDesk_latest.exe") { 'Downloads/StarDesk_latest.exe ✅' } else { 'Chưa tải' }
           Write-Host ""
           Write-Host "╔══════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-          Write-Host "║        ALB-VPSFREE-ULTIMATE v29.0 — APEX EDITION        ║" -ForegroundColor Cyan
+          Write-Host "║        ALB-VPSFREE-ULTIMATE v29.1 — APEX EDITION        ║" -ForegroundColor Cyan
           Write-Host "╠══════════════════════════════════════════════════════════╣" -ForegroundColor Cyan
           Write-Host "║ 🏷️  Máy         : $($env:MACHINE_ID.PadRight(38)) ║" -ForegroundColor White
           Write-Host "║ 🌐 Tailscale IP : $($env:TAILSCALE_IP.PadRight(38)) ║" -ForegroundColor White
