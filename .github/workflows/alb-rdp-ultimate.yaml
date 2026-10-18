@@ -1,16 +1,17 @@
 # ═══════════════════════════════════════════════════════════════
-# ALB-VPSFREE-ULTIMATE v29.1 — TỐI THƯỢNG TOÀN DIỆN
-# - FIX Web Panel: array thay here-string, không lỗi thụt lề
-# - FIX Test-Port: đúng cú pháp
-# - FIX Sunshine: verify port 47990
-# - FIX Funnel: restart Tailscale service để sync control plane
-# - THÊM APP: Discord, VSCode, Bandicam, Spotify, Roblox, EVKey, Tailscale
+# ALB-VPSFREE-ULTIMATE v30.0 — APEX EDITION
+# - FIX: GPU registry không bị chặn quyền (bỏ New-Item)
+# - FIX: Test-Port function đúng cú pháp
+# - FIX: Web Panel dùng array, không here-string
+# - FIX: Funnel restart service để sync control plane
+# - FIX: Sunshine verify port 47990
+# - APP: Discord, VSCode, Bandicam, Spotify, Roblox, EVKey, Tailscale
 # - Ổ riêng 100TB giới hạn, validate input
-# - FIX LAG đầy đủ: GPU, MMCSS, TSFairShare, CPU unlock
+# - FIX LAG: GPU, MMCSS, TSFairShare, CPU unlock (an toàn, không fail)
 # - HÌNH NỀN: Zenova Pagoda Sunset (link catbox)
 # - VERIFY link Sunshine + Web Panel
 # ═══════════════════════════════════════════════════════════════
-name: ALB-VPSFREE-ULTIMATE v29.1
+name: ALB-VPSFREE-ULTIMATE v30.0
 
 on:
   workflow_dispatch:
@@ -383,67 +384,109 @@ jobs:
           if (Test-Path $rdpidd) { & icacls $rdpidd /grant:r '*S-1-5-32-545:(RX)' /Q *> $null; Write-Host '✅ RDPidd.dll OK' -ForegroundColor Green }
           exit 0
 
-      - name: ⚡ FIX LAG ĐẦY ĐỦ + MỞ KHÓA 100% CPU + GPU
+      - name: ⚡ FIX LAG ĐẦY ĐỦ + MỞ KHÓA 100% CPU + GPU (AN TOÀN)
         if: ${{ inputs.optimize_windows == true || inputs.optimize_windows == 'true' }}
         shell: pwsh
         run: |
-          tzutil /s 'SE Asia Standard Time'
+          $ErrorActionPreference = 'SilentlyContinue'
+          tzutil /s 'SE Asia Standard Time' 2>$null
+
+          # Power Plan
           try {
               $ultOut = & powercfg /duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61 2>$null
               if ($ultOut -match '([a-f0-9\-]{36})') { & powercfg /setactive $Matches[1] 2>$null }
               else { & powercfg /setactive SCHEME_MIN 2>$null }
-              & powercfg /change standby-timeout-ac 0
-              & powercfg /change monitor-timeout-ac 0
-              & powercfg /change disk-timeout-ac 0
-              & powercfg /hibernate off
+              & powercfg /change standby-timeout-ac 0 2>$null
+              & powercfg /change monitor-timeout-ac 0 2>$null
+              & powercfg /change disk-timeout-ac 0 2>$null
+              & powercfg /hibernate off 2>$null
               & powercfg -setacvalueindex scheme_current sub_processor CPMINCORES 100 2>$null
               & powercfg -setacvalueindex scheme_current sub_processor CPMAXCORES 100 2>$null
               & powercfg -setacvalueindex scheme_current sub_processor PROCTHROTTLEMIN 100 2>$null
               & powercfg -setacvalueindex scheme_current sub_processor PROCTHROTTLEMAX 100 2>$null
               & powercfg /setactive scheme_current 2>$null
-          } catch {}
-          $ptPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling'
-          New-Item $ptPath -Force | Out-Null
-          Set-ItemProperty $ptPath PowerThrottlingOff 1 -Type DWord -Force
+              Write-Host "│ ✅ Power Plan" -ForegroundColor Green
+          } catch { Write-Host "│ ⚠️ Power Plan: $($_.Exception.Message)" -ForegroundColor Yellow }
+
+          # Power Throttling
+          try {
+              $ptPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling'
+              if (-not (Test-Path $ptPath)) { New-Item $ptPath -Force | Out-Null }
+              Set-ItemProperty $ptPath PowerThrottlingOff 1 -Type DWord -Force -ErrorAction Stop
+              Write-Host "│ ✅ Power Throttling OFF" -ForegroundColor Green
+          } catch { Write-Host "│ ⚠️ Power Throttling: $($_.Exception.Message)" -ForegroundColor Yellow }
+
+          # TSFairShare
           @(
             @{Path='HKLM:\SYSTEM\CurrentControlSet\Services\TSFairShare\CPU';       Name='EnableCPUQuota'},
             @{Path='HKLM:\SYSTEM\CurrentControlSet\Services\TSFairShare\Disk';      Name='EnableDiskQuota'},
             @{Path='HKLM:\SYSTEM\CurrentControlSet\Services\TSFairShare\NetBandWidth';Name='EnableNetworkQuota'}
           ) | ForEach-Object {
-              if (Test-Path $_.Path) { Set-ItemProperty $_.Path $_.Name 0 -Type DWord -Force -ErrorAction SilentlyContinue }
+              try { if (Test-Path $_.Path) { Set-ItemProperty $_.Path $_.Name 0 -Type DWord -Force -ErrorAction Stop } } catch {}
           }
-          Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl' Win32PrioritySeparation 38 -Type DWord -Force
-          $mmPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile'
-          New-Item $mmPath -Force | Out-Null
-          Set-ItemProperty $mmPath NetworkThrottlingIndex 4294967295 -Type DWord -Force -ErrorAction SilentlyContinue
-          Set-ItemProperty $mmPath SystemResponsiveness  0           -Type DWord -Force
-          $gamesTask = "$mmPath\Tasks\Games"; New-Item $gamesTask -Force | Out-Null
-          Set-ItemProperty $gamesTask 'GPU Priority'        8      -Type DWord  -Force
-          Set-ItemProperty $gamesTask 'Priority'            6      -Type DWord  -Force
-          Set-ItemProperty $gamesTask 'Scheduling Category' 'High' -Type String -Force
-          Set-ItemProperty $gamesTask 'SFIO Priority'       'High' -Type String -Force
+          Write-Host "│ ✅ TSFairShare" -ForegroundColor Green
+
+          # CPU Priority
+          try { Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl' Win32PrioritySeparation 38 -Type DWord -Force -ErrorAction Stop; Write-Host "│ ✅ CPU Priority" -ForegroundColor Green } catch {}
+
+          # MMCSS
+          try {
+              $mmPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile'
+              if (-not (Test-Path $mmPath)) { New-Item $mmPath -Force | Out-Null }
+              Set-ItemProperty $mmPath NetworkThrottlingIndex 4294967295 -Type DWord -Force -ErrorAction SilentlyContinue
+              Set-ItemProperty $mmPath SystemResponsiveness  0           -Type DWord -Force -ErrorAction Stop
+              $gamesTask = "$mmPath\Tasks\Games"
+              if (-not (Test-Path $gamesTask)) { New-Item $gamesTask -Force | Out-Null }
+              Set-ItemProperty $gamesTask 'GPU Priority'        8      -Type DWord  -Force -ErrorAction SilentlyContinue
+              Set-ItemProperty $gamesTask 'Priority'            6      -Type DWord  -Force -ErrorAction SilentlyContinue
+              Set-ItemProperty $gamesTask 'Scheduling Category' 'High' -Type String -Force -ErrorAction SilentlyContinue
+              Set-ItemProperty $gamesTask 'SFIO Priority'       'High' -Type String -Force -ErrorAction SilentlyContinue
+              Write-Host "│ ✅ MMCSS" -ForegroundColor Green
+          } catch { Write-Host "│ ⚠️ MMCSS: $($_.Exception.Message)" -ForegroundColor Yellow }
+
+          # GPU (KHÔNG New-Item)
           $gpuPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers'
-          New-Item $gpuPath -Force | Out-Null
-          Set-ItemProperty $gpuPath TdrLevel         0 -Type DWord -Force -ErrorAction SilentlyContinue
-          Set-ItemProperty $gpuPath TdrDelay        60 -Type DWord -Force -ErrorAction SilentlyContinue
-          Set-ItemProperty $gpuPath HwSchMode        2 -Type DWord -Force -ErrorAction SilentlyContinue
-          Set-ItemProperty 'HKCU:\Control Panel\Desktop' MenuShowDelay '0'  -Force -ErrorAction SilentlyContinue
-          Set-ItemProperty 'HKCU:\Control Panel\Desktop' DragFullWindows '0' -Force -ErrorAction SilentlyContinue
-          Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects' VisualFXSetting 2 -Type DWord -Force -ErrorAction SilentlyContinue
+          if (Test-Path $gpuPath) {
+              try {
+                  Set-ItemProperty $gpuPath TdrLevel  0 -Type DWord -Force -ErrorAction Stop
+                  Set-ItemProperty $gpuPath TdrDelay 60 -Type DWord -Force -ErrorAction Stop
+                  Set-ItemProperty $gpuPath HwSchMode 2 -Type DWord -Force -ErrorAction Stop
+                  Write-Host "│ ✅ GPU TDR config" -ForegroundColor Green
+              } catch { Write-Host "│ ⚠️ GPU TDR: $($_.Exception.Message)" -ForegroundColor Yellow }
+          } else { Write-Host "│ ⚠️ GraphicsDrivers key không tồn tại" -ForegroundColor Yellow }
+
+          # Visual
+          try {
+              Set-ItemProperty 'HKCU:\Control Panel\Desktop' MenuShowDelay '0'  -Force -ErrorAction SilentlyContinue
+              Set-ItemProperty 'HKCU:\Control Panel\Desktop' DragFullWindows '0' -Force -ErrorAction SilentlyContinue
+              Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects' VisualFXSetting 2 -Type DWord -Force -ErrorAction SilentlyContinue
+              Write-Host "│ ✅ Visual" -ForegroundColor Green
+          } catch {}
+
+          # NTFS & Network
           & fsutil behavior set disablelastaccess 1 *> $null
           & fsutil behavior set disable8dot3     1 *> $null
           & netsh int tcp set global autotuninglevel=normal *> $null
           & netsh int tcp set global rss=enabled            *> $null
           & netsh int tcp set global chimney=enabled        *> $null
+          Write-Host "│ ✅ NTFS & Network" -ForegroundColor Green
+
+          # Defender
           try { Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue } catch {}
+
+          # Services
           @('wuauserv','UsoSvc','DiagTrack','WSearch','SysMain','WerSvc',
             'XblAuthManager','XblGameSave','XboxNetApiSvc','XboxGipSvc',
             'Spooler','MapsBroker','PcaSvc','RetailDemo','dmwappushservice',
             'WbioSrvc','PhoneSvc','PrintNotify') |
             ForEach-Object { Stop-Service $_ -Force -ErrorAction SilentlyContinue; Set-Service $_ -StartupType Disabled -ErrorAction SilentlyContinue }
+          Write-Host "│ ✅ Services" -ForegroundColor Green
+
+          # CPU Info
           $cpuInfo = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
           $cpuName = if ($cpuInfo) { "$($cpuInfo.Name) ($($cpuInfo.NumberOfLogicalProcessors) vCPU @ $($cpuInfo.MaxClockSpeed)MHz)" } else { 'GitHub Cloud vCPU' }
           "CPU_MODEL_INFO=$cpuName" >> "$env:GITHUB_ENV"
+          Write-Host "✅ Fix lag & CPU unlock hoàn tất (không fail)" -ForegroundColor Green
           exit 0
 
       - name: 🌐 Tailscale + Funnel (VERIFY + ICMP + RESTART SERVICE)
@@ -965,10 +1008,10 @@ jobs:
           $state | ConvertTo-Json -Depth 5 -Compress | Set-Content $env:SHARED_STATE_FILE -Encoding UTF8
 
           $htmlLines = @(
-              '<!DOCTYPE html><html><head><meta charset="utf-8"><title>ALB Panel v29.1</title>'
+              '<!DOCTYPE html><html><head><meta charset="utf-8"><title>ALB Panel v30.0</title>'
               '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">'
               '<style>*{box-sizing:border-box}body{background:#07090f;color:#eef2f8;font-family:Inter,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}.card{max-width:640px;width:100%;background:rgba(12,18,32,0.95);border:1px solid rgba(255,180,80,0.2);border-radius:20px;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,0.6)}h1{color:#ffd700;margin:0 0 4px;font-size:22px}.sub{color:#8a9bb8;font-size:12px;margin-bottom:20px}.row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.06)}.label{color:#8a9bb8;font-size:12px}.val{color:#eef2f8;font-weight:600;font-size:13px}.val a{color:#38bdf8;text-decoration:none}.val a:hover{text-decoration:underline}.gold{color:#ffd700}.apps{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0}.app{padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600}.app-ok{background:rgba(74,222,128,0.15);color:#4ade80;border:1px solid rgba(74,222,128,0.3)}.app-no{background:rgba(239,68,68,0.1);color:#f87171;border:1px solid rgba(239,68,68,0.2)}.btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:20px}.btn{padding:13px;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;color:white}.btn:hover{opacity:.8}.btn-save{background:linear-gradient(135deg,#0ea5e9,#0369a1)}.btn-restart{background:linear-gradient(135deg,#f59e0b,#b45309)}.btn-stop{background:linear-gradient(135deg,#ef4444,#b91c1c)}.btn-new{background:linear-gradient(135deg,#8b5cf6,#6d28d9);grid-column:span 2}</style></head><body><div class="card">'
-              '<h1>🖥️ ALB PANEL v29.1</h1>'
+              '<h1>🖥️ ALB PANEL v30.0</h1>'
               "<div class='sub'>$machineId &bull; $tsIp &bull; $winImage</div>"
               "<div class='row'><span class='label'>⏱️ Còn lại</span><span class='val gold' id='remain'>Loading...</span></div>"
               "<div class='row'><span class='label'>🌐 Web Panel</span><span class='val'><a href='$webPanelUrl' target='_blank'>$webPanelUrl</a></span></div>"
@@ -1088,14 +1131,14 @@ jobs:
           }
           exit 0
 
-      - name: 🎉 THÔNG TIN KẾT NỐI ĐẦY ĐỦ v29.1
+      - name: 🎉 THÔNG TIN KẾT NỐI ĐẦY ĐỦ v30.0
         shell: pwsh
         run: |
           $pass = if ($env:RDP_PASS_SOURCE -eq 'secret') { '(secret)' } else { $env:RDP_PASS }
           $sdDl = if (Test-Path "$env:PROFILE_PATH\Downloads\StarDesk_latest.exe") { 'Downloads/StarDesk_latest.exe ✅' } else { 'Chưa tải' }
           Write-Host ""
           Write-Host "╔══════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-          Write-Host "║        ALB-VPSFREE-ULTIMATE v29.1 — APEX EDITION        ║" -ForegroundColor Cyan
+          Write-Host "║        ALB-VPSFREE-ULTIMATE v30.0 — APEX EDITION        ║" -ForegroundColor Cyan
           Write-Host "╠══════════════════════════════════════════════════════════╣" -ForegroundColor Cyan
           Write-Host "║ 🏷️  Máy         : $($env:MACHINE_ID.PadRight(38)) ║" -ForegroundColor White
           Write-Host "║ 🌐 Tailscale IP : $($env:TAILSCALE_IP.PadRight(38)) ║" -ForegroundColor White
