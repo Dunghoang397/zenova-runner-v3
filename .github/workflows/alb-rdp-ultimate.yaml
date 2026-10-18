@@ -1,12 +1,10 @@
 # ═══════════════════════════════════════════════════════════════
 # ALB-VPSFREE-ULTIMATE v32.0 — TURBO EDITION
-# - TỐI ƯU TOÀN DIỆN: giảm từ ~15 phút xuống ~2-3 phút
-# - Restore ổ đĩa: tải song song + giải nén song song
+# - TỐI ƯU TOÀN DIỆN: ~2-3 phút thay vì ~15 phút
+# - VDD+Audio+Sunshine: chỉ extract file cần, bỏ pnputil scan, bỏ restart service
+# - Restore ổ đĩa: tải song song + 7z -mx=0 -mmt=4
 # - Cài app: 7 job song song, không chờ
-# - Sunshine: restore từ backup, không cài lại
 # - Tailscale: cache MSI, auth song song
-# - 7z: -mx=0 -mmt=4 (nhanh gấp 5 lần)
-# - Sleep: giảm còn 1-3s
 # - FIX: GPU registry, Test-Port, Web Panel here-string
 # ═══════════════════════════════════════════════════════════════
 name: ALB-VPSFREE-ULTIMATE v32.0
@@ -106,9 +104,6 @@ jobs:
       SUNSHINE_WEB_PORT: '47990'
 
     steps:
-      # ───────────────────────────────────────────────
-      # 1. DỰNG Ổ ĐĨA — TỐI ƯU
-      # ───────────────────────────────────────────────
       - name: 🧱 Dựng ổ đĩa riêng & kho lưu (TURBO)
         shell: pwsh
         env:
@@ -217,9 +212,6 @@ jobs:
           $global:LASTEXITCODE = 0
           Write-Host "✅ Ổ ${dl}:\ | Máy: $cleanId | Size: ${vhdSizeInput}GB | $([math]::Round(((Get-Date)-$startTime).TotalSeconds))s" -ForegroundColor Green
 
-      # ───────────────────────────────────────────────
-      # 2. SAVE DATA SCRIPT — 7Z TURBO
-      # ───────────────────────────────────────────────
       - name: 🧰 Tạo save-data.ps1 (7Z TURBO)
         shell: pwsh
         run: |
@@ -264,9 +256,6 @@ jobs:
           $saveScriptPath = "$env:RUNNER_TEMP\save-data.ps1"
           Set-Content $saveScriptPath -Value ($scriptLines -join "`r`n") -Encoding UTF8
 
-      # ───────────────────────────────────────────────
-      # 3. KHÔI PHỤC Ổ ĐĨA — TẢI SONG SONG + GIẢI NÉN SONG SONG
-      # ───────────────────────────────────────────────
       - name: ♻️ Khôi phục ổ đĩa & Profile (TURBO)
         shell: pwsh
         run: |
@@ -288,7 +277,6 @@ jobs:
           gh release download $env:RELEASE_TAG --repo $env:GH_REPO --pattern 'drive-manifest.json' --dir $dlDir 2>$null
           if (-not (Test-Path "$dlDir\drive-manifest.json")) { 'DATA_RESTORED=1' >> "$env:GITHUB_ENV"; exit 0 }
 
-          # TẢI SONG SONG TẤT CẢ CHUNKS
           $manifest = Get-Content -Raw "$dlDir\drive-manifest.json" | ConvertFrom-Json
           $chunkNames = @($manifest.chunks | ForEach-Object { $_.name })
           $dlJobs = @()
@@ -307,7 +295,6 @@ jobs:
           $stage = "$env:VHD_CONTAINER\restore-stage"
           if (Test-Path $stage) { Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue }
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          # 7z -mmt=4 TURBO
           & 7z x $firstChunk.FullName "-o$stage" -y -mmt=4 *> $null
           Remove-Item $dlDir -Recurse -Force -ErrorAction SilentlyContinue
 
@@ -355,9 +342,6 @@ jobs:
           Write-Host "✅ Restore hoàn tất sau $([math]::Round(((Get-Date)-$startTime).TotalSeconds))s" -ForegroundColor Green
           exit 0
 
-      # ───────────────────────────────────────────────
-      # 4. GẮN KẾT OS
-      # ───────────────────────────────────────────────
       - name: 🔗 Gắn kết OS & Apps
         shell: pwsh
         run: |
@@ -379,9 +363,6 @@ jobs:
           "SUNSHINE_PERSIST_CFG=$sunCfgDir"  >> "$env:GITHUB_ENV"
           "WALLPAPER_DIR=$wallDir"           >> "$env:GITHUB_ENV"
 
-      # ───────────────────────────────────────────────
-      # 5. RDP CONFIG
-      # ───────────────────────────────────────────────
       - name: 🔐 CẤU HÌNH RDP (BẮT BUỘC PASS)
         shell: pwsh
         run: |
@@ -405,9 +386,6 @@ jobs:
           Start-Service TermService -ErrorAction SilentlyContinue
           exit 0
 
-      # ───────────────────────────────────────────────
-      # 6. FIX RDPIDD
-      # ───────────────────────────────────────────────
       - name: 🔐 FIX QUYỀN RDPIDD.DLL
         shell: pwsh
         run: |
@@ -415,9 +393,6 @@ jobs:
           if (Test-Path $rdpidd) { & icacls $rdpidd /grant:r '*S-1-5-32-545:(RX)' /Q *> $null; Write-Host '✅ RDPidd.dll OK' -ForegroundColor Green }
           exit 0
 
-      # ───────────────────────────────────────────────
-      # 7. FIX LAG
-      # ───────────────────────────────────────────────
       - name: ⚡ FIX LAG + MỞ KHÓA 100% CPU + GPU (AN TOÀN)
         if: ${{ inputs.optimize_windows == true || inputs.optimize_windows == 'true' }}
         shell: pwsh
@@ -465,9 +440,6 @@ jobs:
           Write-Host "✅ Fix lag OK" -ForegroundColor Green
           exit 0
 
-      # ───────────────────────────────────────────────
-      # 8. TAILSCALE — CACHE + SONG SONG
-      # ───────────────────────────────────────────────
       - name: 🌐 Tailscale + Funnel (CACHE + SONG SONG)
         if: ${{ inputs.enable_tailscale == true || inputs.enable_tailscale == 'true' }}
         env:
@@ -540,9 +512,6 @@ jobs:
           Write-Host "✅ Tailscale OK sau $([math]::Round(((Get-Date)-$startTime).TotalSeconds))s" -ForegroundColor Green
           exit 0
 
-      # ───────────────────────────────────────────────
-      # 9. DUCKDNS
-      # ───────────────────────────────────────────────
       - name: 🦆 DuckDNS
         if: ${{ inputs.enable_duckdns == true || inputs.enable_duckdns == 'true' }}
         shell: pwsh
@@ -556,10 +525,10 @@ jobs:
           try { $res = Invoke-RestMethod "https://www.duckdns.org/update?domains=$domain&token=$($env:DUCKDNS_TOKEN)&ip=$($env:TAILSCALE_IP)" -TimeoutSec 10; if ($res.Trim() -eq 'OK') { "DUCKDNS_HOST=${domain}.duckdns.org" >> "$env:GITHUB_ENV" } } catch {}
           exit 0
 
-      # ───────────────────────────────────────────────
-      # 10. SUNSHINE — RESTORE TRƯỚC
-      # ───────────────────────────────────────────────
-      - name: 🖥️🔊☀️ VDD + VB-Audio + Sunshine (RESTORE + TURBO)
+      # ══════════════════════════════════════════════
+      # VDD + VB-Audio + Sunshine — TỐI ƯU TRIỆT ĐỂ
+      # ══════════════════════════════════════════════
+      - name: 🖥️🔊☀️ VDD + VB-Audio + Sunshine (SIÊU NHANH)
         shell: pwsh
         env:
           VDD_RES: ${{ inputs.vdd_resolution }}
@@ -575,7 +544,7 @@ jobs:
           $vHeight = if ($resParts.Count -ge 2) { [int]$resParts[1] } else { 1080 }
           $vHz     = if ($resParts.Count -ge 3) { [int]$resParts[2] } else { 60 }
 
-          # VDD
+          # ── 1. VDD — CHỈ CÀI NẾU CHƯA CÓ ──
           $vddInstalled = Get-PnpDevice -Class Display -ErrorAction SilentlyContinue | Where-Object { $_.FriendlyName -match 'usbmmidd|Virtual Display' -and $_.Status -eq 'OK' }
           if (-not $vddInstalled) {
               try {
@@ -583,7 +552,16 @@ jobs:
                   $usbZip   = "$vddCache\usbmmidd_v2.zip"; $usbDir = 'C:\usbmmidd_v2'
                   if (-not (Test-Path $usbZip)) { & curl.exe -L --retry 2 --connect-timeout 10 'https://www.amyuni.com/downloads/usbmmidd_v2.zip' -o $usbZip 2>$null }
                   if (Test-Path $usbZip) {
-                      Expand-Archive $usbZip 'C:\' -Force
+                      Add-Type -AssemblyName System.IO.Compression.FileSystem
+                      $zip = [System.IO.Compression.ZipFile]::OpenRead($usbZip)
+                      New-Item -ItemType Directory -Force 'C:\usbmmidd_v2' | Out-Null
+                      foreach ($entry in $zip.Entries) {
+                          if ($entry.Name -match '\.(inf|sys|cer|cat|exe)$') {
+                              $destPath = "C:\usbmmidd_v2\$($entry.Name)"
+                              [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $destPath, $true)
+                          }
+                      }
+                      $zip.Dispose()
                       if (Test-Path "$usbDir\deviceinstaller64.exe") {
                           Push-Location $usbDir
                           Get-ChildItem $usbDir -Filter '*.cer' -Recurse | ForEach-Object { Import-Certificate $_.FullName -CertStoreLocation 'Cert:\LocalMachine\Root' *>$null; Import-Certificate $_.FullName -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' *>$null }
@@ -599,39 +577,55 @@ jobs:
                       }
                   }
               } catch {}
-          }
+              Write-Host "│ ✅ VDD cài mới" -ForegroundColor Green
+          } else { Write-Host "│ ⚡ VDD đã có, skip" -ForegroundColor Green }
 
-          # VB-Audio
+          # ── 2. VB-AUDIO — CHỈ CÀI NẾU CHƯA CÓ ──
           $vbInstalled = Get-PnpDevice -Class MEDIA -ErrorAction SilentlyContinue | Where-Object { $_.FriendlyName -match 'VB-Audio|CABLE' -and $_.Status -eq 'OK' }
           if (-not $vbInstalled) {
               try {
-                  @('MMCSS','AudioEndpointBuilder','Audiosrv') | ForEach-Object { Set-Service $_ -StartupType Automatic -ErrorAction SilentlyContinue; Start-Service $_ -ErrorAction SilentlyContinue }
                   $vbCache = "$instCache\VBCable"; New-Item -ItemType Directory -Force $vbCache | Out-Null
                   $vbZip   = "$vbCache\VBCABLE_Driver_Pack43.zip"
                   if (-not (Test-Path $vbZip)) { & curl.exe -L --retry 2 --connect-timeout 10 'https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip' -o $vbZip 2>$null }
-                  if (Test-Path $vbZip) { Expand-Archive $vbZip $vbCache -Force }
-                  $vbInf = Get-ChildItem $vbCache -Filter '*64*.inf' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-                  if (-not $vbInf) { $vbInf = Get-ChildItem $vbCache -Filter '*.inf' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 }
-                  if ($vbInf) { pnputil /add-driver $vbInf.FullName /install *> $null }
-                  pnputil /scan-devices *> $null
-                  Restart-Service Audiosrv -Force -ErrorAction SilentlyContinue
+                  if (Test-Path $vbZip) {
+                      Add-Type -AssemblyName System.IO.Compression.FileSystem
+                      $zip = [System.IO.Compression.ZipFile]::OpenRead($vbZip)
+                      New-Item -ItemType Directory -Force $vbCache | Out-Null
+                      foreach ($entry in $zip.Entries) {
+                          if ($entry.Name -match '\.(inf|sys|cer|cat|exe)$') {
+                              $destPath = [System.IO.Path]::Combine($vbCache, $entry.Name)
+                              [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $destPath, $true)
+                          }
+                      }
+                      $zip.Dispose()
+                      $vbInf = Get-ChildItem $vbCache -Filter '*64*.inf' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+                      if (-not $vbInf) { $vbInf = Get-ChildItem $vbCache -Filter '*.inf' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 }
+                      if ($vbInf) { pnputil /add-driver $vbInf.FullName /install *> $null }
+                  }
               } catch {}
-          }
+              Write-Host "│ ✅ VB-Audio cài mới" -ForegroundColor Green
+          } else { Write-Host "│ ⚡ VB-Audio đã có, skip" -ForegroundColor Green }
 
           $audioDevs = @(Get-PnpDevice -Class 'MEDIA','AudioEndpoint' -ErrorAction SilentlyContinue | Where-Object { $_.FriendlyName -match 'VB-Audio|CABLE|Virtual' -and $_.Status -eq 'OK' } | Select-Object -ExpandProperty FriendlyName -Unique)
           "AUDIO_DEVICE_NAME=$($audioDevs -join ', ')" >> "$env:GITHUB_ENV"
           $global:LASTEXITCODE = 0
 
-          # SUNSHINE — RESTORE TỪ BACKUP TRƯỚC
+          # ── 3. SUNSHINE — RESTORE CHỈ FILE CẦN THIẾT ──
           $sunDir = 'C:\Program Files\Sunshine'; $sunExe = "$sunDir\sunshine.exe"
-          $sunBackup = "$env:SHARED_OS_DIR\Sunshine-Portable\sunshine.exe"
-          if (-not (Test-Path $sunExe) -and (Test-Path $sunBackup)) {
-              Write-Host "│ ⚡ Restore Sunshine từ backup..." -ForegroundColor Green
+          $sunBackupDir = "$env:SHARED_OS_DIR\Sunshine-Portable"
+
+          if (-not (Test-Path $sunExe) -and (Test-Path "$sunBackupDir\sunshine.exe")) {
+              Write-Host "│ ⚡ Restore Sunshine từ backup (chỉ file cần)..." -ForegroundColor Green
               New-Item -ItemType Directory -Force $sunDir | Out-Null
-              robocopy "$env:SHARED_OS_DIR\Sunshine-Portable" $sunDir /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null
-              $global:LASTEXITCODE = 0
+              Get-ChildItem $sunBackupDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -match '^\.(exe|dll|json|conf|pem|key)$' } | ForEach-Object { Copy-Item $_.FullName "$sunDir\$($_.Name)" -Force -ErrorAction SilentlyContinue }
+              if (Test-Path "$sunBackupDir\tools") {
+                  New-Item -ItemType Directory -Force "$sunDir\tools" | Out-Null
+                  Get-ChildItem "$sunBackupDir\tools" -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -eq '.exe' } | ForEach-Object { Copy-Item $_.FullName "$sunDir\tools\$($_.Name)" -Force -ErrorAction SilentlyContinue }
+              }
           }
+
           if (-not (Test-Path $sunExe)) {
+              Write-Host "│ 📦 Cài Sunshine mới..." -ForegroundColor Cyan
               & sc.exe stop SunshineService *> $null; & sc.exe delete SunshineService *> $null
               $job = Start-Job -ScriptBlock { choco install sunshine -y --no-progress --limit-output --ignore-checksums 2>&1 | Out-Null }
               $done = Wait-Job $job -Timeout 60
@@ -657,11 +651,9 @@ jobs:
               $defaultConf = @("sunshine_name = ALB-$($env:MACHINE_ID)","min_log_level = info","origin_web_ui_allowed = wan","upnp = disabled","address_family = both","port = 47989","pkey = ","cert = ","file_state = ","credentials_file = ") -join "`r`n"
               if (-not (Test-Path $confFile)) { Set-Content $confFile -Value $defaultConf -Encoding UTF8 }
               else { $curConf = Get-Content -Raw $confFile -ErrorAction SilentlyContinue; if ($curConf -notmatch 'origin_web_ui_allowed\s*=\s*wan') { $curConf = $curConf -replace 'origin_web_ui_allowed\s*=\s*\w+','origin_web_ui_allowed = wan'; Set-Content $confFile -Value $curConf -Encoding UTF8 } }
-
               Remove-NetFirewallRule -DisplayName 'Sunshine-WebUI-TCP','Sunshine-WebUI-UDP' -ErrorAction SilentlyContinue
               New-NetFirewallRule -DisplayName 'Sunshine-WebUI-TCP' -Direction Inbound -Action Allow -Protocol TCP -Program $sunExe -Profile Any | Out-Null
               New-NetFirewallRule -DisplayName 'Sunshine-WebUI-UDP' -Direction Inbound -Action Allow -Protocol UDP -Program $sunExe -Profile Any | Out-Null
-
               $svcExe = "$sunDir\tools\sunshinesvc.exe"
               $svcObj = Get-Service -Name 'SunshineService','sunshinesvc' -ErrorAction SilentlyContinue | Select-Object -First 1
               if (-not $svcObj -and (Test-Path $svcExe)) {
@@ -670,19 +662,16 @@ jobs:
               }
               if ($svcObj) { Set-Service $svcObj.Name -StartupType Automatic; Start-Service $svcObj.Name -ErrorAction SilentlyContinue }
               else { Start-Process $sunExe -WorkingDirectory $sunDir -WindowStyle Hidden }
-
-              Start-Sleep -Seconds 3
+              Start-Sleep -Seconds 2
               $sunListen = netstat -ano | Select-String ':47990'
-              if ($sunListen) { "SUNSHINE_PORT_OK=1" >> "$env:GITHUB_ENV" }
-              else { Stop-Service SunshineService,sunshinesvc -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; if ($svcObj) { Start-Service $svcObj.Name -ErrorAction SilentlyContinue } }
+              if ($sunListen) { Write-Host "│ ✅ Sunshine port 47990 OK" -ForegroundColor Green; "SUNSHINE_PORT_OK=1" >> "$env:GITHUB_ENV" }
+              else { Write-Host "│ ⚠️ Sunshine chưa listen, chờ thêm..." -ForegroundColor Yellow; Start-Sleep -Seconds 2; $sunListen2 = netstat -ano | Select-String ':47990'; if ($sunListen2) { "SUNSHINE_PORT_OK=1" >> "$env:GITHUB_ENV" } }
               "SUNSHINE_READY=1" >> "$env:GITHUB_ENV"
           }
+
           Write-Host "✅ VDD+Audio+Sunshine OK sau $([math]::Round(((Get-Date)-$startTime).TotalSeconds))s" -ForegroundColor Green
           $global:LASTEXITCODE = 0; exit 0
 
-      # ───────────────────────────────────────────────
-      # 11. USER + WALLPAPER
-      # ───────────────────────────────────────────────
       - name: 👤 User + Mật khẩu + Wallpaper
         shell: pwsh
         env:
@@ -785,9 +774,6 @@ jobs:
           Write-Host "✅ User+Wallpaper OK sau $([math]::Round(((Get-Date)-$startTime).TotalSeconds))s" -ForegroundColor Green
           exit 0
 
-      # ───────────────────────────────────────────────
-      # 12. CÀI APP — SIÊU NHANH
-      # ───────────────────────────────────────────────
       - name: 🚀 CÀI APP SIÊU NHANH — 7 JOB SONG SONG
         shell: pwsh
         env:
@@ -802,7 +788,6 @@ jobs:
           $ws = New-Object -ComObject WScript.Shell
           New-Item -ItemType Directory -Force -Path $instCache,$appsDir,"$appsDir\EVKey",$desktopDir,$downloadsDir,$startupDir | Out-Null
 
-          # TẢI SONG SONG
           Write-Host "━━━ TẢI SONG SONG 5 INSTALLER ━━━" -ForegroundColor Cyan
           $dlJobs = @()
           $dlJobs += Start-Job -ScriptBlock { param($p) if (-not (Test-Path "$p\EVKey.zip")) { & curl.exe -L --retry 2 --connect-timeout 10 -s 'https://github.com/lamquangminh/EVKey/releases/download/Release/EVKey.zip' -o "$p\EVKey.zip" 2>$null } } -ArgumentList $instCache
@@ -822,7 +807,6 @@ jobs:
               if ($exe) { $lnk = $ws.CreateShortcut("$startupDir\EVKey.lnk"); $lnk.TargetPath = $exe; $lnk.Save(); $lnk = $ws.CreateShortcut("$desktopDir\EVKey.lnk"); $lnk.TargetPath = $exe; $lnk.Save(); Start-Process $exe -WorkingDirectory $evDest -ErrorAction SilentlyContinue }
           } catch {}
 
-          # CÀI SONG SONG
           Write-Host "━━━ CÀI SONG SONG 7 JOB ━━━" -ForegroundColor Cyan
           $installJobs = @()
           $installJobs += Start-Job -ScriptBlock { param($instCache, $desktopDir) $vsExe = 'C:\Program Files\Microsoft VS Code\Code.exe'; if (-not (Test-Path $vsExe)) { $inst = "$instCache\VSCodeSetup-x64.exe"; if ((Test-Path $inst) -and (Get-Item $inst).Length -gt 40MB) { Start-Process $inst -ArgumentList '/VERYSILENT','/NORESTART','/MERGETASKS=!runcode,addtopath' -Wait -ErrorAction SilentlyContinue } }; if (Test-Path $vsExe) { $ws = New-Object -ComObject WScript.Shell; $lnk = $ws.CreateShortcut("$desktopDir\Visual Studio Code.lnk"); $lnk.TargetPath = $vsExe; $lnk.Save() } } -ArgumentList $instCache, $desktopDir
@@ -831,20 +815,14 @@ jobs:
           $installJobs += Start-Job -ScriptBlock { param($desktopDir) $bdExe = 'C:\Program Files\Bandicam\bdcam.exe'; if (-not (Test-Path $bdExe)) { choco install bandicam -y --no-progress --limit-output --ignore-checksums 2>&1 | Out-Null }; if (Test-Path $bdExe) { $ws = New-Object -ComObject WScript.Shell; $lnk = $ws.CreateShortcut("$desktopDir\Bandicam.lnk"); $lnk.TargetPath = $bdExe; $lnk.Save() } } -ArgumentList $desktopDir
           $installJobs += Start-Job -ScriptBlock { param($instCache, $desktopDir, $winImg) $robloxInstalled = Test-Path "$env:LOCALAPPDATA\Roblox\Versions" -ErrorAction SilentlyContinue; if (-not $robloxInstalled) { if ($winImg -match '2025') { winget install Roblox.Roblox --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null }; if (-not (Test-Path "$env:LOCALAPPDATA\Roblox\Versions")) { $robloxInst = "$instCache\RobloxPlayerInstaller.exe"; if (-not (Test-Path $robloxInst)) { & curl.exe -L --retry 2 --connect-timeout 15 'https://setup.rbxcdn.com/RobloxPlayerInstaller.exe' -o $robloxInst 2>$null }; if ((Test-Path $robloxInst) -and (Get-Item $robloxInst).Length -gt 500KB) { Start-Process $robloxInst -ArgumentList '-q','--no-ui' -Wait -ErrorAction SilentlyContinue; Start-Sleep -Seconds 10 } } }; $robloxExe = Get-ChildItem "$env:LOCALAPPDATA\Roblox\Versions" -Filter 'RobloxPlayerBeta.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1; if ($robloxExe) { $ws = New-Object -ComObject WScript.Shell; $lnk = $ws.CreateShortcut("$desktopDir\Roblox.lnk"); $lnk.TargetPath = $robloxExe.FullName; $lnk.Save() } } -ArgumentList $instCache, $desktopDir, $env:WIN_IMG
 
-          # StarDesk → Downloads
           try { $src = "$instCache\StarDesk_latest.exe"; if (Test-Path $src) { $bytes = [System.IO.File]::ReadAllBytes($src)[0..1]; if ($bytes[0] -eq 0x4D -and $bytes[1] -eq 0x5A) { Copy-Item $src "$downloadsDir\StarDesk_latest.exe" -Force } } } catch {}
-
-          # Tailscale shortcut
           try { $tsExe = 'C:\Program Files\Tailscale\tailscale-ipn.exe'; if (Test-Path $tsExe) { $lnk = $ws.CreateShortcut("$desktopDir\Tailscale.lnk"); $lnk.TargetPath = $tsExe; $lnk.Save() } } catch {}
-
-          # Store Win25
           if ($env:WIN_IMG -match '2025') { $storePkg = Get-AppxPackage -Name '*WindowsStore*' -ErrorAction SilentlyContinue; if (-not $storePkg) { try { winget install 9WZDNCRFJBMP --silent --accept-package-agreements 2>&1 | Out-Null } catch {} } }
 
           $null = Wait-Job $installJobs -Timeout 90
           $installJobs | ForEach-Object { Remove-Job $_ -Force -ErrorAction SilentlyContinue }
           Write-Host "│ ✅ Cài song song xong sau $([math]::Round(((Get-Date)-$startTime).TotalSeconds))s" -ForegroundColor Green
 
-          # Choco packages
           $pkgListFile = "$env:SHARED_OS_DIR\installed-choco-packages.txt"
           $savedPkgs = @(); if (Test-Path $pkgListFile) { $savedPkgs = @(Get-Content $pkgListFile | Where-Object { $_ -match '^[A-Za-z0-9._\-]+$' }) }
           $inputPkgs = @(); if (-not [string]::IsNullOrWhiteSpace($env:PKGS)) { $inputPkgs = @($env:PKGS -split '\s+' | Where-Object { $_ -match '^[A-Za-z0-9._\-]+$' }) }
@@ -853,9 +831,6 @@ jobs:
           Write-Host "✅ TẤT CẢ APP HOÀN TẤT sau $([math]::Round(((Get-Date)-$startTime).TotalSeconds))s" -ForegroundColor Green
           $global:LASTEXITCODE = 0; exit 0
 
-      # ───────────────────────────────────────────────
-      # 13. RDP TEST
-      # ───────────────────────────────────────────────
       - name: 🔍 RDP CONNECTION TEST
         shell: pwsh
         run: |
@@ -865,9 +840,6 @@ jobs:
           else { Restart-Service TermService -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; $t2 = Test-NetConnection -ComputerName 127.0.0.1 -Port 3389 -WarningAction SilentlyContinue; if ($t2.TcpTestSucceeded) { "RDP_TEST_STATUS=OK_AFTER_RESTART" >> "$env:GITHUB_ENV" } else { "RDP_TEST_STATUS=FAIL" >> "$env:GITHUB_ENV" } }
           exit 0
 
-      # ───────────────────────────────────────────────
-      # 14. WEB PANEL — AN TOÀN
-      # ───────────────────────────────────────────────
       - name: 🌐 Web Panel (AN TOÀN - KHÔNG HERE-STRING)
         shell: pwsh
         env:
@@ -951,9 +923,6 @@ jobs:
           Start-Sleep -Seconds 2
           exit 0
 
-      # ───────────────────────────────────────────────
-      # 15. VERIFY
-      # ───────────────────────────────────────────────
       - name: 🔍 VERIFY LINK
         shell: pwsh
         run: |
@@ -963,9 +932,6 @@ jobs:
           if ($webTest.TcpTestSucceeded) { Write-Host "│ ✅ Web Panel port 8080" -ForegroundColor Green }
           exit 0
 
-      # ───────────────────────────────────────────────
-      # 16. THÔNG TIN
-      # ───────────────────────────────────────────────
       - name: 🎉 THÔNG TIN KẾT NỐI v32.0
         shell: pwsh
         run: |
@@ -993,9 +959,6 @@ jobs:
           Write-Host "╚══════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
           exit 0
 
-      # ───────────────────────────────────────────────
-      # 17. KEEPALIVE
-      # ───────────────────────────────────────────────
       - name: ⏳ Duy trì phiên (WATCHDOG)
         id: keepalive
         shell: pwsh
@@ -1020,9 +983,6 @@ jobs:
           }
           exit 0
 
-      # ───────────────────────────────────────────────
-      # 18. LƯU CUỐI
-      # ───────────────────────────────────────────────
       - name: 💾 Lưu cuối phiên
         if: always()
         shell: pwsh
@@ -1034,9 +994,6 @@ jobs:
           if (Test-Path $saveScript) { & $saveScript -Reason 'session-end'; $global:LASTEXITCODE = 0 }
           exit 0
 
-      # ───────────────────────────────────────────────
-      # 19. DỌN DẸP
-      # ───────────────────────────────────────────────
       - name: 🧹 Dọn dẹp
         if: always()
         shell: pwsh
@@ -1049,9 +1006,6 @@ jobs:
           Stop-Service TermService -Force -ErrorAction SilentlyContinue
           exit 0
 
-      # ───────────────────────────────────────────────
-      # 20. AUTO RESTART
-      # ───────────────────────────────────────────────
       - name: 🔁 Auto-restart
         if: ${{ always() && steps.keepalive.outcome == 'success' && env.FORCE_STOP_ONLY != '1' && (inputs.auto_restart == true || inputs.auto_restart == 'true' || env.FORCE_NEXT_SESSION == '1') }}
         shell: pwsh
