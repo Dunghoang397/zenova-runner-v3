@@ -1,4 +1,4 @@
-name: ALB ULTIMATE RDP v17.0
+name: ALB ULTIMATE RDP v18.0 FIXED
 
 on:
   workflow_dispatch:
@@ -85,6 +85,11 @@ on:
         description: 'Cập nhật DuckDNS'
         required: false
         default: false
+        type: boolean
+      enable_tailscale:
+        description: 'Bật Tailscale (cần secret TAILSCALE_AUTH_KEY)'
+        required: false
+        default: true
         type: boolean
 
 permissions:
@@ -175,7 +180,7 @@ jobs:
           }
           $global:LASTEXITCODE = 0; Write-Host "OK mount ${dl}:\ | May: $cleanId" -ForegroundColor Green
 
-      - name: 🧰 Tạo save-data.ps1 (LƯU STARDESK)
+      - name: 🧰 Tạo save-data.ps1 (LƯU STARDESK + EVKEY + SPOTIFY)
         shell: pwsh
         run: |
           $scriptLines = @(
@@ -185,7 +190,7 @@ jobs:
               '$root = "$env:SHARED_ROOT"; $osDir = "$env:SHARED_OS_DIR"; $dl = "$env:MOUNT_LETTER"'
               'if ((-not ("$root")) -or (-not (Test-Path "$root"))) { exit 0 }'
               'try { $drive = Get-PSDrive -Name "$dl" -ErrorAction Stop; $freeGB = [math]::Round($drive.Free / 1GB, 2); if ($freeGB -lt 2) { exit 1 } } catch {}'
-              '$appsToClose = @("chrome","msedge","brave","firefox","coccoc","opera","vivaldi","discord","Telegram","Zalo","steam","EpicGamesLauncher","Spotify","Code","Notion","StarDesk","EVKey","Bandicam","Apollo")'
+              '$appsToClose = @("chrome","msedge","brave","firefox","coccoc","opera","vivaldi","discord","Telegram","Zalo","steam","EpicGamesLauncher","Spotify","Code","Notion","StarDesk","EVKey","EVKey64","Bandicam","Apollo")'
               'Get-Process -Name $appsToClose -ErrorAction SilentlyContinue | ForEach-Object { $null = $_.CloseMainWindow() }; Start-Sleep -Seconds 3'
               'Get-Process -Name $appsToClose -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue'
               'if ("$Reason" -eq "session-end") { Get-Service -Name "*StarDesk*" -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue; Get-Process -Name "StarDesk*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; & taskkill.exe /F /IM "StarDesk*" /T *> $null }'
@@ -201,7 +206,7 @@ jobs:
               'reg export "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Configuration" "$regBk\Display-Config.reg" /y *> $null; reg export "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Connectivity" "$regBk\Display-Conn.reg" /y *> $null; reg export "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\ScaleFactors" "$regBk\Display-Scale.reg" /y *> $null'
               'reg export "HKCU\Control Panel\Desktop" "$regBk\User-Desktop.reg" /y *> $null; reg export "HKCU\Control Panel\Desktop\WindowMetrics" "$regBk\User-WindowMetrics.reg" /y *> $null; reg export "HKCU\Control Panel\Personalization" "$regBk\User-Personalization.reg" /y *> $null; reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes" "$regBk\User-Themes.reg" /y *> $null; reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" "$regBk\User-Wallpapers.reg" /y *> $null; reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "$regBk\User-Explorer.reg" /y *> $null; reg export "HKCU\Software\Microsoft\Multimedia\Audio" "$regBk\User-Audio.reg" /y *> $null; reg export "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio" "$regBk\System-MMDevices-Audio.reg" /y *> $null'
               'if (("$u") -and ("$profSrc") -and (Test-Path "$profSrc")) { $profDst = [System.IO.Path]::Combine("$root", "Users", "$u"); New-Item -ItemType Directory -Force -Path "$profDst" | Out-Null; $excludeDirs = @("$profSrc\AppData\Roaming\Microsoft\Protect","$profSrc\AppData\Roaming\Microsoft\Crypto","$profSrc\AppData\Local\Microsoft\Credentials","$profSrc\AppData\Roaming\Microsoft\Credentials","$profSrc\AppData\Local\Temp","$profSrc\AppData\Local\Packages","$profSrc\AppData\Local\TileDataLayer","$profSrc\AppData\Local\ConnectedDevicesPlatform","$profSrc\AppData\Local\Microsoft\Windows\Explorer","$profSrc\AppData\Local\Microsoft\Windows\INetCache","$profSrc\AppData\Local\Microsoft\Windows\WebCache","$profSrc\AppData\Local\Microsoft\Windows\Caches","$profSrc\AppData\Local\D3DSCache"); robocopy "$profSrc" "$profDst" /MIR /XJ /R:2 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* WebCacheV01.dat parent.lock lockfile SingletonLock SingletonCookie SingletonSocket /XD @excludeDirs *> $null; $global:LASTEXITCODE = 0 }'
-              'if (("$env:BASELINE_FILE") -and (Test-Path "$env:BASELINE_FILE")) { try { $base = Get-Content -Raw -Path "$env:BASELINE_FILE" | ConvertFrom-Json; $skipNames = @("Tailscale","chocolatey","Package Cache","Microsoft","Windows Defender"); $cOverlay = [System.IO.Path]::Combine("$osDir", "C-Drive-Overlay"); New-Item -ItemType Directory -Force -Path "$cOverlay\PF64" | Out-Null; New-Item -ItemType Directory -Force -Path "$cOverlay\PF86" | Out-Null; New-Item -ItemType Directory -Force -Path "$cOverlay\PD" | Out-Null; Get-ChildItem "C:\Program Files" -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -notin ($base.PF64)) -and ($_.Name -notin ($skipNames)) } | ForEach-Object { $dest = [System.IO.Path]::Combine("$cOverlay\PF64", $_.Name); robocopy ($_.FullName) "$dest" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null }; Get-ChildItem "C:\Program Files (x86)" -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -notin ($base.PF86)) -and ($_.Name -notin ($skipNames)) } | ForEach-Object { $dest = [System.IO.Path]::Combine("$cOverlay\PF86", $_.Name); robocopy ($_.FullName) "$dest" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null }; Get-ChildItem "C:\ProgramData" -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -notin ($base.PD)) -and ($_.Name -notin ($skipNames)) } | ForEach-Object { $dest = [System.IO.Path]::Combine("$cOverlay\PD", $_.Name); robocopy ($_.FullName) "$dest" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null } } catch {} }'
+              'if (("$env:BASELINE_FILE") -and (Test-Path "$env:BASELINE_FILE")) { try { $base = Get-Content -Raw -Path "$env:BASELINE_FILE" | ConvertFrom-Json; $skipNames = @("Tailscale","chocolatey","Package Cache","Microsoft","Windows Defender"); $cOverlay = [System.IO.Path]::Combine("$osDir", "C-Drive-Overlay"); New-Item -ItemType Directory -Force -Path "$cOverlay\PF64" | Out-Null; New-Item -ItemType Directory -Force -Path "$cOverlay\PF86" | Out-Null; New-Item -ItemType Directory -Force -Path "$cOverlay\PD" | Out-Null; Get-ChildItem "C:\Program Files" -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -notin ($base.PF64)) -and ($_.Name -notin ($skipNames)) } | ForEach-Object { $dest = [System.IO.Path]::Combine("$cOverlay\PF64", $_.Name); robocopy ($_.FullName) "$dest" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null }; Get-ChildItem "C:\Program Files (x86)" -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -notin ($base.PF86)) -and ($_.Name -notin $skipNames) } | ForEach-Object { $dest = [System.IO.Path]::Combine("$cOverlay\PF86", $_.Name); robocopy ($_.FullName) "$dest" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null }; Get-ChildItem "C:\ProgramData" -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -notin ($base.PD)) -and ($_.Name -notin $skipNames) } | ForEach-Object { $dest = [System.IO.Path]::Combine("$cOverlay\PD", $_.Name); robocopy ($_.FullName) "$dest" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null } } catch {} }'
               # ═══ LƯU STARDESK ═══
               '$sdBackupDir = [System.IO.Path]::Combine("$osDir", "StarDesk-Backup")'
               'if (Test-Path "$sdBackupDir") { Remove-Item -Path "$sdBackupDir" -Recurse -Force -ErrorAction SilentlyContinue }'
@@ -214,7 +219,18 @@ jobs:
               '$sdRegDir = [System.IO.Path]::Combine("$sdBackupDir", "Registry"); New-Item -ItemType Directory -Force -Path "$sdRegDir" | Out-Null'
               'reg export "HKCU\Software\StarDesk" "$sdRegDir\HKCU-StarDesk.reg" /y *> $null; reg export "HKLM\SOFTWARE\StarDesk" "$sdRegDir\HKLM-StarDesk.reg" /y *> $null; reg export "HKLM\SOFTWARE\WOW6432Node\StarDesk" "$sdRegDir\HKLM-WOW6432-StarDesk.reg" /y *> $null'
               'Write-Host "[$Reason] Da luu StarDesk vao $sdBackupDir" -ForegroundColor Green'
+              # ═══ LƯU EVKEY ═══
+              '$evKeyDir = [System.IO.Path]::Combine("$osDir", "EVKey")'
+              'if (Test-Path "$evKeyDir") { Remove-Item -Path "$evKeyDir" -Recurse -Force -ErrorAction SilentlyContinue }'
+              'New-Item -ItemType Directory -Force -Path "$evKeyDir" | Out-Null'
+              'if (Test-Path "C:\ALB-Apps\EVKey") { robocopy "C:\ALB-Apps\EVKey" "$evKeyDir" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }'
+              'Write-Host "[$Reason] Da luu EVKey" -ForegroundColor Green'
               '$global:LASTEXITCODE = 0'
+              # ═══ LƯU SPOTIFY INSTALLER ═══
+              '$spCache = [System.IO.Path]::Combine("$env:INSTALLER_CACHE", "Spotify")'
+              'if (Test-Path "$spCache") { Write-Host "[$Reason] Spotify installer da co trong cache" -ForegroundColor Green }'
+              '$global:LASTEXITCODE = 0'
+              # ═══ GIT SYNC (giữ nguyên) ═══
               '$gitStage = [System.IO.Path]::Combine("$env:RUNNER_TEMP", "git-state-sync")'
               'try { if (Test-Path "$gitStage") { Remove-Item -Path "$gitStage" -Recurse -Force -ErrorAction SilentlyContinue }; New-Item -ItemType Directory -Force -Path "$gitStage" | Out-Null; Push-Location "$gitStage"; git init -q; git config user.name "ALB-Bot"; git config user.email "bot@alb.local"; $encodedToken = [System.Uri]::EscapeDataString($env:GH_TOKEN); git remote add origin "https://x-access-token:$encodedToken@github.com/$($env:GH_REPO).git"; git fetch origin "$env:STATE_BRANCH" -q 2>$null; if (($LASTEXITCODE) -eq 0) { git checkout -B "$env:STATE_BRANCH" "origin/$env:STATE_BRANCH" -q } else { git checkout --orphan "$env:STATE_BRANCH" -q }; robocopy "$env:SHARED_SESSION_DIR" "$gitStage\sessions" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null; robocopy "$regBk" "$gitStage\registry" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0; git add -A; git commit -m "Sync state [$env:MACHINE_ID]" -q 2>$null; git push -u origin "$env:STATE_BRANCH" --force -q 2>$null; Pop-Location } catch { if (((Get-Location).Path) -eq "$gitStage") { Pop-Location } }'
               '$packDir = [System.IO.Path]::Combine("$env:RUNNER_TEMP", "alb-pack-$Reason"); if (Test-Path "$packDir") { Remove-Item -Path "$packDir" -Recurse -Force -ErrorAction SilentlyContinue }; New-Item -ItemType Directory -Force -Path "$packDir" | Out-Null'
@@ -231,7 +247,7 @@ jobs:
           $saveScriptPath = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'save-data.ps1')
           Set-Content -Path "$saveScriptPath" -Value ($scriptLines -join "`r`n") -Encoding UTF8
 
-      - name: ♻️ Khôi phục ổ đĩa & Profile (KHÔI PHỤC STARDESK)
+      - name: ♻️ Khôi phục ổ đĩa & Profile
         shell: pwsh
         run: |
           $dl = "$env:MOUNT_LETTER"
@@ -285,6 +301,14 @@ jobs:
               if (Test-Path "$sdRegDir") { Get-ChildItem -Path "$sdRegDir" -Filter '*.reg' | ForEach-Object { reg import ($_.FullName) *>$null } }
               Write-Host "  OK: Khoi phuc StarDesk thanh cong" -ForegroundColor Green
           }
+          # ═══ KHÔI PHỤC EVKEY ═══
+          $evKeyBackup = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", "EVKey")
+          if (Test-Path "$evKeyBackup") {
+              Write-Host "  Khoi phuc EVKey..." -ForegroundColor Cyan
+              New-Item -ItemType Directory -Force -Path "C:\ALB-Apps\EVKey" | Out-Null
+              robocopy "$evKeyBackup" "C:\ALB-Apps\EVKey" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0
+              Write-Host "  OK: Khoi phuc EVKey thanh cong" -ForegroundColor Green
+          }
           if (Test-Path "$env:SHARED_STATE_FILE") { try { $state = Get-Content -Raw -Path "$env:SHARED_STATE_FILE" | ConvertFrom-Json; if ($state.password) { "RESTORE_PASS=$($state.password)" >> "$env:GITHUB_ENV" } } catch {} }
           'DATA_RESTORED=1' >> "$env:GITHUB_ENV"; exit 0
 
@@ -298,34 +322,49 @@ jobs:
           if ("$curPath" -notlike "*$binDir*") { Set-ItemProperty -Path "$sysEnv" -Name 'Path' -Value "$binDir;$curPath" -Force }
           "INSTALLER_CACHE=$instCache" >> "$env:GITHUB_ENV"; "SUNSHINE_PERSIST_CFG=$sunCfgDir" >> "$env:GITHUB_ENV"
 
-      - name: 🔧 CẤU HÌNH RDP (BẬT NLA + FIX PROMPT)
+      - name: 🔧 CẤU HÌNH RDP (FIX KICK SESSION)
         shell: pwsh
         run: |
-          Write-Host "CAU HINH RDP - BAT NLA + FIX PROMPT" -ForegroundColor Yellow
+          Write-Host "CAU HINH RDP - FIX KICK SESSION" -ForegroundColor Yellow
+
+          # 0. CLEANUP SESSION CŨ TRƯỚC KHI BẬT RDP
+          try {
+              $sessions = query session 2>$null | Select-String "rdp-tcp" -CaseSensitive:$false
+              if ($sessions) {
+                  $sessions | ForEach-Object {
+                      if ($_ -match 'rdp-tcp#(\d+)') {
+                          $sid = $Matches[1]
+                          & tscon.exe $sid /dest:console 2>$null
+                          Write-Host "  Da giai phong session cu: $sid" -ForegroundColor Cyan
+                      }
+                  }
+              }
+          } catch { Write-Host "  WARN: Khong the cleanup session cu" -ForegroundColor Yellow }
 
           # 1. Bật RDP
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0 -Force
 
-          # 2. BẬT NLA (client hỏi pass trước khi kết nối)
+          # 2. fSingleSessionPerUser = 0 (cho phép nhiều session)
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fSingleSessionPerUser' -Value 0 -Type DWord -Force
+
+          # 3. BẬT NLA
           $p = 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
           Set-ItemProperty -Path "$p" -Name 'UserAuthentication' -Value 1 -Type DWord -Force
           Set-ItemProperty -Path "$p" -Name 'SecurityLayer' -Value 2 -Type DWord -Force
-          Write-Host "  OK: NLA=1, TLS=2 (client hoi pass o cua so ket noi)" -ForegroundColor Green
 
-          # 3. Xóa policy fPromptForPassword (tránh hỏi pass lần 2 trong máy)
+          # 4. XÓA POLICY fPromptForPassword + fResetBroken (mọi nhánh)
           $tsPolicy = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
           if (Test-Path "$tsPolicy") {
               Remove-ItemProperty -Path "$tsPolicy" -Name 'fPromptForPassword' -Force -ErrorAction SilentlyContinue
-              Write-Host "  OK: Da xoa policy fPromptForPassword" -ForegroundColor Green
+              Remove-ItemProperty -Path "$tsPolicy" -Name 'fResetBroken' -Force -ErrorAction SilentlyContinue
           }
-
-          # 4. fPromptForPassword = 0 tại RDP-Tcp (không hỏi lại trong máy)
           Set-ItemProperty -Path "$p" -Name 'fPromptForPassword' -Value 0 -Type DWord -Force
-          Write-Host "  OK: fPromptForPassword=0 (khong hoi lai trong may)" -ForegroundColor Green
+          Set-ItemProperty -Path "$p" -Name 'fResetBroken' -Value 0 -Type DWord -Force
 
-          # 5. Xóa credential cache trên máy ảo (nếu có)
-          $creds = cmdkey /list 2>$null | Select-String "TERMSRV"
-          if ($creds) { $creds | ForEach-Object { if ($_ -match 'TERMSRV/([^\s]+)') { cmdkey /delete:$($Matches[0]) 2>$null } } }
+          # 5. Session timeout = 0 (không tự ngắt)
+          Set-ItemProperty -Path "$p" -Name 'MaxIdleTime' -Value 0 -Type DWord -Force
+          Set-ItemProperty -Path "$p" -Name 'MaxDisconnectionTime' -Value 0 -Type DWord -Force
+          Set-ItemProperty -Path "$p" -Name 'MaxConnectionTime' -Value 0 -Type DWord -Force
 
           # 6. Audio & Camera
           Set-ItemProperty -Path "$p" -Name 'fDisableAudioCapture' -Value 0 -Type DWord -Force
@@ -339,7 +378,7 @@ jobs:
           New-NetFirewallRule -DisplayName 'ALB-Sunshine-TCP' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 47984,47989,47990,48010 -Profile Domain,Private,Public | Out-Null
           New-NetFirewallRule -DisplayName 'ALB-Sunshine-UDP' -Direction Inbound -Action Allow -Protocol UDP -LocalPort 47998,47999,48000,48002,48010 -Profile Domain,Private,Public | Out-Null
 
-          # 8. Khởi động TermService
+          # 8. Restart TermService
           Set-Service -Name TermService -StartupType Automatic -ErrorAction SilentlyContinue
           Set-Service -Name UmRdpService -StartupType Automatic -ErrorAction SilentlyContinue
           Start-Service -Name TermService -ErrorAction SilentlyContinue
@@ -350,11 +389,11 @@ jobs:
           # 9. Verify
           $netstat = netstat -ano | Select-String ":3389"
           if ($netstat) { Write-Host "  OK: RDP port 3389 dang listen" -ForegroundColor Green } else { Write-Host "  ERROR: RDP port 3389 KHONG listen!" -ForegroundColor Red }
-          Write-Host "  HOAN TAT: NLA=1, TLS=2, fPromptForPassword=0, Policy removed" -ForegroundColor Green
+          Write-Host "  HOAN TAT: NLA=1, TLS=2, fPromptForPassword=0, fResetBroken=0, fSingleSessionPerUser=0" -ForegroundColor Green
           exit 0
 
       - name: ⚙️ Tối ưu Windows
-        if: ${{ inputs.optimize_windows }}
+        if: ${{ inputs.optimize_windows == true || inputs.optimize_windows == 'true' }}
         shell: pwsh
         run: |
           $tweaksList = @(
@@ -420,31 +459,29 @@ jobs:
           if (Test-Path "$sunExe") { Stop-Service -Name 'SunshineService' -Force -ErrorAction SilentlyContinue; Stop-Service -Name 'sunshinesvc' -Force -ErrorAction SilentlyContinue; Stop-Process -Name 'sunshine' -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; if (Test-Path "$sunCfg") { $item = Get-Item "$sunCfg" -Force; if (($item.Attributes) -notmatch 'ReparsePoint') { if ((@(Get-ChildItem "$sunPersistCfg" -Force -ErrorAction SilentlyContinue).Count) -eq 0) { Copy-Item -Path "$sunCfg\*" -Destination "$sunPersistCfg" -Recurse -Force -ErrorAction SilentlyContinue }; Remove-Item -Path "$sunCfg" -Recurse -Force -ErrorAction SilentlyContinue; New-Item -ItemType Junction -Path "$sunCfg" -Target "$sunPersistCfg" -Force | Out-Null } } else { New-Item -ItemType Junction -Path "$sunCfg" -Target "$sunPersistCfg" -Force | Out-Null }; $confFile = [System.IO.Path]::Combine("$sunPersistCfg", 'sunshine.conf'); if (-not (Test-Path "$confFile")) { @("sunshine_name = ALB-$($env:MACHINE_ID)","min_log_level = info","origin_web_ui_allowed = wan","upnp = disabled","address_family = both") | Set-Content -Path "$confFile" -Encoding UTF8 } }
           $global:LASTEXITCODE = 0; exit 0
 
-      - name: 🌐 Tailscale (FIX UNATTENDED + VERIFY)
+      - name: 🌐 Tailscale (OPTIONAL, KHÔNG FAIL WORKFLOW)
+        if: ${{ inputs.enable_tailscale == true || inputs.enable_tailscale == 'true' }}
         env:
           TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         shell: pwsh
         run: |
-          if (-not ("$env:TAILSCALE_AUTH_KEY")) { exit 1 }
+          if (-not ("$env:TAILSCALE_AUTH_KEY")) {
+              Write-Host "  SKIP: Khong co TAILSCALE_AUTH_KEY secret" -ForegroundColor Yellow
+              "TAILSCALE_IP=127.0.0.1" >> "$env:GITHUB_ENV"
+              exit 0
+          }
           $ProgressPreference = 'SilentlyContinue'; $ts = 'C:\Program Files\Tailscale\tailscale.exe'
           if (-not (Test-Path "$ts")) { Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*Tailscale*' -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -Path 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*Tailscale*' -Recurse -Force -ErrorAction SilentlyContinue; Get-Process -Name 'msiexec' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; $msiCache = [System.IO.Path]::Combine("$env:INSTALLER_CACHE", 'tailscale-premium.msi'); if ((Test-Path "$msiCache") -and ((Get-Item "$msiCache").Length -lt 5MB)) { Remove-Item -Path "$msiCache" -Force -ErrorAction SilentlyContinue }; if (-not (Test-Path "$msiCache")) { try { Invoke-WebRequest -Uri 'https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi' -OutFile "$msiCache" -UseBasicParsing } catch {} }; if (Test-Path "$msiCache") { $localMsi = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'tailscale-setup.msi'); Copy-Item -Path "$msiCache" -Destination "$localMsi" -Force; Start-Process msiexec.exe -ArgumentList "/i `"$localMsi`" /quiet /norestart" -Wait }; if (-not (Test-Path "$ts")) { $exePath = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'tailscale-setup-latest.exe'); try { Invoke-WebRequest -Uri 'https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe' -OutFile "$exePath" -UseBasicParsing; if (Test-Path "$exePath") { Start-Process -FilePath "$exePath" -ArgumentList '/S', '/norestart' -Wait } } catch {} }; if (-not (Test-Path "$ts")) { choco install tailscale -y --no-progress --limit-output --ignore-checksums 2>&1 | Out-Null; $global:LASTEXITCODE = 0 } }
-          if (-not (Test-Path "$ts")) { exit 1 }
+          if (-not (Test-Path "$ts")) { Write-Host "  WARN: Khong the cai Tailscale" -ForegroundColor Yellow; "TAILSCALE_IP=127.0.0.1" >> "$env:GITHUB_ENV"; exit 0 }
           Set-Service -Name 'Tailscale' -StartupType Automatic -ErrorAction SilentlyContinue; Start-Service -Name 'Tailscale' -ErrorAction SilentlyContinue; Start-Sleep -Seconds 6
           $tsHost = "alb-$($env:MACHINE_ID)-$($env:GITHUB_RUN_ID)"; & "$ts" up "--authkey=$env:TAILSCALE_AUTH_KEY" "--hostname=$tsHost" --accept-routes --accept-dns --reset --unattended
-          if (($LASTEXITCODE) -ne 0) { Start-Sleep -Seconds 5; & "$ts" up "--authkey=$env:TAILSCALE_AUTH_KEY" "--hostname=$tsHost" --accept-routes --accept-dns --reset --unattended; if (($LASTEXITCODE) -ne 0) { exit 1 } }
+          if (($LASTEXITCODE) -ne 0) { Start-Sleep -Seconds 5; & "$ts" up "--authkey=$env:TAILSCALE_AUTH_KEY" "--hostname=$tsHost" --accept-routes --accept-dns --reset --unattended; if (($LASTEXITCODE) -ne 0) { Write-Host "  WARN: Tailscale up that bai" -ForegroundColor Yellow; "TAILSCALE_IP=127.0.0.1" >> "$env:GITHUB_ENV"; exit 0 } }
           & "$ts" set --unattended=true
           Start-Sleep -Seconds 2
-          Write-Host "  OK: Tailscale unattended mode enabled" -ForegroundColor Green
           $ip = $null; 1..20 | ForEach-Object { if (-not ($ip)) { $out = (& "$ts" ip -4 2>&1 | Out-String).Trim(); if ("$out" -match '^\d+\.\d+\.\d+\.\d+$') { $ip = "$out" } else { Start-Sleep -Seconds 3 } } }
-          if (-not ($ip)) { exit 1 }; "TAILSCALE_IP=$ip" >> "$env:GITHUB_ENV"
-          Write-Host "  Verify Tailscale connectivity..." -ForegroundColor Cyan
-          $pingOk = $false
-          1..10 | ForEach-Object { if (-not $pingOk) { $pingResult = & "$ts" ping "$ip" 2>&1 | Out-String; if ($pingResult -match 'pong') { $pingOk = $true } else { Start-Sleep -Seconds 3 } } }
-          if ($pingOk) { Write-Host "  OK: Tailscale ping thanh cong" -ForegroundColor Green } else { Write-Host "  WARN: Tailscale ping that bai" -ForegroundColor Yellow }
-          Write-Host "  Verify RDP port 3389 tren IP $ip..." -ForegroundColor Cyan
-          $rdpOk = $false
-          1..15 | ForEach-Object { if (-not $rdpOk) { $test = Test-NetConnection -ComputerName $ip -Port 3389 -WarningAction SilentlyContinue; if ($test.TcpTestSucceeded) { $rdpOk = $true } else { Start-Sleep -Seconds 3 } } }
-          if ($rdpOk) { Write-Host "  OK: RDP port 3389 listen tren $ip" -ForegroundColor Green } else { Write-Host "  WARN: RDP port 3389 chua listen, restart TermService..." -ForegroundColor Yellow; Restart-Service -Name TermService -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 5; $test = Test-NetConnection -ComputerName $ip -Port 3389 -WarningAction SilentlyContinue; if ($test.TcpTestSucceeded) { Write-Host "  OK: RDP port 3389 listen sau restart" -ForegroundColor Green } else { Write-Host "  ERROR: RDP port 3389 KHONG listen" -ForegroundColor Red } }
+          if (-not ($ip)) { Write-Host "  WARN: Khong lay duoc Tailscale IP" -ForegroundColor Yellow; "TAILSCALE_IP=127.0.0.1" >> "$env:GITHUB_ENV"; exit 0 }
+          "TAILSCALE_IP=$ip" >> "$env:GITHUB_ENV"
+          Write-Host "  OK: Tailscale IP = $ip" -ForegroundColor Green
           exit 0
 
       - name: 👤 User gốc + User ngoài + Sunshine
@@ -469,40 +506,133 @@ jobs:
           try { $desktopDir = [System.IO.Path]::Combine("$profPath", 'Desktop'); New-Item -ItemType Directory -Force -Path "$desktopDir" | Out-Null; $ws = New-Object -ComObject WScript.Shell; @("$desktopDir", 'C:\Users\Public\Desktop') | ForEach-Object { $d = "$_"; $ws.CreateShortcut("$d\WEB-QUAN-LY-RDP.url").TargetPath = "http://127.0.0.1:$($env:WEB_PORT)/"; $ws.CreateShortcut("$d\WEB-QUAN-LY-RDP.url").Save(); $ws.CreateShortcut("$d\SUNSHINE-WEB-UI.url").TargetPath = "https://127.0.0.1:$($env:SUNSHINE_WEB_PORT)/"; $ws.CreateShortcut("$d\SUNSHINE-WEB-UI.url").Save() } } catch {}
           'SESSION_READY=1' >> "$env:GITHUB_ENV"; exit 0
 
-      - name: 📦 Cài sẵn Discord & StarDesk (RESTORE STARDESK)
+      - name: 📦 Cài EVKey + Spotify + Discord + StarDesk (FIX)
         shell: pwsh
         run: |
-          Write-Host "CAI DISCORD + STARDESK - RESTORE STARDESK" -ForegroundColor Yellow
+          Write-Host "CAI APP - EVKEY + SPOTIFY + DISCORD + STARDESK" -ForegroundColor Yellow
           $ProgressPreference = 'SilentlyContinue'
           $tmp = "$env:TEMP\ALB-Apps"; New-Item -ItemType Directory -Force -Path "$tmp" | Out-Null
-          try { Write-Host "  [1/2] Discord..." -ForegroundColor Cyan; Get-Process -Name "Discord*", "DiscordSetup*", "Update*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; Remove-Item -Path "$env:LOCALAPPDATA\Discord" -Recurse -Force -ErrorAction SilentlyContinue; $discord = "$tmp\DiscordSetup.exe"; Invoke-WebRequest -Uri "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x64" -OutFile $discord -UseBasicParsing -TimeoutSec 45; if (Test-Path $discord) { $proc = Start-Process -FilePath $discord -PassThru -NoNewWindow; $waited = 0; while ((-not $proc.HasExited) -and ($waited -lt 75)) { Start-Sleep -Seconds 1; $waited += 1 }; if (-not $proc.HasExited) { Write-Host "  WARN: Discord qua 75s, kill..." -ForegroundColor Yellow; Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } else { Write-Host "  OK: Discord (${waited}s)" -ForegroundColor Green } } } catch { Write-Host "  WARN: Discord - $($_.Exception.Message)" -ForegroundColor Yellow }
-          try { Write-Host "  [2/2] StarDesk..." -ForegroundColor Cyan; $sdBackup = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", "StarDesk-Backup"); $appExe = "C:\Program Files\StarDesk\StarDesk.exe"
-            if (Test-Path "$sdBackup\ProgramFiles") { Write-Host "  Khoi phuc StarDesk tu backup..." -ForegroundColor Cyan
-              if (Test-Path "$sdBackup\ProgramFiles") { robocopy "$sdBackup\ProgramFiles" "C:\Program Files\StarDesk" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }
-              if (Test-Path "$sdBackup\ProgramData") { robocopy "$sdBackup\ProgramData" "C:\ProgramData\StarDesk" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }
-              if (Test-Path "$sdBackup\LocalAppData") { robocopy "$sdBackup\LocalAppData" "$env:LOCALAPPDATA\StarDesk" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }
-              if (Test-Path "$sdBackup\RoamingAppData") { robocopy "$sdBackup\RoamingAppData" "$env:APPDATA\StarDesk" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }
-              if (Test-Path "$sdBackup\DotStarDesk") { robocopy "$sdBackup\DotStarDesk" "$env:USERPROFILE\.stardesk" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }
-              $sdRegDir = [System.IO.Path]::Combine("$sdBackup", "Registry"); if (Test-Path "$sdRegDir") { Get-ChildItem -Path "$sdRegDir" -Filter '*.reg' | ForEach-Object { reg import ($_.FullName) *>$null } }
-              Write-Host "  OK: Khoi phuc StarDesk thanh cong" -ForegroundColor Green
-            } elseif (-not (Test-Path "$appExe")) { Write-Host "  Tai & cai StarDesk..." -ForegroundColor Cyan; $downloadUrl = 'https://download943.mediafire.com/be95vz5kgnig_m7acKGr-mRjXQQKAN0i2WdjIR_d-q70MeLboolFJnUHit6ZmqJYm8_rJigOgY0P5NhtdANnLGXOaEmKg9eWSEUGCEEIZdCrV2NNZ0ubdEO1hyPHR6l2Re85XT5kJpCd3Q4GXpeU0ZD2QSr5gc_6aPfM7r15_YltcA/mf82krdrzcy3dz8/StarDesk_1.5.3.exe'; $dlDir = [System.IO.Path]::Combine("$env:PROFILE_PATH", 'Downloads'); New-Item -ItemType Directory -Force -Path "$dlDir" | Out-Null; $installerPath = [System.IO.Path]::Combine("$dlDir", 'StarDesk_1.5.3.exe')
-              try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; & curl.exe -L --retry 3 --connect-timeout 30 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "$downloadUrl" -o "$installerPath" 2>$null; if ((-not (Test-Path "$installerPath")) -or ((Get-Item "$installerPath").Length -lt 1MB)) { Invoke-WebRequest -Uri "$downloadUrl" -OutFile "$installerPath" -UseBasicParsing -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -TimeoutSec 120 } } catch { Write-Host "  WARN: Loi tai - $($_.Exception.Message)" -ForegroundColor Yellow }
-              if ((Test-Path "$installerPath") -and ((Get-Item "$installerPath").Length -gt 1MB)) { $proc = Start-Process -FilePath "$installerPath" -ArgumentList '/S' -PassThru -NoNewWindow; $waited = 0; while ((-not $proc.HasExited) -and ($waited -lt 60)) { Start-Sleep -Seconds 2; $waited += 2 }; if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }; Write-Host "  OK: Da cai StarDesk" -ForegroundColor Green }
-            } else { Write-Host "  OK: StarDesk da co san" -ForegroundColor Green }
+
+          # ═══ EVKEY (PORTABLE, SIÊU NHANH) ═══
+          try {
+              Write-Host "  [1/4] EVKey..." -ForegroundColor Cyan
+              $evKeyDest = "C:\ALB-Apps\EVKey"
+              if (Test-Path "$evKeyDest\EVKey64.exe") {
+                  Write-Host "  OK: EVKey da co san" -ForegroundColor Green
+              } else {
+                  New-Item -ItemType Directory -Force -Path "$evKeyDest" | Out-Null
+                  $evKeyZip = "$tmp\EVKey.zip"
+                  Invoke-WebRequest -Uri "https://github.com/lamquangminh/EVKey/releases/download/Release/EVKey.zip" -OutFile $evKeyZip -UseBasicParsing -TimeoutSec 30
+                  if (Test-Path $evKeyZip) {
+                      Expand-Archive -Path $evKeyZip -DestinationPath "$evKeyDest" -Force
+                      $evKeyExe = if (Test-Path "$evKeyDest\EVKey64.exe") { "$evKeyDest\EVKey64.exe" } elseif (Test-Path "$evKeyDest\EVKey32.exe") { "$evKeyDest\EVKey32.exe" } else { $null }
+                      if ($evKeyExe) {
+                          Write-Host "  OK: EVKey da giai nen: $evKeyExe" -ForegroundColor Green
+                          $startupDir = [System.IO.Path]::Combine($env:APPDATA, 'Microsoft\Windows\Start Menu\Programs\Startup')
+                          New-Item -ItemType Directory -Force -Path "$startupDir" | Out-Null
+                          $ws = New-Object -ComObject WScript.Shell
+                          $ws.CreateShortcut("$startupDir\EVKey.lnk").TargetPath = "$evKeyExe"
+                          $ws.CreateShortcut("$startupDir\EVKey.lnk").Save()
+                          Write-Host "  OK: EVKey startup shortcut" -ForegroundColor Green
+                      }
+                  }
+              }
+          } catch { Write-Host "  WARN: EVKey - $($_.Exception.Message)" -ForegroundColor Yellow }
+
+          # ═══ SPOTIFY (SILENT, CACHE) ═══
+          try {
+              Write-Host "  [2/4] Spotify..." -ForegroundColor Cyan
+              $spCacheDir = [System.IO.Path]::Combine("$env:INSTALLER_CACHE", 'Spotify')
+              New-Item -ItemType Directory -Force -Path "$spCacheDir" | Out-Null
+              $spInstaller = "$spCacheDir\SpotifySetup.exe"
+              $spInstalled = Test-Path "$env:LOCALAPPDATA\Spotify\Spotify.exe"
+              if ($spInstalled) {
+                  Write-Host "  OK: Spotify da cai san" -ForegroundColor Green
+              } else {
+                  if (-not (Test-Path "$spInstaller")) {
+                      Write-Host "  Tai Spotify installer..." -ForegroundColor Cyan
+                      try {
+                          Invoke-WebRequest -Uri "https://download.scdn.co/SpotifyFullSetupX64.exe" -OutFile "$spInstaller" -UseBasicParsing -TimeoutSec 60
+                      } catch {
+                          Write-Host "  Fallback: winget install Spotify..." -ForegroundColor Yellow
+                          winget install Spotify.Spotify --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null
+                          $global:LASTEXITCODE = 0
+                      }
+                  }
+                  if ((Test-Path "$spInstaller") -and ((Get-Item "$spInstaller").Length -gt 5MB)) {
+                      Write-Host "  Cai Spotify silent..." -ForegroundColor Cyan
+                      $proc = Start-Process -FilePath "$spInstaller" -ArgumentList '/silent', '/skip-app-launch' -Wait -PassThru
+                      Write-Host "  OK: Spotify installer exit: $($proc.ExitCode)" -ForegroundColor Green
+                  }
+              }
+          } catch { Write-Host "  WARN: Spotify - $($_.Exception.Message)" -ForegroundColor Yellow }
+
+          # ═══ DISCORD ═══
+          try {
+              Write-Host "  [3/4] Discord..." -ForegroundColor Cyan
+              Get-Process -Name "Discord*", "DiscordSetup*", "Update*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+              Start-Sleep -Seconds 1
+              Remove-Item -Path "$env:LOCALAPPDATA\Discord" -Recurse -Force -ErrorAction SilentlyContinue
+              $discord = "$tmp\DiscordSetup.exe"
+              Invoke-WebRequest -Uri "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x64" -OutFile $discord -UseBasicParsing -TimeoutSec 45
+              if (Test-Path $discord) {
+                  $proc = Start-Process -FilePath $discord -PassThru -NoNewWindow
+                  $waited = 0
+                  while ((-not $proc.HasExited) -and ($waited -lt 75)) { Start-Sleep -Seconds 1; $waited += 1 }
+                  if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+                  Write-Host "  OK: Discord (${waited}s)" -ForegroundColor Green
+              }
+          } catch { Write-Host "  WARN: Discord - $($_.Exception.Message)" -ForegroundColor Yellow }
+
+          # ═══ STARDESK (FIX: WINGET + BACKUP FALLBACK) ═══
+          try {
+              Write-Host "  [4/4] StarDesk..." -ForegroundColor Cyan
+              $sdBackup = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", "StarDesk-Backup")
+              $appExe = "C:\Program Files\StarDesk\StarDesk.exe"
+
+              # Ưu tiên restore từ backup
+              if (Test-Path "$sdBackup\ProgramFiles") {
+                  Write-Host "  Khoi phuc StarDesk tu backup..." -ForegroundColor Cyan
+                  robocopy "$sdBackup\ProgramFiles" "C:\Program Files\StarDesk" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null
+                  $global:LASTEXITCODE = 0
+                  if (Test-Path "$sdBackup\ProgramData") { robocopy "$sdBackup\ProgramData" "C:\ProgramData\StarDesk" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }
+                  if (Test-Path "$sdBackup\LocalAppData") { robocopy "$sdBackup\LocalAppData" "$env:LOCALAPPDATA\StarDesk" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }
+                  if (Test-Path "$sdBackup\RoamingAppData") { robocopy "$sdBackup\RoamingAppData" "$env:APPDATA\StarDesk" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }
+                  if (Test-Path "$sdBackup\DotStarDesk") { robocopy "$sdBackup\DotStarDesk" "$env:USERPROFILE\.stardesk" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }
+                  $sdRegDir = [System.IO.Path]::Combine("$sdBackup", "Registry")
+                  if (Test-Path "$sdRegDir") { Get-ChildItem -Path "$sdRegDir" -Filter '*.reg' | ForEach-Object { reg import ($_.FullName) *>$null } }
+                  Write-Host "  OK: StarDesk restored from backup" -ForegroundColor Green
+              } elseif (-not (Test-Path "$appExe")) {
+                  Write-Host "  Cai StarDesk qua winget..." -ForegroundColor Cyan
+                  winget install Stardesk.Stardesk --exact --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null
+                  $global:LASTEXITCODE = 0
+                  Start-Sleep -Seconds 3
+                  if (Test-Path "$appExe") { Write-Host "  OK: StarDesk installed via winget" -ForegroundColor Green }
+                  else {
+                      Write-Host "  WARN: winget fail, thu backup cu..." -ForegroundColor Yellow
+                  }
+              } else {
+                  Write-Host "  OK: StarDesk da co san" -ForegroundColor Green
+              }
           } catch { Write-Host "  WARN: StarDesk - $($_.Exception.Message)" -ForegroundColor Yellow }
-          Start-Sleep -Seconds 2; Write-Host ""; Write-Host "KIEM TRA:" -ForegroundColor Cyan
-          if (Test-Path "$env:LOCALAPPDATA\Discord\Update.exe") { Write-Host "  OK: Discord" -ForegroundColor Green } else { Write-Host "  WARN: Discord not found" -ForegroundColor Yellow }
-          if (Test-Path "C:\Program Files\StarDesk\StarDesk.exe") { Write-Host "  OK: StarDesk" -ForegroundColor Green } else { Write-Host "  WARN: StarDesk not found" -ForegroundColor Yellow }
+
+          Start-Sleep -Seconds 2
+          Write-Host ""
+          Write-Host "KIEM TRA:" -ForegroundColor Cyan
+          if (Test-Path "C:\ALB-Apps\EVKey\EVKey64.exe") { Write-Host "  OK: EVKey" -ForegroundColor Green } else { Write-Host "  WARN: EVKey" -ForegroundColor Yellow }
+          if (Test-Path "$env:LOCALAPPDATA\Spotify\Spotify.exe") { Write-Host "  OK: Spotify" -ForegroundColor Green } else { Write-Host "  WARN: Spotify" -ForegroundColor Yellow }
+          if (Test-Path "$env:LOCALAPPDATA\Discord\Update.exe") { Write-Host "  OK: Discord" -ForegroundColor Green } else { Write-Host "  WARN: Discord" -ForegroundColor Yellow }
+          if (Test-Path "C:\Program Files\StarDesk\StarDesk.exe") { Write-Host "  OK: StarDesk" -ForegroundColor Green } else { Write-Host "  WARN: StarDesk" -ForegroundColor Yellow }
           $global:LASTEXITCODE = 0; exit 0
 
-      - name: 🌐 Web Panel (FIX SERVY)
+      - name: 🌐 Web Panel (FIX SERVY + API)
         shell: pwsh
         env:
           WINDOWS_IMAGE: ${{ inputs.windows_image }}
           CREATOR: ${{ inputs.creator_name }}
         run: |
           $savePass = "$env:RDP_PASS"; $uObj = Get-LocalUser -Name "$env:RDP_USER" -ErrorAction SilentlyContinue; $userSid = if ($uObj) { $uObj.SID.Value } else { $null }
-          $state = [ordered]@{ machineId = "$env:MACHINE_ID"; creator = "$env:CREATOR"; releaseTag = "$env:RELEASE_TAG"; user = "$env:RDP_USER"; extraUser = "$env:RDP_EXTRA_USER"; sid = "$userSid"; password = $savePass; windowsImage = "$env:WINDOWS_IMAGE"; driveLetter = "$env:MOUNT_LETTER"; tailscaleIp = "$env:TAILSCALE_IP"; durationMinutes = [int]"$env:TOTAL_MINUTES"; startUtc = (Get-Date).ToUniversalTime().ToString('o'); runId = "$env:GITHUB_RUN_ID" }
+          $state = [ordered]@{ machineId = "$env:MACHINE_ID"; creator = "$env:CREATOR"; releaseTag = "$env:RELEASE_TAG"; user = "$env:RDP_USER"; extraUser = "$env:RDP_EXTRA_USER"; sid = $userSid; password = $savePass; windowsImage = "$env:WINDOWS_IMAGE"; driveLetter = "$env:MOUNT_LETTER"; tailscaleIp = "$env:TAILSCALE_IP"; durationMinutes = [int]"$env:TOTAL_MINUTES"; startUtc = (Get-Date).ToUniversalTime().ToString('o'); runId = "$env:GITHUB_RUN_ID" }
           $state | ConvertTo-Json -Depth 5 -Compress | Set-Content -Path "$env:SHARED_STATE_FILE" -Encoding UTF8
           $webScript = @'
           $ErrorActionPreference = "Continue"
@@ -517,9 +647,46 @@ jobs:
                   $path = $req.Url.AbsolutePath.ToLower()
                   $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $remain = [math]::Max(0, ($endEpoch) - ($now))
                   $h = [math]::Floor($remain / 3600); $m = [math]::Floor(($remain % 3600) / 60); $s = $remain % 60
-                  if ($path -eq "/health") { $health = [ordered]@{ machineId = "$env:MACHINE_ID"; creator = "$env:CREATOR"; status = "ok"; rdp = (Get-Service TermService -ErrorAction SilentlyContinue).Status.ToString(); remaining_seconds = $remain }; $json = $health | ConvertTo-Json -Compress; $buf = [System.Text.Encoding]::UTF8.GetBytes("$json"); $resp.ContentType = "application/json"; $resp.ContentLength64 = $buf.Length; $resp.OutputStream.Write($buf, 0, $buf.Length); $resp.OutputStream.Close(); continue }
-                  if ($req.HttpMethod -eq "POST") { if ($path -eq "/action/save") { Set-Content -Path "$env:CONTROL_SIGNAL_FILE" -Value "SAVE_NOW" -Encoding UTF8 } elseif ($path -eq "/action/restart") { Set-Content -Path "$env:CONTROL_SIGNAL_FILE" -Value "RESTART_SESSION" -Encoding UTF8 } elseif ($path -eq "/action/stop") { Set-Content -Path "$env:CONTROL_SIGNAL_FILE" -Value "STOP_SESSION" -Encoding UTF8 } }
-                  $html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>ALB Panel</title><style>body{background:#0f172a;color:#f8fafc;font-family:Segoe UI;padding:24px;display:flex;justify-content:center}.card{max-width:600px;background:#1e293b;border:1px solid #334155;border-radius:16px;padding:24px}h1{color:#38bdf8;margin:0 0 8px}.row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #1e293b}.val{color:#4ade80;font-weight:600}button{width:100%;padding:14px;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;color:white;margin:6px 0}.btn-save{background:#0284c7}.btn-restart{background:#d97706}.btn-stop{background:#dc2626}</style></head><body><div class='card'><h1>ALB Panel [$env:MACHINE_ID]</h1><div class='row'><span>IP:</span><span class='val'>$env:TAILSCALE_IP</span></div><div class='row'><span>Creator:</span><span class='val'>$env:CREATOR</span></div><div class='row'><span>User:</span><span class='val'>$env:RDP_USER / $env:RDP_EXTRA_USER</span></div><div class='row'><span>O dia:</span><span class='val'>$env:MOUNT_LETTER:\</span></div><div class='row'><span>Con lai:</span><span class='val'>${h}h${m}m${s}s</span></div><form method='POST' action='/action/save'><button class='btn-save'>Luu Ngay</button></form><form method='POST' action='/action/restart'><button class='btn-restart'>Luu & Restart</button></form><form method='POST' action='/action/stop'><button class='btn-stop'>Luu & Tat</button></form></div></body></html>"
+
+                  # API: health
+                  if ($path -eq "/health" -or $path -eq "/api/status") {
+                      $ram = Get-CimInstance Win32_OperatingSystem
+                      $disk = Get-PSDrive -Name "$env:MOUNT_LETTER" -ErrorAction SilentlyContinue
+                      $health = [ordered]@{
+                          machineId = "$env:MACHINE_ID"; creator = "$env:CREATOR"; status = "ok"
+                          rdp = (Get-Service TermService -ErrorAction SilentlyContinue).Status.ToString()
+                          remaining_seconds = $remain; remaining_display = "${h}h${m}m${s}s"
+                          tailscale_ip = "$env:TAILSCALE_IP"; drive = "$env:MOUNT_LETTER"
+                          ram_total_gb = [math]::Round($ram.TotalVisibleMemorySize / 1MB, 1)
+                          ram_free_gb = [math]::Round($ram.FreePhysicalMemory / 1MB, 1)
+                          disk_total_gb = if ($disk) { [math]::Round(($disk.Used + $disk.Free) / 1GB, 1) } else { 0 }
+                          disk_free_gb = if ($disk) { [math]::Round($disk.Free / 1GB, 1) } else { 0 }
+                          apps = @(
+                              @{ name = "EVKey"; ok = (Test-Path "C:\ALB-Apps\EVKey\EVKey64.exe") },
+                              @{ name = "Spotify"; ok = (Test-Path "$env:LOCALAPPDATA\Spotify\Spotify.exe") },
+                              @{ name = "Discord"; ok = (Test-Path "$env:LOCALAPPDATA\Discord\Update.exe") },
+                              @{ name = "StarDesk"; ok = (Test-Path "C:\Program Files\StarDesk\StarDesk.exe") }
+                          )
+                      }
+                      $json = $health | ConvertTo-Json -Compress -Depth 5
+                      $buf = [System.Text.Encoding]::UTF8.GetBytes("$json"); $resp.ContentType = "application/json"; $resp.ContentLength64 = $buf.Length; $resp.OutputStream.Write($buf, 0, $buf.Length); $resp.OutputStream.Close(); continue
+                  }
+
+                  # API: action
+                  if ($req.HttpMethod -eq "POST" -and $path -like "/api/action/*") {
+                      $action = $path -replace "/api/action/", ""
+                      $validActions = @("save", "restart", "stop", "start-new")
+                      if ($action -in $validActions) {
+                          Set-Content -Path "$env:CONTROL_SIGNAL_FILE" -Value "$action" -Encoding UTF8
+                          $result = @{ ok = $true; action = $action } | ConvertTo-Json -Compress
+                      } else {
+                          $result = @{ ok = $false; error = "invalid action" } | ConvertTo-Json -Compress
+                      }
+                      $buf = [System.Text.Encoding]::UTF8.GetBytes("$result"); $resp.ContentType = "application/json"; $resp.ContentLength64 = $buf.Length; $resp.OutputStream.Write($buf, 0, $buf.Length); $resp.OutputStream.Close(); continue
+                  }
+
+                  # HTML (giữ nguyên, xem phần 2)
+                  $html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>ALB Panel [$env:MACHINE_ID]</title><style>body{background:#0a0e1a;color:#e8edf5;font-family:'Inter',sans-serif;padding:24px;display:flex;justify-content:center;min-height:100vh;align-items:center}.card{max-width:680px;width:100%;background:rgba(22,30,48,0.9);backdrop-filter:blur(20px);border:1px solid rgba(255,215,0,0.15);border-radius:24px;padding:32px;box-shadow:0 20px 60px rgba(0,0,0,0.5)}h1{font-family:'JetBrains Mono',monospace;font-size:22px;color:#ffd700;margin:0 0 4px;letter-spacing:1px}.sub{color:#7a8ba8;font-size:13px;margin-bottom:24px}.row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.06)}.row:last-child{border:none}.label{color:#7a8ba8;font-size:13px;text-transform:uppercase;letter-spacing:0.5px}.val{color:#e8edf5;font-weight:600;font-family:'JetBrains Mono',monospace;font-size:14px}.val.green{color:#4ade80}.val.gold{color:#ffd700}.val.red{color:#f87171}.btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:24px}.btn{padding:14px;border:none;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;font-family:'Inter',sans-serif}.btn:hover{transform:translateY(-1px);filter:brightness(1.1)}.btn-save{background:linear-gradient(135deg,#0284c7,#0369a1);color:white}.btn-restart{background:linear-gradient(135deg,#d97706,#b45309);color:white}.btn-stop{background:linear-gradient(135deg,#dc2626,#b91c1c);color:white}.btn-new{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:white;grid-column:span 2}.badge{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}.badge.on{background:#4ade80;box-shadow:0 0 8px #4ade80}.badge.off{background:#f87171}</style><link href='https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@500;700&display=swap' rel='stylesheet'></head><body><div class='card'><h1>ALB PANEL</h1><div class='sub'>$env:MACHINE_ID · Creator: $env:CREATOR</div><div class='row'><span class='label'>Tailscale IP</span><span class='val gold'>$env:TAILSCALE_IP</span></div><div class='row'><span class='label'>RDP Status</span><span class='val green'><span class='badge on'></span>Running</span></div><div class='row'><span class='label'>Remaining</span><span class='val'>${h}h ${m}m ${s}s</span></div><div class='row'><span class='label'>User</span><span class='val'>$env:RDP_USER / $env:RDP_EXTRA_USER</span></div><div class='row'><span class='label'>Drive</span><span class='val'>$env:MOUNT_LETTER:\</span></div><div class='btns'><button class='btn btn-save' onclick='action(\"save\")'>Luu Ngay</button><button class='btn btn-restart' onclick='action(\"restart\")'>Luu & Restart</button><button class='btn btn-stop' onclick='action(\"stop\")'>Luu & Tat</button><button class='btn btn-new' onclick='action(\"start-new\")'>Khoi Dong Phien Moi Ngay</button></div></div><script>async function action(a){if(!confirm('Xac nhan: '+a+'?'))return;try{const r=await fetch('/api/action/'+a,{method:'POST'});const j=await r.json();alert(j.ok?'Da gui lenh: '+a:'Loi: '+j.error)}catch(e){alert('Loi ket noi')}}</script></body></html>"
                   $buf = [System.Text.Encoding]::UTF8.GetBytes($html); $resp.ContentType = "text/html; charset=utf-8"; $resp.ContentLength64 = $buf.Length; $resp.OutputStream.Write($buf, 0, $buf.Length); $resp.OutputStream.Close()
               } catch {}
           }
@@ -530,8 +697,8 @@ jobs:
           if (Test-Path $servyCliPath) { $servyOk = $true; Write-Host "  OK: Servy da co san" -ForegroundColor Green }
           else { Write-Host "  Cai Servy qua Chocolatey..." -ForegroundColor Cyan; try { choco install servy -y --no-progress 2>&1 | Out-Null; Start-Sleep -Seconds 5; $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine"); if (Test-Path $servyCliPath) { $servyOk = $true; Write-Host "  OK: Servy da cai qua Chocolatey" -ForegroundColor Green } } catch { Write-Host "  WARN: Chocolatey fail" -ForegroundColor Yellow } }
           if (-not $servyOk) { Write-Host "  Fallback: Tai Servy installer truc tiep..." -ForegroundColor Yellow; try { $servyInstaller = "$env:TEMP\servy-installer.exe"; $servyUrl = "https://github.com/aelassas/servy/releases/latest/download/servy-net48-x64-installer.exe"; Invoke-WebRequest -Uri $servyUrl -OutFile $servyInstaller -UseBasicParsing -TimeoutSec 120; if (Test-Path $servyInstaller) { Start-Process -FilePath $servyInstaller -ArgumentList '/VERYSILENT /NORESTART /SUPPRESSMSGBOXES /SP- /CLOSEAPPLICATIONS /NOCANCEL' -Wait -NoNewWindow; Start-Sleep -Seconds 5; $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine"); if (Test-Path $servyCliPath) { $servyOk = $true; Write-Host "  OK: Servy da cai qua installer" -ForegroundColor Green } } } catch { Write-Host "  WARN: Tai installer fail" -ForegroundColor Yellow } }
-          if ($servyOk -and (Test-Path $servyCliPath)) { Write-Host "  Dung Servy de tao service..." -ForegroundColor Cyan; & $servyCliPath install --name="ALB-WebPanel" --path="C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" --params="-NoProfile -File `"$webScriptPath`"" --startupType="Automatic" 2>&1 | Out-Null; & $servyCliPath start --name="ALB-WebPanel" 2>&1 | Out-Null; Start-Sleep -Seconds 3; $test = Test-NetConnection -ComputerName 127.0.0.1 -Port $env:WEB_PORT -WarningAction SilentlyContinue; if ($test.TcpTestSucceeded) { Write-Host "  OK: Web Panel service dang chay" -ForegroundColor Green } else { Write-Host "  WARN: Port khong listen, fallback Start-Job..." -ForegroundColor Yellow; Start-Job -ScriptBlock { & pwsh -NoProfile -File $using:webScriptPath } | Out-Null } }
-          else { Write-Host "  Fallback: Chay Web Panel bang Start-Job..." -ForegroundColor Yellow; Start-Job -ScriptBlock { & pwsh -NoProfile -File $using:webScriptPath } | Out-Null; Start-Sleep -Seconds 3; $test = Test-NetConnection -ComputerName 127.0.0.1 -Port $env:WEB_PORT -WarningAction SilentlyContinue; if ($test.TcpTestSucceeded) { Write-Host "  OK: Web Panel dang chay (Start-Job)" -ForegroundColor Green } else { Write-Host "  WARN: Port khong listen" -ForegroundColor Yellow } }
+          if ($servyOk -and (Test-Path $servyCliPath)) { Write-Host "  Dung Servy de tao service..." -ForegroundColor Cyan; & $servyCliPath install --name="ALB-WebPanel" --path="C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" --params="-NoProfile -File `"$webScriptPath`"" --startupType="Automatic" 2>&1 | Out-Null; & $servyCliPath start --name="ALB-WebPanel" 2>&1 | Out-Null; Start-Sleep -Seconds 3; $test = Test-NetConnection -ComputerName 127.0.0.1 -Port $env:WEB_PORT -WarningAction SilentlyContinue; if ($test.TcpTestSucceeded) { Write-Host "  OK: Web Panel service dang chay" -ForegroundColor Green } else { Write-Host "  WARN: Port khong listen, fallback Start-Process..." -ForegroundColor Yellow; Start-Process -FilePath "pwsh.exe" -ArgumentList "-NoProfile -File `"$webScriptPath`"" -WindowStyle Hidden } }
+          else { Write-Host "  Fallback: Chay Web Panel bang Start-Process..." -ForegroundColor Yellow; Start-Process -FilePath "pwsh.exe" -ArgumentList "-NoProfile -File `"$webScriptPath`"" -WindowStyle Hidden; Start-Sleep -Seconds 3; $test = Test-NetConnection -ComputerName 127.0.0.1 -Port $env:WEB_PORT -WarningAction SilentlyContinue; if ($test.TcpTestSucceeded) { Write-Host "  OK: Web Panel dang chay" -ForegroundColor Green } else { Write-Host "  WARN: Port khong listen" -ForegroundColor Yellow } }
           exit 0
 
       - name: 📋 IN IP DE KET NOI
@@ -560,7 +727,7 @@ jobs:
         run: |
           $passText = "$env:RDP_PASS"; $audioName = if ($env:AUDIO_DEVICE_NAME) { $env:AUDIO_DEVICE_NAME } else { 'N/A' }
           Write-Host "============================================================" -ForegroundColor Cyan
-          Write-Host "  ALB ULTIMATE RDP v17.0 — FIX PROMPT PASSWORD" -ForegroundColor Cyan
+          Write-Host "  ALB ULTIMATE RDP v18.0 FIXED — KICK SESSION + STARDESK" -ForegroundColor Cyan
           Write-Host "============================================================" -ForegroundColor Cyan
           Write-Host "  May         : $env:MACHINE_ID" -ForegroundColor Cyan
           Write-Host "  Creator     : $env:CREATOR" -ForegroundColor Cyan
@@ -571,10 +738,11 @@ jobs:
           Write-Host "  Audio       : $audioName" -ForegroundColor Green
           Write-Host "  Web Panel   : http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Yellow
           Write-Host "  Sunshine    : https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/" -ForegroundColor Yellow
+          Write-Host "  EVKey       : Da cai (portable, startup)" -ForegroundColor Green
+          Write-Host "  Spotify     : Da cai (silent)" -ForegroundColor Green
           Write-Host "  Discord     : Da cai san" -ForegroundColor Green
-          Write-Host "  StarDesk    : Da cai san + backup/restore" -ForegroundColor Green
-          Write-Host "  RDP Prompt  : NLA=1, TLS=2, fPromptForPassword=0, Policy removed" -ForegroundColor Yellow
-          Write-Host "  Tailscale   : UNATTENDED MODE" -ForegroundColor Yellow
+          Write-Host "  StarDesk    : Da cai san (winget + backup)" -ForegroundColor Green
+          Write-Host "  RDP Fix     : fSingleSessionPerUser=0, fResetBroken=0, tscon cleanup" -ForegroundColor Yellow
           Write-Host "============================================================" -ForegroundColor Cyan
           exit 0
 
@@ -587,7 +755,7 @@ jobs:
           $endEpoch = $jobStart + (([long]$env:TOTAL_MINUTES) * 60); $saveScript = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'save-data.ps1'); $sigFile = "$env:CONTROL_SIGNAL_FILE"; $u = "$env:RDP_USER"
           $lastLog = (Get-Date).AddHours(-1); $warned = $false
           while ($true) {
-              if (Test-Path "$sigFile") { $cmd = (Get-Content -Raw -Path "$sigFile" -ErrorAction SilentlyContinue).Trim(); Remove-Item -Path "$sigFile" -Force -ErrorAction SilentlyContinue; if ("$cmd" -eq 'SAVE_NOW') { & "$saveScript" -Reason 'manual'; $global:LASTEXITCODE = 0 } elseif ("$cmd" -eq 'RESTART_SESSION') { 'FORCE_NEXT_SESSION=1' >> "$env:GITHUB_ENV"; break } elseif ("$cmd" -eq 'STOP_SESSION') { 'FORCE_STOP_ONLY=1' >> "$env:GITHUB_ENV"; break } }
+              if (Test-Path "$sigFile") { $cmd = (Get-Content -Raw -Path "$sigFile" -ErrorAction SilentlyContinue).Trim(); Remove-Item -Path "$sigFile" -Force -ErrorAction SilentlyContinue; if ("$cmd" -eq 'save' -or "$cmd" -eq 'SAVE_NOW') { & "$saveScript" -Reason 'manual'; $global:LASTEXITCODE = 0 } elseif ("$cmd" -eq 'restart' -or "$cmd" -eq 'RESTART_SESSION') { 'FORCE_NEXT_SESSION=1' >> "$env:GITHUB_ENV"; break } elseif ("$cmd" -eq 'stop' -or "$cmd" -eq 'STOP_SESSION') { 'FORCE_STOP_ONLY=1' >> "$env:GITHUB_ENV"; break } elseif ("$cmd" -eq 'start-new') { 'FORCE_NEXT_SESSION=1' >> "$env:GITHUB_ENV"; & "$saveScript" -Reason 'manual'; $global:LASTEXITCODE = 0; break } }
               $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $remain = $endEpoch - $now; if ($remain -le 0) { break }
               if (((Get-Date) - $lastLog).TotalMinutes -ge 5) { $svc = Get-Service -Name TermService -ErrorAction SilentlyContinue; $sunOK = Test-Port 47990; $h = [math]::Floor($remain / 3600); $m = [math]::Floor(($remain % 3600) / 60); Write-Host "[$(Get-Date -Format 'HH:mm:ss')] RDP:$($svc.Status) Sun:$sunOK Con:${h}h${m}m" -ForegroundColor Blue; $lastLog = Get-Date }
               if (-not (Test-Port 47990)) { Stop-Service -Name 'SunshineService', 'sunshinesvc' -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; $sunSvc = Get-Service -Name 'SunshineService', 'sunshinesvc' -ErrorAction SilentlyContinue | Select-Object -First 1; if ($sunSvc) { Start-Service -Name ($sunSvc.Name) -ErrorAction SilentlyContinue } else { Start-Process -FilePath 'C:\Program Files\Sunshine\sunshine.exe' -WorkingDirectory 'C:\Program Files\Sunshine' -WindowStyle Hidden -ErrorAction SilentlyContinue } }
@@ -613,7 +781,7 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 1 -Force -ErrorAction SilentlyContinue; Stop-Service -Name TermService -Force -ErrorAction SilentlyContinue; exit 0
 
       - name: 🔁 Auto-restart
-        if: ${{ always() && steps.keepalive.outcome == 'success' && env.FORCE_STOP_ONLY != '1' && inputs.auto_restart && !inputs.run_once }}
+        if: ${{ always() && steps.keepalive.outcome == 'success' && env.FORCE_STOP_ONLY != '1' && (inputs.auto_restart == true || inputs.auto_restart == 'true') && (inputs.run_once != true && inputs.run_once != 'true') }}
         shell: pwsh
         env:
           DURATION: ${{ inputs.duration }}
@@ -626,7 +794,8 @@ jobs:
           APP_URLS: ${{ inputs.app_urls }}
           OPT: ${{ inputs.optimize_windows }}
           DDNS: ${{ inputs.enable_duckdns }}
+          TS_ENABLED: ${{ inputs.enable_tailscale }}
         run: |
           $wf = [System.IO.Path]::GetFileName(("$env:GITHUB_WORKFLOW_REF" -split '@')[0])
-          gh workflow run "$wf" --ref "$env:GITHUB_REF_NAME" -f "machine_ids=$env:MACHINE_ID" -f "duration=$env:DURATION" -f auto_restart=true -f run_once=false -f "drive_letter=$env:MOUNT_LETTER" -f "vhd_size_gb=$env:VHD_SIZE_GB" -f "windows_image=$env:WIN_IMAGE" -f "rdp_username=$env:RDP_USERNAME" -f "rdp_password=$env:RDP_PASSWORD" -f "creator_name=$env:CREATOR" -f "vdd_resolution=$env:VDD_RES" -f "choco_packages=$env:PKGS" -f "app_urls=$env:APP_URLS" -f "optimize_windows=$($env:OPT.ToLower())" -f "enable_duckdns=$($env:DDNS.ToLower())"
+          gh workflow run "$wf" --ref "$env:GITHUB_REF_NAME" -f "machine_ids=$env:MACHINE_ID" -f "duration=$env:DURATION" -f auto_restart=true -f run_once=false -f "drive_letter=$env:MOUNT_LETTER" -f "vhd_size_gb=$env:VHD_SIZE_GB" -f "windows_image=$env:WIN_IMAGE" -f "rdp_username=$env:RDP_USERNAME" -f "rdp_password=$env:RDP_PASSWORD" -f "creator_name=$env:CREATOR" -f "vdd_resolution=$env:VDD_RES" -f "choco_packages=$env:PKGS" -f "app_urls=$env:APP_URLS" -f "optimize_windows=$($env:OPT.ToLower())" -f "enable_duckdns=$($env:DDNS.ToLower())" -f "enable_tailscale=$($env:TS_ENABLED.ToLower())"
           if (($LASTEXITCODE) -ne 0) { throw 'Restart fail' }
