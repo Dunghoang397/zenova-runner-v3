@@ -1,12 +1,12 @@
 # ═══════════════════════════════════════════════════════════════
-# ALB-VPSFREE-ULTIMATE v38.0 — ZERO-PARSE-RISK
-# - Loại bỏ hoàn toàn scriptblock lồng trong array
-# - Mỗi job là Start-ThreadJob/Start-Job độc lập
-# - cancel-in-progress: true — không dồn run
-# - Timeout step-level — không treo vô hạn
-# - TEMP → D: — I/O nhanh
+# ALB-VPSFREE-ULTIMATE v39.0 — FINAL ZERO-RISK
+# - Không pipe | trong string (YAML safe)
+# - Mỗi app một step riêng (dễ debug)
+# - Start-ThreadJob fallback Start-Job (PS 5.1 + PS 7)
+# - cancel-in-progress: true (không dồn run)
+# - Timeout step-level (không treo)
 # ═══════════════════════════════════════════════════════════════
-name: ALB-VPSFREE-ULTIMATE v38.0
+name: ALB-VPSFREE-ULTIMATE v39.0
 
 on:
   workflow_dispatch:
@@ -109,11 +109,12 @@ jobs:
           try {
             $dTemp = 'D:\tmp'
             New-Item -ItemType Directory -Force -Path $dTemp | Out-Null
-            $env:TEMP = $dTemp; $env:TMP = $dTemp
+            $env:TEMP = $dTemp
+            $env:TMP = $dTemp
             "TEMP=$dTemp" >> $env:GITHUB_ENV
             "TMP=$dTemp" >> $env:GITHUB_ENV
             Write-Host "OK TEMP=$dTemp" -ForegroundColor Green
-          } catch { Write-Host "SKIP TEMP: $_" -ForegroundColor Yellow }
+          } catch { Write-Host "SKIP TEMP" -ForegroundColor Yellow }
           $global:LASTEXITCODE = 0
 
       - name: 🧱 Dựng ổ đĩa
@@ -180,18 +181,10 @@ jobs:
             @("$sharedRoot\sessions","$sharedRoot\DATA","$sharedRoot\OS-OVERLAY","$sharedRoot\Users","${dl}:\Apps") |
               ForEach-Object { New-Item -ItemType Directory -Force -Path $_ | Out-Null }
 
-            $baseline = @{
-                PF64 = @(Get-ChildItem 'C:\Program Files' -Directory -Force -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
-                PF86 = @(Get-ChildItem 'C:\Program Files (x86)' -Directory -Force -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
-                PD   = @(Get-ChildItem 'C:\ProgramData' -Directory -Force -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
-            }
-            $baseline | ConvertTo-Json -Depth 4 | Set-Content "$env:RUNNER_TEMP\baseline.json" -Encoding UTF8
-
             "SHARED_ROOT=$sharedRoot" >> $env:GITHUB_ENV
             "SHARED_OS_DIR=$sharedRoot\OS-OVERLAY" >> $env:GITHUB_ENV
             "SHARED_STATE_FILE=$sharedRoot\sessions\rdp-session-state.json" >> $env:GITHUB_ENV
             "PROFILE_ROOT=$sharedRoot\Users" >> $env:GITHUB_ENV
-            "BASELINE_FILE=$env:RUNNER_TEMP\baseline.json" >> $env:GITHUB_ENV
             "CONTROL_SIGNAL_FILE=$env:RUNNER_TEMP\alb-control.txt" >> $env:GITHUB_ENV
             "VHD_CONTAINER=$vhdContainer" >> $env:GITHUB_ENV
             $global:LASTEXITCODE = 0
@@ -206,22 +199,38 @@ jobs:
           $L.Add('param([string]$Reason = "session-end")')
           $L.Add('$ErrorActionPreference = "Continue"')
           $L.Add('if ("$env:DATA_RESTORED" -ne "1") { exit 0 }')
-          $L.Add('$root = "$env:SHARED_ROOT"; $osDir = "$env:SHARED_OS_DIR"')
+          $L.Add('$root = "$env:SHARED_ROOT"')
           $L.Add('if ((-not $root) -or (-not (Test-Path $root))) { exit 0 }')
-          $L.Add('$apps = @("chrome","msedge","discord","Telegram","Zalo","steam","Spotify","Code","StarDesk","EVKey","bdcam","RobloxPlayerBeta")')
+          $L.Add('$apps = @("chrome","discord","Spotify","Code","bdcam","RobloxPlayerBeta")')
           $L.Add('Get-Process -Name $apps -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue')
           $L.Add('Start-Sleep -Seconds 1')
-          $L.Add('$u = "$env:RDP_USER"; $profSrc = "$env:PROFILE_PATH"')
-          $L.Add('if ($u -and $profSrc -and (Test-Path $profSrc)) { $profDst = "$root\Users\$u"; New-Item -ItemType Directory -Force -Path $profDst | Out-Null; $ex = @("$profSrc\AppData\Local\Temp","$profSrc\AppData\Local\Packages"); robocopy $profSrc $profDst /MIR /XJ /R:1 /W:1 /MT:2 /NFL /NDL /NJH /NJS /NP /XD @ex *> $null; $global:LASTEXITCODE = 0 }')
-          $L.Add('$packDir = "$env:RUNNER_TEMP\alb-pack-$Reason"; if (Test-Path $packDir) { Remove-Item $packDir -Recurse -Force -ErrorAction SilentlyContinue }; New-Item -ItemType Directory -Force -Path $packDir | Out-Null')
-          $L.Add('$archiveBase = "$packDir\alb-drive.7z"; Push-Location $root; & 7z a -t7z -m0=lzma2 -mx=1 -mmt=4 -v1900m $archiveBase * -xr!Pagefile.sys -xr!"System Volume Information" *> $null; Pop-Location')
-          $L.Add('$chunks = @(Get-ChildItem $packDir -Filter "alb-drive.7z.*" | Sort-Object Name); if ($chunks.Count -eq 0) { exit 1 }')
-          $L.Add('$manifest = @{ machineId=$env:MACHINE_ID; updatedUtc=(Get-Date).ToUniversalTime().ToString("o"); chunkCount=$chunks.Count; chunks=@($chunks | ForEach-Object { @{ name=$_.Name; size=$_.Length } }) }')
-          $L.Add('$manifestPath = "$packDir\drive-manifest.json"; $manifest | ConvertTo-Json -Depth 5 | Set-Content $manifestPath -Encoding UTF8')
-          $L.Add('$files = @($chunks | ForEach-Object { $_.FullName }) + @($manifestPath); $ok = $false')
-          $L.Add('for ($i=1;$i-le 3;$i++) { & gh release upload $env:RELEASE_TAG @files --repo $env:GH_REPO --clobber; if ($LASTEXITCODE -eq 0) { $ok=$true; break }; Start-Sleep ($3*$i) }')
+          $L.Add('$u = "$env:RDP_USER"')
+          $L.Add('$profSrc = "$env:PROFILE_PATH"')
+          $L.Add('if ($u -and $profSrc -and (Test-Path $profSrc)) { $profDst = "$root\Users\$u"; New-Item -ItemType Directory -Force -Path $profDst | Out-Null; $ex = @("$profSrc\AppData\Local\Temp"); robocopy $profSrc $profDst /MIR /XJ /R:1 /W:1 /MT:2 /NFL /NDL /NJH /NJS /NP /XD @ex; $global:LASTEXITCODE = 0 }')
+          $L.Add('$packDir = "$env:RUNNER_TEMP\alb-pack-$Reason"')
+          $L.Add('if (Test-Path $packDir) { Remove-Item $packDir -Recurse -Force -ErrorAction SilentlyContinue }')
+          $L.Add('New-Item -ItemType Directory -Force -Path $packDir | Out-Null')
+          $L.Add('$archiveBase = "$packDir\alb-drive.7z"')
+          $L.Add('Push-Location $root')
+          $L.Add('& 7z a -t7z -m0=lzma2 -mx=1 -mmt=4 -v1900m $archiveBase * -xr!Pagefile.sys *> $null')
+          $L.Add('Pop-Location')
+          $L.Add('$chunks = @(Get-ChildItem $packDir -Filter "alb-drive.7z.*" | Sort-Object Name)')
+          $L.Add('if ($chunks.Count -eq 0) { exit 1 }')
+          $L.Add('$chunkList = @()')
+          $L.Add('foreach ($c in $chunks) { $chunkList += @{ name = $c.Name; size = $c.Length } }')
+          $L.Add('$manifest = @{ machineId = $env:MACHINE_ID; updatedUtc = (Get-Date).ToUniversalTime().ToString("o"); chunkCount = $chunks.Count; chunks = $chunkList }')
+          $L.Add('$manifestPath = "$packDir\drive-manifest.json"')
+          $L.Add('$json = $manifest | ConvertTo-Json -Depth 5')
+          $L.Add('Set-Content $manifestPath -Value $json -Encoding UTF8')
+          $L.Add('$files = @()')
+          $L.Add('foreach ($c in $chunks) { $files += $c.FullName }')
+          $L.Add('$files += $manifestPath')
+          $L.Add('$ok = $false')
+          $L.Add('for ($i=1; $i-le 3; $i++) { & gh release upload $env:RELEASE_TAG @files --repo $env:GH_REPO --clobber; if ($LASTEXITCODE -eq 0) { $ok=$true; break }; Start-Sleep ($3*$i) }')
           $L.Add('if (-not $ok) { exit 1 }')
-          $L.Add('Remove-Item $packDir -Recurse -Force -ErrorAction SilentlyContinue; Write-Host "Saved [$env:MACHINE_ID]" -ForegroundColor Green; exit 0')
+          $L.Add('Remove-Item $packDir -Recurse -Force -ErrorAction SilentlyContinue')
+          $L.Add('Write-Host "Saved [$env:MACHINE_ID]" -ForegroundColor Green')
+          $L.Add('exit 0')
           Set-Content -Path "$env:RUNNER_TEMP\save-data.ps1" -Value ($L -join "`r`n") -Encoding UTF8
           Write-Host "OK save-data.ps1" -ForegroundColor Green
           $global:LASTEXITCODE = 0
@@ -240,41 +249,43 @@ jobs:
 
             $manifest = Get-Content -Raw "$dlDir\drive-manifest.json" | ConvertFrom-Json
             $chunkNames = @($manifest.chunks | ForEach-Object { $_.name })
-            $hasThreadJob = $null -ne (Get-Command Start-ThreadJob -ErrorAction SilentlyContinue)
+            $hasTJ = $null -ne (Get-Command Start-ThreadJob -ErrorAction SilentlyContinue)
 
-            # Mỗi chunk một job độc lập — không array scriptblock
             $jobs = @()
             foreach ($c in $chunkNames) {
-                if ($hasThreadJob) {
+                if ($hasTJ) {
                     $jobs += Start-ThreadJob -ScriptBlock {
-                        param($t,$r,$p,$d) & gh release download $t --repo $r --pattern $p --dir $d 2>$null
+                        param($t,$r,$p,$d)
+                        & gh release download $t --repo $r --pattern $p --dir $d 2>$null
                     } -ArgumentList $env:RELEASE_TAG, $env:GH_REPO, $c, $dlDir
                 } else {
                     $jobs += Start-Job -ScriptBlock {
-                        param($t,$r,$p,$d) & gh release download $t --repo $r --pattern $p --dir $d 2>$null
+                        param($t,$r,$p,$d)
+                        & gh release download $t --repo $r --pattern $p --dir $d 2>$null
                     } -ArgumentList $env:RELEASE_TAG, $env:GH_REPO, $c, $dlDir
                 }
             }
             $null = Wait-Job $jobs -Timeout 120
             $jobs | ForEach-Object { Remove-Job $_ -Force -ErrorAction SilentlyContinue }
 
-            $firstChunk = Get-ChildItem $dlDir -Filter '*.7z.001' | Select-Object -First 1
-            if (-not $firstChunk) { 'DATA_RESTORED=1' >> $env:GITHUB_ENV; exit 0 }
+            $first = Get-ChildItem $dlDir -Filter '*.7z.001' | Select-Object -First 1
+            if (-not $first) { 'DATA_RESTORED=1' >> $env:GITHUB_ENV; exit 0 }
 
             $stage = "$env:VHD_CONTAINER\restore-stage"
             if (Test-Path $stage) { Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue }
             New-Item -ItemType Directory -Force -Path $stage | Out-Null
-            & 7z x $firstChunk.FullName "-o$stage" -y -mmt=4 *> $null
+            & 7z x $first.FullName "-o$stage" -y -mmt=4 *> $null
             Remove-Item $dlDir -Recurse -Force -ErrorAction SilentlyContinue
 
-            $stateHit = Get-ChildItem $stage -Recurse -Depth 6 -Filter 'rdp-session-state.json' -File -ErrorAction SilentlyContinue | Select-Object -First 1
-            $sourceRoot = if ($stateHit) { $stateHit.Directory.Parent.FullName } else { $stage }
-            robocopy $sourceRoot $env:SHARED_ROOT /E /XJ /R:1 /W:1 /MT:4 /NFL /NDL /NJH /NJS /NP *> $null
+            $hit = Get-ChildItem $stage -Recurse -Depth 6 -Filter 'rdp-session-state.json' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+            $src = $stage
+            if ($hit) { $src = $hit.Directory.Parent.FullName }
+            robocopy $src $env:SHARED_ROOT /E /XJ /R:1 /W:1 /MT:4 /NFL /NDL /NJH /NJS /NP *> $null
             $global:LASTEXITCODE = 0
 
             $oldProf = "$env:PROFILE_ROOT\$env:RDP_USER"
             if (Test-Path $oldProf) {
-                $skip = @("$oldProf\AppData\Local\Packages","$oldProf\AppData\Local\Temp")
+                $skip = @("$oldProf\AppData\Local\Temp")
                 robocopy $oldProf $env:PROFILE_PATH /E /XJ /R:1 /W:1 /MT:4 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* /XD @skip *> $null
                 $global:LASTEXITCODE = 0
             }
@@ -285,7 +296,7 @@ jobs:
             Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
             'DATA_RESTORED=1' >> $env:GITHUB_ENV
             Write-Host "OK Restore" -ForegroundColor Green
-          } catch { Write-Host "WARN Restore: $_" -ForegroundColor Yellow; 'DATA_RESTORED=1' >> $env:GITHUB_ENV }
+          } catch { Write-Host "WARN Restore" -ForegroundColor Yellow; 'DATA_RESTORED=1' >> $env:GITHUB_ENV }
           $global:LASTEXITCODE = 0
 
       - name: 🔗 Gắn kết OS
@@ -297,12 +308,14 @@ jobs:
             $instCache = "$osDir\Installers"
             @("$osDir\InstalledApps","$osDir\bin",$instCache,"$osDir\Sunshine-Config","$osDir\Wallpaper") |
               ForEach-Object { New-Item -ItemType Directory -Force -Path $_ | Out-Null }
-            if (-not (Test-Path 'C:\ALB-Apps')) { New-Item -ItemType Junction -Path 'C:\ALB-Apps' -Target "$osDir\InstalledApps" -Force | Out-Null }
+            if (-not (Test-Path 'C:\ALB-Apps')) {
+              New-Item -ItemType Junction -Path 'C:\ALB-Apps' -Target "$osDir\InstalledApps" -Force | Out-Null
+            }
             "INSTALLER_CACHE=$instCache" >> $env:GITHUB_ENV
             "SUNSHINE_PERSIST_CFG=$osDir\Sunshine-Config" >> $env:GITHUB_ENV
             "WALLPAPER_DIR=$osDir\Wallpaper" >> $env:GITHUB_ENV
             Write-Host "OK Gan ket" -ForegroundColor Green
-          } catch { Write-Host "WARN: $_" -ForegroundColor Yellow }
+          } catch { Write-Host "WARN Gan ket" -ForegroundColor Yellow }
           $global:LASTEXITCODE = 0
 
       - name: 🔐 RDP + Firewall
@@ -313,16 +326,26 @@ jobs:
             Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server' fDenyTSConnections 0 -Force
             Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server' fSingleSessionPerUser 0 -Type DWord -Force
             $p = 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
-            @{UserAuthentication=1;SecurityLayer=2;fPromptForPassword=1;fResetBroken=0;fEnableRemoteFX=1;MaxIdleTime=0;MaxDisconnectionTime=0;MaxConnectionTime=0;fDisableAudioCapture=0;fNoRemoteDesktopWallpaper=0} |
-              ForEach-Object { $_.GetEnumerator() | ForEach-Object { Set-ItemProperty $p $_.Key $_.Value -Type DWord -Force -ErrorAction SilentlyContinue } }
-            @('RDP-Premium','Sunshine-Premium-TCP','Sunshine-Premium-UDP') | ForEach-Object { Remove-NetFirewallRule -DisplayName $_ -ErrorAction SilentlyContinue }
+            $rdpKeys = @{
+              UserAuthentication = 1
+              SecurityLayer = 2
+              fPromptForPassword = 1
+              fEnableRemoteFX = 1
+              MaxIdleTime = 0
+              MaxDisconnectionTime = 0
+            }
+            foreach ($k in $rdpKeys.Keys) {
+              Set-ItemProperty $p $k $rdpKeys[$k] -Type DWord -Force -ErrorAction SilentlyContinue
+            }
+            @('RDP-Premium','Sunshine-Premium-TCP','Sunshine-Premium-UDP') |
+              ForEach-Object { Remove-NetFirewallRule -DisplayName $_ -ErrorAction SilentlyContinue }
             New-NetFirewallRule -DisplayName 'RDP-Premium' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3389,8080 -Profile Any | Out-Null
             New-NetFirewallRule -DisplayName 'Sunshine-Premium-TCP' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 47984,47989,47990,48010 -Profile Any | Out-Null
             New-NetFirewallRule -DisplayName 'Sunshine-Premium-UDP' -Direction Inbound -Action Allow -Protocol UDP -LocalPort 47998,47999,48000,48002,48010 -Profile Any | Out-Null
             Set-Service TermService -StartupType Automatic -ErrorAction SilentlyContinue
             Start-Service TermService -ErrorAction SilentlyContinue
             Write-Host "OK RDP" -ForegroundColor Green
-          } catch { Write-Host "WARN RDP: $_" -ForegroundColor Yellow }
+          } catch { Write-Host "WARN RDP" -ForegroundColor Yellow }
           $global:LASTEXITCODE = 0
 
       - name: ⚡ Fix lag + CPU
@@ -335,15 +358,25 @@ jobs:
           try {
             $ult = & powercfg /duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61 2>$null
             if ($ult -match '([a-f0-9\-]{36})') { & powercfg /setactive $Matches[1] 2>$null }
-            & powercfg /change standby-timeout-ac 0; & powercfg /change monitor-timeout-ac 0; & powercfg /hibernate off
+            & powercfg /change standby-timeout-ac 0
+            & powercfg /change monitor-timeout-ac 0
+            & powercfg /hibernate off
             & powercfg -setacvalueindex scheme_current sub_processor CPMINCORES 100 2>$null
             & powercfg -setacvalueindex scheme_current sub_processor CPMAXCORES 100 2>$null
             & powercfg /setactive scheme_current 2>$null
           } catch {}
-          try { $pt = 'HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling'; if (-not (Test-Path $pt)) { New-Item $pt -Force | Out-Null }; Set-ItemProperty $pt PowerThrottlingOff 1 -Type DWord -Force } catch {}
-          @('wuauserv','DiagTrack','WSearch','SysMain','Spooler') | ForEach-Object { Stop-Service $_ -Force -ErrorAction SilentlyContinue; Set-Service $_ -StartupType Disabled -ErrorAction SilentlyContinue }
+          try {
+            $pt = 'HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling'
+            if (-not (Test-Path $pt)) { New-Item $pt -Force | Out-Null }
+            Set-ItemProperty $pt PowerThrottlingOff 1 -Type DWord -Force
+          } catch {}
+          @('wuauserv','DiagTrack','WSearch','SysMain','Spooler') |
+            ForEach-Object { Stop-Service $_ -Force -ErrorAction SilentlyContinue; Set-Service $_ -StartupType Disabled -ErrorAction SilentlyContinue }
           $cpu = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
-          "CPU_MODEL_INFO=$($cpu.Name) ($($cpu.NumberOfLogicalProcessors) vCPU)" >> $env:GITHUB_ENV
+          if ($cpu) {
+            $cpuStr = "$($cpu.Name) ($($cpu.NumberOfLogicalProcessors) vCPU)"
+            "CPU_MODEL_INFO=$cpuStr" >> $env:GITHUB_ENV
+          }
           Write-Host "OK Fix lag" -ForegroundColor Green
           $global:LASTEXITCODE = 0
 
@@ -355,30 +388,50 @@ jobs:
         shell: pwsh
         run: |
           if (-not $env:TAILSCALE_AUTH_KEY) {
-            "TAILSCALE_IP=127.0.0.1" >> $env:GITHUB_ENV; "FUNNEL_URL=" >> $env:GITHUB_ENV; "TS_STATUS=NO_KEY" >> $env:GITHUB_ENV; exit 0
+            "TAILSCALE_IP=127.0.0.1" >> $env:GITHUB_ENV
+            "FUNNEL_URL=" >> $env:GITHUB_ENV
+            "TS_STATUS=NO_KEY" >> $env:GITHUB_ENV
+            exit 0
           }
           try {
             $ts = 'C:\Program Files\Tailscale\tailscale.exe'
             if (-not (Test-Path $ts)) {
               $msi = "$env:INSTALLER_CACHE\tailscale.msi"
-              if (-not (Test-Path $msi)) { & curl.exe -L --retry 2 'https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi' -o $msi 2>$null }
+              if (-not (Test-Path $msi)) { & curl.exe -L --retry 2 -s 'https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi' -o $msi 2>$null }
               if (Test-Path $msi) { Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /quiet /norestart" -Wait -NoNewWindow }
             }
-            if (-not (Test-Path $ts)) { "TAILSCALE_IP=127.0.0.1" >> $env:GITHUB_ENV; "FUNNEL_URL=" >> $env:GITHUB_ENV; "TS_STATUS=FAIL" >> $env:GITHUB_ENV; exit 0 }
+            if (-not (Test-Path $ts)) {
+              "TAILSCALE_IP=127.0.0.1" >> $env:GITHUB_ENV
+              "FUNNEL_URL=" >> $env:GITHUB_ENV
+              "TS_STATUS=FAIL" >> $env:GITHUB_ENV
+              exit 0
+            }
             Set-Service Tailscale -StartupType Automatic -ErrorAction SilentlyContinue
             Start-Service Tailscale -ErrorAction SilentlyContinue
             Start-Sleep -Seconds 3
             & $ts up "--authkey=$env:TAILSCALE_AUTH_KEY" "--hostname=alb-$($env:MACHINE_ID)" --accept-routes --accept-dns --reset --unattended
-            if ($LASTEXITCODE -ne 0) { "TAILSCALE_IP=127.0.0.1" >> $env:GITHUB_ENV; "FUNNEL_URL=" >> $env:GITHUB_ENV; "TS_STATUS=AUTH_FAIL" >> $env:GITHUB_ENV; exit 0 }
+            if ($LASTEXITCODE -ne 0) {
+              "TAILSCALE_IP=127.0.0.1" >> $env:GITHUB_ENV
+              "FUNNEL_URL=" >> $env:GITHUB_ENV
+              "TS_STATUS=AUTH_FAIL" >> $env:GITHUB_ENV
+              exit 0
+            }
             & $ts set --unattended=true 2>&1 | Out-Null
             Start-Sleep -Seconds 2
             $ip = (& $ts ip -4 2>&1 | Out-String).Trim()
-            if ($ip -match '^\d+\.\d+\.\d+\.\d+$') { "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV } else { "TAILSCALE_IP=127.0.0.1" >> $env:GITHUB_ENV }
-            $funnel = & $ts funnel status 2>&1 | Out-String
-            if ($funnel -match '(https://[^\s]+)') { "FUNNEL_URL=$($Matches[1])" >> $env:GITHUB_ENV } else { "FUNNEL_URL=" >> $env:GITHUB_ENV }
+            if ($ip -match '^\d+\.\d+\.\d+\.\d+$') {
+              "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
+            } else {
+              "TAILSCALE_IP=127.0.0.1" >> $env:GITHUB_ENV
+            }
+            "FUNNEL_URL=" >> $env:GITHUB_ENV
             "TS_STATUS=CONNECTED" >> $env:GITHUB_ENV
             Write-Host "OK Tailscale" -ForegroundColor Green
-          } catch { "TAILSCALE_IP=127.0.0.1" >> $env:GITHUB_ENV; "FUNNEL_URL=" >> $env:GITHUB_ENV; "TS_STATUS=ERROR" >> $env:GITHUB_ENV }
+          } catch {
+            "TAILSCALE_IP=127.0.0.1" >> $env:GITHUB_ENV
+            "FUNNEL_URL=" >> $env:GITHUB_ENV
+            "TS_STATUS=ERROR" >> $env:GITHUB_ENV
+          }
           $global:LASTEXITCODE = 0
 
       - name: 🖥️ VDD + VB-Audio + Sunshine
@@ -395,7 +448,6 @@ jobs:
           $h = if ($parts.Count -ge 2) { [int]$parts[1] } else { 1080 }
           $hz = if ($parts.Count -ge 3) { [int]$parts[2] } else { 60 }
 
-          # VDD
           try {
             $cache = "$instCache\.vdd"
             if (-not (Test-Path $cache)) {
@@ -405,7 +457,12 @@ jobs:
                 Add-Type -AssemblyName System.IO.Compression.FileSystem
                 $z = [System.IO.Compression.ZipFile]::OpenRead($zip)
                 New-Item -ItemType Directory -Force 'C:\usbmmidd_v2' | Out-Null
-                foreach ($e in $z.Entries) { if ($e.Name -match '\.(inf|sys|cer|cat|exe)$') { [System.IO.Compression.ZipFileExtensions]::ExtractToFile($e, "C:\usbmmidd_v2\$($e.Name)", $true) } }
+                foreach ($e in $z.Entries) {
+                  if ($e.Name -match '\.(inf|sys|cer|cat|exe)$') {
+                    $dest = "C:\usbmmidd_v2\$($e.Name)"
+                    [System.IO.Compression.ZipFileExtensions]::ExtractToFile($e, $dest, $true)
+                  }
+                }
                 $z.Dispose()
                 if (Test-Path 'C:\usbmmidd_v2\deviceinstaller64.exe') {
                   Push-Location 'C:\usbmmidd_v2'
@@ -420,9 +477,8 @@ jobs:
               New-Item -ItemType File -Force -Path $cache | Out-Null
             }
             Write-Host "OK VDD" -ForegroundColor Green
-          } catch { Write-Host "WARN VDD: $_" -ForegroundColor Yellow }
+          } catch { Write-Host "WARN VDD" -ForegroundColor Yellow }
 
-          # VB-Audio
           try {
             $cache = "$instCache\.vb"
             if (-not (Test-Path $cache)) {
@@ -431,7 +487,13 @@ jobs:
               if (Test-Path $zip) {
                 Add-Type -AssemblyName System.IO.Compression.FileSystem
                 $z = [System.IO.Compression.ZipFile]::OpenRead($zip)
-                foreach ($e in $z.Entries) { if ($e.Name -match '\.(inf|sys|cer|cat|exe)$') { [System.IO.Compression.ZipFileExtensions]::ExtractToFile($e, "$instCache\VBCable\$($e.Name)", $true) } }
+                New-Item -ItemType Directory -Force "$instCache\VBCable" | Out-Null
+                foreach ($e in $z.Entries) {
+                  if ($e.Name -match '\.(inf|sys|cer|cat|exe)$') {
+                    $dest = "$instCache\VBCable\$($e.Name)"
+                    [System.IO.Compression.ZipFileExtensions]::ExtractToFile($e, $dest, $true)
+                  }
+                }
                 $z.Dispose()
                 $inf = Get-ChildItem "$instCache\VBCable" -Filter 'VBCABLE_Setup_x64.inf' -ErrorAction SilentlyContinue | Select-Object -First 1
                 if ($inf) { pnputil /add-driver $inf.FullName /install *> $null }
@@ -439,15 +501,17 @@ jobs:
               New-Item -ItemType File -Force -Path $cache | Out-Null
             }
             Write-Host "OK VB-Audio" -ForegroundColor Green
-          } catch { Write-Host "WARN VB: $_" -ForegroundColor Yellow }
+          } catch { Write-Host "WARN VB-Audio" -ForegroundColor Yellow }
 
-          # Sunshine
           try {
-            $sunDir = 'C:\Program Files\Sunshine'; $sunExe = "$sunDir\sunshine.exe"
+            $sunDir = 'C:\Program Files\Sunshine'
+            $sunExe = "$sunDir\sunshine.exe"
             if (-not (Test-Path $sunExe)) {
               $inst = "$instCache\sunshine-setup.exe"
               if (-not (Test-Path $inst)) { & curl.exe -L --retry 3 -s 'https://github.com/LizardByte/Sunshine/releases/latest/download/sunshine-windows-installer.exe' -o $inst 2>$null }
-              if ((Test-Path $inst) -and (Get-Item $inst).Length -gt 5MB) { Start-Process $inst -ArgumentList '/S' -Wait -NoNewWindow -ErrorAction SilentlyContinue }
+              if ((Test-Path $inst) -and (Get-Item $inst).Length -gt 5MB) {
+                Start-Process $inst -ArgumentList '/S' -Wait -NoNewWindow -ErrorAction SilentlyContinue
+              }
             }
             if (Test-Path $sunExe) {
               Stop-Service SunshineService,sunshinesvc -Force -ErrorAction SilentlyContinue
@@ -455,19 +519,31 @@ jobs:
               Start-Sleep -Seconds 1
               $cfg = "$sunDir\config"
               if ((Test-Path $cfg) -and ((Get-Item $cfg -Force).Attributes -notmatch 'ReparsePoint')) {
-                if (@(Get-ChildItem $sunPersist -Force -ErrorAction SilentlyContinue).Count -eq 0) { Copy-Item "$cfg\*" $sunPersist -Recurse -Force -ErrorAction SilentlyContinue }
+                $existing = @(Get-ChildItem $sunPersist -Force -ErrorAction SilentlyContinue)
+                if ($existing.Count -eq 0) { Copy-Item "$cfg\*" $sunPersist -Recurse -Force -ErrorAction SilentlyContinue }
                 Remove-Item $cfg -Recurse -Force -ErrorAction SilentlyContinue
               }
               New-Item -ItemType Junction $cfg -Target $sunPersist -Force | Out-Null
               $conf = "$sunPersist\sunshine.conf"
-              if (-not (Test-Path $conf)) { Set-Content $conf -Value "sunshine_name = ALB-$($env:MACHINE_ID)`r`norigin_web_ui_allowed = wan`r`nupnp = disabled" -Encoding UTF8 }
+              if (-not (Test-Path $conf)) {
+                $confLines = @(
+                  "sunshine_name = ALB-$($env:MACHINE_ID)",
+                  "origin_web_ui_allowed = wan",
+                  "upnp = disabled"
+                )
+                Set-Content $conf -Value ($confLines -join "`r`n") -Encoding UTF8
+              }
               $svc = Get-Service SunshineService,sunshinesvc -ErrorAction SilentlyContinue | Select-Object -First 1
-              if ($svc) { Set-Service $svc.Name -StartupType Automatic; Start-Service $svc.Name -ErrorAction SilentlyContinue }
-              else { Start-Process $sunExe -WorkingDirectory $sunDir -WindowStyle Hidden }
+              if ($svc) {
+                Set-Service $svc.Name -StartupType Automatic -ErrorAction SilentlyContinue
+                Start-Service $svc.Name -ErrorAction SilentlyContinue
+              } else {
+                Start-Process $sunExe -WorkingDirectory $sunDir -WindowStyle Hidden
+              }
               Start-Sleep -Seconds 2
               Write-Host "OK Sunshine" -ForegroundColor Green
             }
-          } catch { Write-Host "WARN Sunshine: $_" -ForegroundColor Yellow }
+          } catch { Write-Host "WARN Sunshine" -ForegroundColor Yellow }
           $global:LASTEXITCODE = 0
 
       - name: 👤 User + Wallpaper
@@ -480,7 +556,9 @@ jobs:
           $ErrorActionPreference = 'Continue'
           $user = $env:RDP_USER
           try {
-            $pass = if ($env:FIXED_PASS_INPUT) { $env:FIXED_PASS_INPUT.Trim() } elseif ($env:RESTORE_PASS) { $env:RESTORE_PASS } else { 'Aistv@2026' }
+            if ($env:FIXED_PASS_INPUT) { $pass = $env:FIXED_PASS_INPUT.Trim() }
+            elseif ($env:RESTORE_PASS) { $pass = $env:RESTORE_PASS }
+            else { $pass = 'Aistv@2026' }
             $sp = ConvertTo-SecureString $pass -AsPlainText -Force
             try { Set-LocalUser -Name $user -Password $sp -PasswordNeverExpires $true -ErrorAction Stop } catch {}
             & net user $user $pass /active:yes /expires:never *> $null
@@ -491,11 +569,13 @@ jobs:
             Set-ItemProperty $wl AutoAdminLogon '1' -Force
             Set-ItemProperty $wl DefaultUserName $user -Force
             Set-ItemProperty $wl DefaultPassword $pass -Force
-          } catch { Write-Host "WARN User: $_" -ForegroundColor Yellow }
+          } catch { Write-Host "WARN User" -ForegroundColor Yellow }
 
           try {
             $wall = "$env:WALLPAPER_DIR\wall.jpg"
-            if ($env:WALLPAPER_URL_INPUT -match '^https?://') { & curl.exe -L -s $env:WALLPAPER_URL_INPUT -o $wall 2>$null }
+            if ($env:WALLPAPER_URL_INPUT -match '^https?://') {
+              & curl.exe -L -s $env:WALLPAPER_URL_INPUT -o $wall 2>$null
+            }
             if ((Test-Path $wall) -and (Get-Item $wall).Length -gt 50KB) {
               Set-ItemProperty 'HKCU:\Control Panel\Desktop' Wallpaper $wall -Force
               Set-ItemProperty 'HKCU:\Control Panel\Desktop' WallpaperStyle '10' -Force
@@ -505,163 +585,196 @@ jobs:
           Write-Host "OK User+Wallpaper" -ForegroundColor Green
           $global:LASTEXITCODE = 0
 
-      # ═══════════════════════════════════════════════
-      # STEP CÀI APP — AN TOÀN TUYỆT ĐỐI, KHÔNG SCRIPTBLOCK LỒNG
-      # ═══════════════════════════════════════════════
-      - name: 🚀 Cài app — song song
-        timeout-minutes: 20
+      # ═══════════════════════════════════════════
+      # TẢI INSTALLER — STEP RIÊNG
+      # ═══════════════════════════════════════════
+      - name: 📥 Tải installer
+        timeout-minutes: 5
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue'
-          $instCache = $env:INSTALLER_CACHE
-          $appsDir = 'C:\ALB-Apps'
-          $desktop = "$env:PROFILE_PATH\Desktop"
-          $startup = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup"
-          New-Item -ItemType Directory -Force -Path $instCache,$appsDir,$desktop,$startup | Out-Null
-          $hasThreadJob = $null -ne (Get-Command Start-ThreadJob -ErrorAction SilentlyContinue)
+          $ic = $env:INSTALLER_CACHE
+          New-Item -ItemType Directory -Force -Path $ic | Out-Null
+          $hasTJ = $null -ne (Get-Command Start-ThreadJob -ErrorAction SilentlyContinue)
 
-          # TẢI — mỗi job độc lập
           $jobs = @()
+          $urls = @(
+            @{ F = "$ic\EVKey.zip"; U = 'https://github.com/lamquangminh/EVKey/releases/download/Release/EVKey.zip' },
+            @{ F = "$ic\VSCode.exe"; U = 'https://update.code.visualstudio.com/latest/win32-x64-system/stable' },
+            @{ F = "$ic\Discord.exe"; U = 'https://dl.discord.com/apps/win/1.0.9171/DiscordSetup.exe' },
+            @{ F = "$ic\Spotify.exe"; U = 'https://download.scdn.co/SpotifyFullSetupX64.exe' },
+            @{ F = "$ic\bdcam.exe"; U = 'https://dl.bandicam.com/bdcamsetup.exe' },
+            @{ F = "$ic\Roblox.exe"; U = 'https://setup.rbxcdn.com/RobloxPlayerInstaller.exe' }
+          )
 
-          $jobs += if ($hasThreadJob) {
-            Start-ThreadJob -ScriptBlock { param($p) if (-not (Test-Path "$p\EVKey.zip")) { & curl.exe -L --retry 2 -s 'https://github.com/lamquangminh/EVKey/releases/download/Release/EVKey.zip' -o "$p\EVKey.zip" 2>$null } } -ArgumentList $instCache
-          } else {
-            Start-Job -ScriptBlock { param($p) if (-not (Test-Path "$p\EVKey.zip")) { & curl.exe -L --retry 2 -s 'https://github.com/lamquangminh/EVKey/releases/download/Release/EVKey.zip' -o "$p\EVKey.zip" 2>$null } } -ArgumentList $instCache
-          }
-
-          $jobs += if ($hasThreadJob) {
-            Start-ThreadJob -ScriptBlock { param($p) $f="$p\VSCode.exe"; if (-not (Test-Path $f)) { & curl.exe -L --retry 2 -s 'https://update.code.visualstudio.com/latest/win32-x64-system/stable' -o $f 2>$null } } -ArgumentList $instCache
-          } else {
-            Start-Job -ScriptBlock { param($p) $f="$p\VSCode.exe"; if (-not (Test-Path $f)) { & curl.exe -L --retry 2 -s 'https://update.code.visualstudio.com/latest/win32-x64-system/stable' -o $f 2>$null } } -ArgumentList $instCache
-          }
-
-          $jobs += if ($hasThreadJob) {
-            Start-ThreadJob -ScriptBlock { param($p) $f="$p\Discord.exe"; if (-not (Test-Path $f)) { & curl.exe -L --retry 2 -s 'https://dl.discord.com/apps/win/1.0.9171/DiscordSetup.exe' -o $f 2>$null } } -ArgumentList $instCache
-          } else {
-            Start-Job -ScriptBlock { param($p) $f="$p\Discord.exe"; if (-not (Test-Path $f)) { & curl.exe -L --retry 2 -s 'https://dl.discord.com/apps/win/1.0.9171/DiscordSetup.exe' -o $f 2>$null } } -ArgumentList $instCache
-          }
-
-          $jobs += if ($hasThreadJob) {
-            Start-ThreadJob -ScriptBlock { param($p) $f="$p\Spotify.exe"; if (-not (Test-Path $f)) { & curl.exe -L --retry 2 -s 'https://download.scdn.co/SpotifyFullSetupX64.exe' -o $f 2>$null } } -ArgumentList $instCache
-          } else {
-            Start-Job -ScriptBlock { param($p) $f="$p\Spotify.exe"; if (-not (Test-Path $f)) { & curl.exe -L --retry 2 -s 'https://download.scdn.co/SpotifyFullSetupX64.exe' -o $f 2>$null } } -ArgumentList $instCache
-          }
-
-          $jobs += if ($hasThreadJob) {
-            Start-ThreadJob -ScriptBlock { param($p) $f="$p\bdcam.exe"; if (-not (Test-Path $f)) { & curl.exe -L --retry 2 -s 'https://dl.bandicam.com/bdcamsetup.exe' -o $f 2>$null } } -ArgumentList $instCache
-          } else {
-            Start-Job -ScriptBlock { param($p) $f="$p\bdcam.exe"; if (-not (Test-Path $f)) { & curl.exe -L --retry 2 -s 'https://dl.bandicam.com/bdcamsetup.exe' -o $f 2>$null } } -ArgumentList $instCache
-          }
-
-          $jobs += if ($hasThreadJob) {
-            Start-ThreadJob -ScriptBlock { param($p) $f="$p\Roblox.exe"; if (-not (Test-Path $f)) { & curl.exe -L --retry 2 -s 'https://setup.rbxcdn.com/RobloxPlayerInstaller.exe' -o $f 2>$null } } -ArgumentList $instCache
-          } else {
-            Start-Job -ScriptBlock { param($p) $f="$p\Roblox.exe"; if (-not (Test-Path $f)) { & curl.exe -L --retry 2 -s 'https://setup.rbxcdn.com/RobloxPlayerInstaller.exe' -o $f 2>$null } } -ArgumentList $instCache
+          foreach ($u in $urls) {
+            if ($hasTJ) {
+              $jobs += Start-ThreadJob -ScriptBlock {
+                param($f, $url)
+                if (-not (Test-Path $f)) {
+                  & curl.exe -L --retry 2 -s $url -o $f 2>$null
+                }
+              } -ArgumentList $u.F, $u.U
+            } else {
+              $jobs += Start-Job -ScriptBlock {
+                param($f, $url)
+                if (-not (Test-Path $f)) {
+                  & curl.exe -L --retry 2 -s $url -o $f 2>$null
+                }
+              } -ArgumentList $u.F, $u.U
+            }
           }
 
           $null = Wait-Job $jobs -Timeout 90
           $jobs | ForEach-Object { Remove-Job $_ -Force -ErrorAction SilentlyContinue }
-          Write-Host "OK Tai installer" -ForegroundColor Green
-
-          # EVKey
-          try {
-            $ev = "$appsDir\EVKey"
-            if (-not (Test-Path "$ev\EVKey64.exe")) { if (Test-Path "$instCache\EVKey.zip") { Expand-Archive "$instCache\EVKey.zip" $ev -Force } }
-            $exe = if (Test-Path "$ev\EVKey64.exe") { "$ev\EVKey64.exe" } elseif (Test-Path "$ev\EVKey32.exe") { "$ev\EVKey32.exe" } else { $null }
-            if ($exe) {
-              $ws = New-Object -ComObject WScript.Shell
-              $ws.CreateShortcut("$startup\EVKey.lnk").TargetPath = $exe
-              $ws.CreateShortcut("$desktop\EVKey.lnk").TargetPath = $exe
-              Start-Process $exe -WorkingDirectory $ev -ErrorAction SilentlyContinue
-            }
-          } catch {}
-
-          # CÀI — mỗi job độc lập
-          $ij = @()
-
-          $ij += if ($hasThreadJob) {
-            Start-ThreadJob -ScriptBlock {
-              param($ic,$dd)
-              $exe = 'C:\Program Files\Microsoft VS Code\Code.exe'
-              if (-not (Test-Path $exe)) { $i="$ic\VSCode.exe"; if (Test-Path $i) { Start-Process $i -ArgumentList '/VERYSILENT','/NORESTART' -Wait -NoNewWindow -ErrorAction SilentlyContinue } }
-              if (Test-Path $exe) { $ws=New-Object -ComObject WScript.Shell; $ws.CreateShortcut("$dd\VSCode.lnk").TargetPath=$exe }
-            } -ArgumentList $instCache,$desktop
-          } else {
-            Start-Job -ScriptBlock {
-              param($ic,$dd)
-              $exe = 'C:\Program Files\Microsoft VS Code\Code.exe'
-              if (-not (Test-Path $exe)) { $i="$ic\VSCode.exe"; if (Test-Path $i) { Start-Process $i -ArgumentList '/VERYSILENT','/NORESTART' -Wait -NoNewWindow -ErrorAction SilentlyContinue } }
-              if (Test-Path $exe) { $ws=New-Object -ComObject WScript.Shell; $ws.CreateShortcut("$dd\VSCode.lnk").TargetPath=$exe }
-            } -ArgumentList $instCache,$desktop
-          }
-
-          $ij += if ($hasThreadJob) {
-            Start-ThreadJob -ScriptBlock {
-              param($ic,$dd)
-              $exe = "$env:LOCALAPPDATA\Discord\Update.exe"
-              if (-not (Test-Path $exe)) { $i="$ic\Discord.exe"; if (Test-Path $i) { $p=Start-Process $i -ArgumentList '--silent' -PassThru -NoNewWindow -ErrorAction SilentlyContinue; $null=$p.WaitForExit(60) } }
-              $d = Get-ChildItem "$env:LOCALAPPDATA\Discord" -Filter 'Discord.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-              if ($d) { $ws=New-Object -ComObject WScript.Shell; $ws.CreateShortcut("$dd\Discord.lnk").TargetPath=$d.FullName }
-            } -ArgumentList $instCache,$desktop
-          } else {
-            Start-Job -ScriptBlock {
-              param($ic,$dd)
-              $exe = "$env:LOCALAPPDATA\Discord\Update.exe"
-              if (-not (Test-Path $exe)) { $i="$ic\Discord.exe"; if (Test-Path $i) { $p=Start-Process $i -ArgumentList '--silent' -PassThru -NoNewWindow -ErrorAction SilentlyContinue; $null=$p.WaitForExit(60) } }
-              $d = Get-ChildItem "$env:LOCALAPPDATA\Discord" -Filter 'Discord.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-              if ($d) { $ws=New-Object -ComObject WScript.Shell; $ws.CreateShortcut("$dd\Discord.lnk").TargetPath=$d.FullName }
-            } -ArgumentList $instCache,$desktop
-          }
-
-          $ij += if ($hasThreadJob) {
-            Start-ThreadJob -ScriptBlock {
-              param($ic)
-              if (-not (Test-Path "$env:LOCALAPPDATA\Spotify\Spotify.exe")) { $i="$ic\Spotify.exe"; if (Test-Path $i) { $p=Start-Process $i -ArgumentList '/silent' -PassThru -NoNewWindow -ErrorAction SilentlyContinue; $null=$p.WaitForExit(40) } }
-            } -ArgumentList $instCache
-          } else {
-            Start-Job -ScriptBlock {
-              param($ic)
-              if (-not (Test-Path "$env:LOCALAPPDATA\Spotify\Spotify.exe")) { $i="$ic\Spotify.exe"; if (Test-Path $i) { $p=Start-Process $i -ArgumentList '/silent' -PassThru -NoNewWindow -ErrorAction SilentlyContinue; $null=$p.WaitForExit(40) } }
-            } -ArgumentList $instCache
-          }
-
-          $ij += if ($hasThreadJob) {
-            Start-ThreadJob -ScriptBlock {
-              param($ic,$dd)
-              $exe = 'C:\Program Files\Bandicam\bdcam.exe'
-              if (-not (Test-Path $exe)) { $i="$ic\bdcam.exe"; if (Test-Path $i) { Start-Process $i -ArgumentList '/S' -Wait -NoNewWindow -ErrorAction SilentlyContinue } }
-              if (Test-Path $exe) { $ws=New-Object -ComObject WScript.Shell; $ws.CreateShortcut("$dd\Bandicam.lnk").TargetPath=$exe }
-            } -ArgumentList $instCache,$desktop
-          } else {
-            Start-Job -ScriptBlock {
-              param($ic,$dd)
-              $exe = 'C:\Program Files\Bandicam\bdcam.exe'
-              if (-not (Test-Path $exe)) { $i="$ic\bdcam.exe"; if (Test-Path $i) { Start-Process $i -ArgumentList '/S' -Wait -NoNewWindow -ErrorAction SilentlyContinue } }
-              if (Test-Path $exe) { $ws=New-Object -ComObject WScript.Shell; $ws.CreateShortcut("$dd\Bandicam.lnk").TargetPath=$exe }
-            } -ArgumentList $instCache,$desktop
-          }
-
-          $ij += if ($hasThreadJob) {
-            Start-ThreadJob -ScriptBlock {
-              param($ic,$dd)
-              if (-not (Test-Path "$env:LOCALAPPDATA\Roblox\Versions")) { $i="$ic\Roblox.exe"; if (Test-Path $i) { Start-Process $i -ArgumentList '-q','--no-ui' -Wait -NoNewWindow -ErrorAction SilentlyContinue; Start-Sleep -Seconds 8 } }
-              $r = Get-ChildItem "$env:LOCALAPPDATA\Roblox\Versions" -Filter 'RobloxPlayerBeta.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-              if ($r) { $ws=New-Object -ComObject WScript.Shell; $ws.CreateShortcut("$dd\Roblox.lnk").TargetPath=$r.FullName }
-            } -ArgumentList $instCache,$desktop
-          } else {
-            Start-Job -ScriptBlock {
-              param($ic,$dd)
-              if (-not (Test-Path "$env:LOCALAPPDATA\Roblox\Versions")) { $i="$ic\Roblox.exe"; if (Test-Path $i) { Start-Process $i -ArgumentList '-q','--no-ui' -Wait -NoNewWindow -ErrorAction SilentlyContinue; Start-Sleep -Seconds 8 } }
-              $r = Get-ChildItem "$env:LOCALAPPDATA\Roblox\Versions" -Filter 'RobloxPlayerBeta.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-              if ($r) { $ws=New-Object -ComObject WScript.Shell; $ws.CreateShortcut("$dd\Roblox.lnk").TargetPath=$r.FullName }
-            } -ArgumentList $instCache,$desktop
-          }
-
-          $null = Wait-Job $ij -Timeout 150
-          $ij | ForEach-Object { Remove-Job $_ -Force -ErrorAction SilentlyContinue }
-          Write-Host "OK Cai app" -ForegroundColor Green
+          Write-Host "Tai xong" -ForegroundColor Green
           $global:LASTEXITCODE = 0
 
+      # ═══════════════════════════════════════════
+      # CÀI VSCode + Discord
+      # ═══════════════════════════════════════════
+      - name: 📦 Cài VSCode + Discord
+        timeout-minutes: 8
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $ic = $env:INSTALLER_CACHE
+          $desk = "$env:PROFILE_PATH\Desktop"
+          New-Item -ItemType Directory -Force -Path $desk | Out-Null
+
+          try {
+            $exe = 'C:\Program Files\Microsoft VS Code\Code.exe'
+            if (-not (Test-Path $exe)) {
+              $inst = "$ic\VSCode.exe"
+              if (Test-Path $inst) {
+                Start-Process $inst -ArgumentList '/VERYSILENT','/NORESTART' -Wait -NoNewWindow -ErrorAction SilentlyContinue
+              }
+            }
+            if (Test-Path $exe) {
+              $ws = New-Object -ComObject WScript.Shell
+              $lnk = $ws.CreateShortcut("$desk\VSCode.lnk")
+              $lnk.TargetPath = $exe
+              $lnk.Save()
+            }
+            Write-Host "VSCode OK" -ForegroundColor Green
+          } catch { Write-Host "VSCode skip" -ForegroundColor Yellow }
+
+          try {
+            $exe = "$env:LOCALAPPDATA\Discord\Update.exe"
+            if (-not (Test-Path $exe)) {
+              $inst = "$ic\Discord.exe"
+              if (Test-Path $inst) {
+                $p = Start-Process $inst -ArgumentList '--silent' -PassThru -NoNewWindow -ErrorAction SilentlyContinue
+                $null = $p.WaitForExit(60)
+              }
+            }
+            $d = Get-ChildItem "$env:LOCALAPPDATA\Discord" -Filter 'Discord.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($d) {
+              $ws = New-Object -ComObject WScript.Shell
+              $lnk = $ws.CreateShortcut("$desk\Discord.lnk")
+              $lnk.TargetPath = $d.FullName
+              $lnk.Save()
+            }
+            Write-Host "Discord OK" -ForegroundColor Green
+          } catch { Write-Host "Discord skip" -ForegroundColor Yellow }
+          $global:LASTEXITCODE = 0
+
+      # ═══════════════════════════════════════════
+      # CÀI Spotify + Bandicam + Roblox
+      # ═══════════════════════════════════════════
+      - name: 📦 Cài Spotify + Bandicam + Roblox
+        timeout-minutes: 8
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $ic = $env:INSTALLER_CACHE
+          $desk = "$env:PROFILE_PATH\Desktop"
+
+          try {
+            if (-not (Test-Path "$env:LOCALAPPDATA\Spotify\Spotify.exe")) {
+              $inst = "$ic\Spotify.exe"
+              if (Test-Path $inst) {
+                $p = Start-Process $inst -ArgumentList '/silent' -PassThru -NoNewWindow -ErrorAction SilentlyContinue
+                $null = $p.WaitForExit(40)
+              }
+            }
+            Write-Host "Spotify OK" -ForegroundColor Green
+          } catch { Write-Host "Spotify skip" -ForegroundColor Yellow }
+
+          try {
+            $exe = 'C:\Program Files\Bandicam\bdcam.exe'
+            if (-not (Test-Path $exe)) {
+              $inst = "$ic\bdcam.exe"
+              if (Test-Path $inst) {
+                Start-Process $inst -ArgumentList '/S' -Wait -NoNewWindow -ErrorAction SilentlyContinue
+              }
+            }
+            if (Test-Path $exe) {
+              $ws = New-Object -ComObject WScript.Shell
+              $lnk = $ws.CreateShortcut("$desk\Bandicam.lnk")
+              $lnk.TargetPath = $exe
+              $lnk.Save()
+            }
+            Write-Host "Bandicam OK" -ForegroundColor Green
+          } catch { Write-Host "Bandicam skip" -ForegroundColor Yellow }
+
+          try {
+            if (-not (Test-Path "$env:LOCALAPPDATA\Roblox\Versions")) {
+              $inst = "$ic\Roblox.exe"
+              if (Test-Path $inst) {
+                Start-Process $inst -ArgumentList '-q','--no-ui' -Wait -NoNewWindow -ErrorAction SilentlyContinue
+                Start-Sleep -Seconds 8
+              }
+            }
+            $r = Get-ChildItem "$env:LOCALAPPDATA\Roblox\Versions" -Filter 'RobloxPlayerBeta.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($r) {
+              $ws = New-Object -ComObject WScript.Shell
+              $lnk = $ws.CreateShortcut("$desk\Roblox.lnk")
+              $lnk.TargetPath = $r.FullName
+              $lnk.Save()
+            }
+            Write-Host "Roblox OK" -ForegroundColor Green
+          } catch { Write-Host "Roblox skip" -ForegroundColor Yellow }
+          $global:LASTEXITCODE = 0
+
+      # ═══════════════════════════════════════════
+      # EVKEY
+      # ═══════════════════════════════════════════
+      - name: 📦 Cài EVKey
+        timeout-minutes: 3
+        shell: pwsh
+        run: |
+          try {
+            $ic = $env:INSTALLER_CACHE
+            $ev = 'C:\ALB-Apps\EVKey'
+            New-Item -ItemType Directory -Force -Path $ev | Out-Null
+            if (-not (Test-Path "$ev\EVKey64.exe")) {
+              if (Test-Path "$ic\EVKey.zip") {
+                Expand-Archive "$ic\EVKey.zip" $ev -Force
+              }
+            }
+            $exe = $null
+            if (Test-Path "$ev\EVKey64.exe") { $exe = "$ev\EVKey64.exe" }
+            elseif (Test-Path "$ev\EVKey32.exe") { $exe = "$ev\EVKey32.exe" }
+            if ($exe) {
+              $startup = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup"
+              $desk = "$env:PROFILE_PATH\Desktop"
+              $ws = New-Object -ComObject WScript.Shell
+              $l1 = $ws.CreateShortcut("$startup\EVKey.lnk")
+              $l1.TargetPath = $exe
+              $l1.Save()
+              $l2 = $ws.CreateShortcut("$desk\EVKey.lnk")
+              $l2.TargetPath = $exe
+              $l2.Save()
+              Start-Process $exe -WorkingDirectory $ev -ErrorAction SilentlyContinue
+            }
+            Write-Host "EVKey OK" -ForegroundColor Green
+          } catch { Write-Host "EVKey skip" -ForegroundColor Yellow }
+          $global:LASTEXITCODE = 0
+
+      # ═══════════════════════════════════════════
+      # WEB PANEL
+      # ═══════════════════════════════════════════
       - name: 🌐 Web Panel
         shell: pwsh
         timeout-minutes: 5
@@ -672,41 +785,98 @@ jobs:
           "WEB_PANEL_URL=$url" >> $env:GITHUB_ENV
 
           $h = New-Object System.Collections.Generic.List[string]
-          $h.Add('<!DOCTYPE html><html><head><meta charset="utf-8"><title>ALB v38</title></head><body>')
-          $h.Add("<h1>ALB Panel v38.0</h1><p>Machine: $($env:MACHINE_ID)</p><p>IP: $tsIp</p><p>Panel: <a href='$url'>$url</a></p>")
-          $h.Add("<p>User: $($env:RDP_USER) | Pass: $($env:RDP_PASS)</p></body></html>")
+          $h.Add('<!DOCTYPE html>')
+          $h.Add('<html><head><meta charset="utf-8"><title>ALB v39</title></head>')
+          $h.Add('<body style="background:#07090f;color:#eee;font-family:sans-serif;padding:20px">')
+          $h.Add("<h1>ALB v39.0</h1>")
+          $h.Add("<p>Machine: $($env:MACHINE_ID)</p>")
+          $h.Add("<p>IP: $tsIp</p>")
+          $h.Add("<p>Panel: <a href='$url' style='color:#38bdf8'>$url</a></p>")
+          $h.Add("<p>User: $($env:RDP_USER)</p>")
+          $h.Add("<p>Pass: $($env:RDP_PASS)</p>")
+          $h.Add('</body></html>')
           Set-Content "$env:RUNNER_TEMP\panel.html" -Value ($h -join "`r`n") -Encoding UTF8
 
           $w = New-Object System.Collections.Generic.List[string]
+          $w.Add('$ErrorActionPreference = "Continue"')
           $w.Add('$l = [System.Net.HttpListener]::new()')
           $w.Add('$l.Prefixes.Add("http://+:' + $port + '/")')
           $w.Add('$l.Start()')
-          $w.Add('while ($l.IsListening) { try { $c = $l.GetContext(); $h = Get-Content -Raw "$env:RUNNER_TEMP\panel.html"; $b = [System.Text.Encoding]::UTF8.GetBytes($h); $c.Response.ContentType = "text/html; charset=utf-8"; $c.Response.ContentLength64 = $b.Length; $c.Response.OutputStream.Write($b,0,$b.Length); $c.Response.OutputStream.Close() } catch {} }')
+          $w.Add('while ($l.IsListening) {')
+          $w.Add('  try {')
+          $w.Add('    $c = $l.GetContext()')
+          $w.Add('    $hh = Get-Content -Raw "$env:RUNNER_TEMP\panel.html"')
+          $w.Add('    $b = [System.Text.Encoding]::UTF8.GetBytes($hh)')
+          $w.Add('    $c.Response.ContentType = "text/html; charset=utf-8"')
+          $w.Add('    $c.Response.ContentLength64 = $b.Length')
+          $w.Add('    $c.Response.OutputStream.Write($b, 0, $b.Length)')
+          $w.Add('    $c.Response.OutputStream.Close()')
+          $w.Add('  } catch {}')
+          $w.Add('}')
           Set-Content "$env:RUNNER_TEMP\web.ps1" -Value ($w -join "`r`n") -Encoding UTF8
           Start-Process pwsh.exe -ArgumentList '-NoProfile','-WindowStyle','Hidden','-File',"`"$env:RUNNER_TEMP\web.ps1`""
           Start-Sleep -Seconds 2
           Write-Host "OK Web Panel" -ForegroundColor Green
           $global:LASTEXITCODE = 0
 
+      # ═══════════════════════════════════════════
+      # WATCHDOG
+      # ═══════════════════════════════════════════
       - name: ⏳ Watchdog
         id: keepalive
         shell: pwsh
         timeout-minutes: 355
         run: |
-          function Test-Port { param($P) try { $t=[System.Net.Sockets.TcpClient]::new(); $a=$t.ConnectAsync('127.0.0.1',$P); if ($a.Wait(1500)) { $t.Close(); return $true }; $t.Close(); return $false } catch { return $false } }
+          function Test-Port {
+            param($P)
+            try {
+              $t = [System.Net.Sockets.TcpClient]::new()
+              $a = $t.ConnectAsync('127.0.0.1', $P)
+              if ($a.Wait(1500)) { $t.Close(); return $true }
+              $t.Close()
+              return $false
+            } catch { return $false }
+          }
+
           $start = if ($env:JOB_START_EPOCH) { [long]$env:JOB_START_EPOCH } else { [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() }
           $end = $start + ([long]$env:TOTAL_MINUTES * 60)
           $save = "$env:RUNNER_TEMP\save-data.ps1"
           $sig = $env:CONTROL_SIGNAL_FILE
           $tsExe = 'C:\Program Files\Tailscale\tailscale.exe'
+          $lastLog = (Get-Date).AddHours(-1)
+
           while ($true) {
-            if (Test-Path $sig) { $c = (Get-Content -Raw $sig).Trim(); Remove-Item $sig -Force -ErrorAction SilentlyContinue; if ($c -in 'save','SAVE_NOW') { & $save -Reason 'manual' }; elseif ($c -in 'restart','start-new') { 'FORCE_NEXT_SESSION=1' >> $env:GITHUB_ENV; break }; elseif ($c -eq 'stop') { 'FORCE_STOP_ONLY=1' >> $env:GITHUB_ENV; break } }
+            if (Test-Path $sig) {
+              $c = (Get-Content -Raw $sig -ErrorAction SilentlyContinue).Trim()
+              Remove-Item $sig -Force -ErrorAction SilentlyContinue
+              if ($c -in 'save','SAVE_NOW') { & $save -Reason 'manual'; $global:LASTEXITCODE = 0 }
+              elseif ($c -in 'restart','RESTART_SESSION','start-new') { 'FORCE_NEXT_SESSION=1' >> $env:GITHUB_ENV; break }
+              elseif ($c -in 'stop','STOP_SESSION') { 'FORCE_STOP_ONLY=1' >> $env:GITHUB_ENV; break }
+            }
+
             $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
             $remain = $end - $now
             if ($remain -le 0) { break }
-            if (-not (Test-Port 47990)) { Start-Service SunshineService -ErrorAction SilentlyContinue }
-            if (-not (Test-Port 3389)) { Restart-Service TermService -Force -ErrorAction SilentlyContinue }
-            if (Test-Path $tsExe) { $st = & $tsExe status 2>&1 | Out-String; if ($st -notmatch '100\.') { & $tsExe up --reset --unattended 2>&1 | Out-Null } }
+
+            if (((Get-Date) - $lastLog).TotalMinutes -ge 10) {
+              $h = [math]::Floor($remain / 3600)
+              $m = [math]::Floor(($remain % 3600) / 60)
+              Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Còn ${h}h${m}m" -ForegroundColor Cyan
+              $lastLog = Get-Date
+            }
+
+            if (-not (Test-Port 47990)) {
+              Start-Service SunshineService -ErrorAction SilentlyContinue
+            }
+            if (-not (Test-Port 3389)) {
+              Restart-Service TermService -Force -ErrorAction SilentlyContinue
+            }
+            if (Test-Path $tsExe) {
+              $st = & $tsExe status 2>&1 | Out-String
+              if ($st -notmatch '100\.') {
+                & $tsExe up --reset --unattended 2>&1 | Out-Null
+              }
+            }
             Start-Sleep -Seconds 5
           }
           $global:LASTEXITCODE = 0
@@ -716,7 +886,10 @@ jobs:
         shell: pwsh
         timeout-minutes: 10
         run: |
-          try { $s = "$env:RUNNER_TEMP\save-data.ps1"; if (Test-Path $s) { & $s -Reason 'session-end' } } catch {}
+          try {
+            $s = "$env:RUNNER_TEMP\save-data.ps1"
+            if (Test-Path $s) { & $s -Reason 'session-end' }
+          } catch { Write-Host "Save skip" -ForegroundColor Yellow }
           $global:LASTEXITCODE = 0
 
       - name: 🧹 Dọn dẹp
@@ -726,8 +899,12 @@ jobs:
         run: |
           try {
             $ts = 'C:\Program Files\Tailscale\tailscale.exe'
-            if (Test-Path $ts) { & $ts logout 2>&1 | Out-Null; & $ts down 2>&1 | Out-Null }
-            @('RDP-Premium','Sunshine-Premium-TCP','Sunshine-Premium-UDP') | ForEach-Object { Remove-NetFirewallRule -DisplayName $_ -ErrorAction SilentlyContinue }
+            if (Test-Path $ts) {
+              & $ts logout 2>&1 | Out-Null
+              & $ts down 2>&1 | Out-Null
+            }
+            @('RDP-Premium','Sunshine-Premium-TCP','Sunshine-Premium-UDP') |
+              ForEach-Object { Remove-NetFirewallRule -DisplayName $_ -ErrorAction SilentlyContinue }
             Stop-Service TermService -Force -ErrorAction SilentlyContinue
           } catch {}
           $global:LASTEXITCODE = 0
@@ -744,6 +921,17 @@ jobs:
           WALL_URL: ${{ inputs.wallpaper_url }}
         run: |
           $wf = [System.IO.Path]::GetFileName(($env:GITHUB_WORKFLOW_REF -split '@')[0])
-          $a = @('workflow','run',$wf,'--ref',$env:GITHUB_REF_NAME,'-f',"machine_id=$env:MACHINE_ID",'-f',"duration=$env:DURATION",'-f','auto_restart=true','-f',"drive_letter=$env:MOUNT_LETTER",'-f',"vhd_size_gb=$env:VHD_SIZE_GB_VALIDATED",'-f',"windows_image=$env:WIN_IMAGE",'-f',"fixed_password=$env:FIXED_PASS",'-f',"vdd_resolution=$env:VDD_RES",'-f',"wallpaper_url=$env:WALL_URL")
+          $a = @(
+            'workflow', 'run', $wf, '--ref', $env:GITHUB_REF_NAME,
+            '-f', "machine_id=$env:MACHINE_ID",
+            '-f', "duration=$env:DURATION",
+            '-f', 'auto_restart=true',
+            '-f', "drive_letter=$env:MOUNT_LETTER",
+            '-f', "vhd_size_gb=$env:VHD_SIZE_GB_VALIDATED",
+            '-f', "windows_image=$env:WIN_IMAGE",
+            '-f', "fixed_password=$env:FIXED_PASS",
+            '-f', "vdd_resolution=$env:VDD_RES",
+            '-f', "wallpaper_url=$env:WALL_URL"
+          )
           & gh @a
           if ($LASTEXITCODE -ne 0) { throw 'Auto-restart fail' }
