@@ -1,4 +1,4 @@
-name: ALB ULTIMATE RDP v16.0
+name: ALB ULTIMATE RDP v17.0
 
 on:
   workflow_dispatch:
@@ -298,41 +298,59 @@ jobs:
           if ("$curPath" -notlike "*$binDir*") { Set-ItemProperty -Path "$sysEnv" -Name 'Path' -Value "$binDir;$curPath" -Force }
           "INSTALLER_CACHE=$instCache" >> "$env:GITHUB_ENV"; "SUNSHINE_PERSIST_CFG=$sunCfgDir" >> "$env:GITHUB_ENV"
 
-      - name: 🔧 CẤU HÌNH RDP (FIX PROMPT PASSWORD)
+      - name: 🔧 CẤU HÌNH RDP (BẬT NLA + FIX PROMPT)
         shell: pwsh
         run: |
-          Write-Host "CAU HINH RDP - FIX PROMPT PASSWORD" -ForegroundColor Yellow
+          Write-Host "CAU HINH RDP - BAT NLA + FIX PROMPT" -ForegroundColor Yellow
+
+          # 1. Bật RDP
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0 -Force
+
+          # 2. BẬT NLA (client hỏi pass trước khi kết nối)
           $p = 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
-          Set-ItemProperty -Path "$p" -Name 'UserAuthentication' -Value 0 -Type DWord -Force
-          Set-ItemProperty -Path "$p" -Name 'SecurityLayer' -Value 0 -Type DWord -Force
-          Write-Host "  OK: NLA=0, TLS=0" -ForegroundColor Green
+          Set-ItemProperty -Path "$p" -Name 'UserAuthentication' -Value 1 -Type DWord -Force
+          Set-ItemProperty -Path "$p" -Name 'SecurityLayer' -Value 2 -Type DWord -Force
+          Write-Host "  OK: NLA=1, TLS=2 (client hoi pass o cua so ket noi)" -ForegroundColor Green
+
+          # 3. Xóa policy fPromptForPassword (tránh hỏi pass lần 2 trong máy)
           $tsPolicy = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
           if (Test-Path "$tsPolicy") {
               Remove-ItemProperty -Path "$tsPolicy" -Name 'fPromptForPassword' -Force -ErrorAction SilentlyContinue
-              Write-Host "  OK: Da xoa policy fPromptForPassword (khong hoi pass trong may)" -ForegroundColor Green
+              Write-Host "  OK: Da xoa policy fPromptForPassword" -ForegroundColor Green
           }
+
+          # 4. fPromptForPassword = 0 tại RDP-Tcp (không hỏi lại trong máy)
           Set-ItemProperty -Path "$p" -Name 'fPromptForPassword' -Value 0 -Type DWord -Force
-          Write-Host "  OK: fPromptForPassword = 0 (client hoi pass truoc khi vao)" -ForegroundColor Green
+          Write-Host "  OK: fPromptForPassword=0 (khong hoi lai trong may)" -ForegroundColor Green
+
+          # 5. Xóa credential cache trên máy ảo (nếu có)
           $creds = cmdkey /list 2>$null | Select-String "TERMSRV"
           if ($creds) { $creds | ForEach-Object { if ($_ -match 'TERMSRV/([^\s]+)') { cmdkey /delete:$($Matches[0]) 2>$null } } }
+
+          # 6. Audio & Camera
           Set-ItemProperty -Path "$p" -Name 'fDisableAudioCapture' -Value 0 -Type DWord -Force
           Set-ItemProperty -Path "$p" -Name 'fDisableCam' -Value 0 -Type DWord -Force
+
+          # 7. Firewall
           Remove-NetFirewallRule -DisplayName 'ALB-RDP' -ErrorAction SilentlyContinue
           Remove-NetFirewallRule -DisplayName 'ALB-Sunshine-TCP' -ErrorAction SilentlyContinue
           Remove-NetFirewallRule -DisplayName 'ALB-Sunshine-UDP' -ErrorAction SilentlyContinue
           New-NetFirewallRule -DisplayName 'ALB-RDP' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3389,8080 -Profile Domain,Private,Public | Out-Null
           New-NetFirewallRule -DisplayName 'ALB-Sunshine-TCP' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 47984,47989,47990,48010 -Profile Domain,Private,Public | Out-Null
           New-NetFirewallRule -DisplayName 'ALB-Sunshine-UDP' -Direction Inbound -Action Allow -Protocol UDP -LocalPort 47998,47999,48000,48002,48010 -Profile Domain,Private,Public | Out-Null
+
+          # 8. Khởi động TermService
           Set-Service -Name TermService -StartupType Automatic -ErrorAction SilentlyContinue
           Set-Service -Name UmRdpService -StartupType Automatic -ErrorAction SilentlyContinue
           Start-Service -Name TermService -ErrorAction SilentlyContinue
           Start-Service -Name UmRdpService -ErrorAction SilentlyContinue
           Restart-Service -Name TermService -Force -ErrorAction SilentlyContinue
           Start-Sleep -Seconds 3
+
+          # 9. Verify
           $netstat = netstat -ano | Select-String ":3389"
           if ($netstat) { Write-Host "  OK: RDP port 3389 dang listen" -ForegroundColor Green } else { Write-Host "  ERROR: RDP port 3389 KHONG listen!" -ForegroundColor Red }
-          Write-Host "  HOAN TAT: NLA=0, fPromptForPassword=0, Policy removed" -ForegroundColor Green
+          Write-Host "  HOAN TAT: NLA=1, TLS=2, fPromptForPassword=0, Policy removed" -ForegroundColor Green
           exit 0
 
       - name: ⚙️ Tối ưu Windows
@@ -542,7 +560,7 @@ jobs:
         run: |
           $passText = "$env:RDP_PASS"; $audioName = if ($env:AUDIO_DEVICE_NAME) { $env:AUDIO_DEVICE_NAME } else { 'N/A' }
           Write-Host "============================================================" -ForegroundColor Cyan
-          Write-Host "  ALB ULTIMATE RDP v16.0 — FIX PROMPT PASSWORD" -ForegroundColor Cyan
+          Write-Host "  ALB ULTIMATE RDP v17.0 — FIX PROMPT PASSWORD" -ForegroundColor Cyan
           Write-Host "============================================================" -ForegroundColor Cyan
           Write-Host "  May         : $env:MACHINE_ID" -ForegroundColor Cyan
           Write-Host "  Creator     : $env:CREATOR" -ForegroundColor Cyan
@@ -555,7 +573,7 @@ jobs:
           Write-Host "  Sunshine    : https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/" -ForegroundColor Yellow
           Write-Host "  Discord     : Da cai san" -ForegroundColor Green
           Write-Host "  StarDesk    : Da cai san + backup/restore" -ForegroundColor Green
-          Write-Host "  RDP Prompt  : NLA=0, fPromptForPassword=0, Policy removed" -ForegroundColor Yellow
+          Write-Host "  RDP Prompt  : NLA=1, TLS=2, fPromptForPassword=0, Policy removed" -ForegroundColor Yellow
           Write-Host "  Tailscale   : UNATTENDED MODE" -ForegroundColor Yellow
           Write-Host "============================================================" -ForegroundColor Cyan
           exit 0
