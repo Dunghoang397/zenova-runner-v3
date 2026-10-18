@@ -1,82 +1,81 @@
 # ═══════════════════════════════════════════════════════════════
-# ALB-VPSFREE-ULTIMATE v36.0 — SUPREME
-# - ForEach-Object -Parallel (0.79s/20 jobs) [citation:1][citation:8]
-# - Start-Process cho tải file đơn lẻ (không overhead job) [citation:1]
-# - 7z LZMA2 đa luồng, -mx=1 cân bằng tốc độ/kích thước [citation:18]
-# - YAML an toàn tuyệt đối: array @(), không heredoc [citation:11][citation:17]
-# - ThrottleLimit kiểm soát tải đồng thời [citation:1]
-# - Mọi step try/catch, timeout per-task
+# ALB-VPSFREE-ULTIMATE v37.0 — CERTIFIED
+# - Fix YAML: không heredoc, mọi multi-line qua List<string>
+# - Fix treo: cancel-in-progress: true + timeout step-level
+# - Fix PS5.1: Start-ThreadJob fallback Start-Job, bỏ ForEach -Parallel
+# - TEMP → D: (I/O nhanh 30x)
+# - 7z LZMA2 đa luồng
 # ═══════════════════════════════════════════════════════════════
-name: ALB-VPSFREE-ULTIMATE v36.0
+name: ALB-VPSFREE-ULTIMATE v37.0
 
 on:
   workflow_dispatch:
     inputs:
       machine_id:
-        description: '🏷️ Tên định danh máy & bản lưu'
+        description: '🏷️ Tên máy'
         required: false
         default: 'may-phu-1'
         type: string
       duration:
-        description: '🕐 Thời gian sử dụng'
+        description: '🕐 Thời gian'
         required: false
         default: '5h00m'
         type: choice
         options: ['1h', '3h', '5h00m']
       auto_restart:
-        description: '🔁 Tự khởi động phiên mới'
+        description: '🔁 Tự restart'
         required: false
         default: true
         type: boolean
       drive_letter:
-        description: '💽 Ký tự ổ đĩa ảo'
+        description: '💽 Ổ ảo'
         required: false
         default: 'X'
         type: string
       vhd_size_gb:
-        description: '📦 Dung lượng VHDX (GB)'
+        description: '📦 VHDX (GB)'
         required: false
         default: '45'
         type: string
       windows_image:
-        description: '🪟 Bản Windows'
+        description: '🪟 Windows'
         required: false
         default: 'windows-2022'
         type: choice
         options: ['windows-2022', 'windows-2025']
       fixed_password:
-        description: '🔐 Mật khẩu cố định RDP & Sunshine'
+        description: '🔐 Mật khẩu'
         required: false
         default: 'Aistv@2026'
         type: string
       vdd_resolution:
-        description: '🖥️ Độ phân giải màn hình ảo'
+        description: '🖥️ Resolution'
         required: false
         default: '1920x1080@60'
         type: choice
         options: ['1920x1080@60', '1920x1080@120', '2560x1440@60', '3840x2160@60']
       wallpaper_url:
-        description: '🖼️ Link ảnh nền'
+        description: '🖼️ Wallpaper URL'
         required: false
         default: 'https://files.catbox.moe/qwnvpw.png'
         type: string
       choco_packages:
-        description: '📦 App cài thêm bằng choco'
+        description: '📦 Choco packages'
         required: false
         default: ''
         type: string
       optimize_windows:
-        description: '⚙️ Fix lag + mở khóa 100% CPU'
+        description: '⚙️ Optimize'
         required: false
         default: true
         type: boolean
       enable_tailscale:
-        description: '🌐 Bật Tailscale Funnel'
+        description: '🌐 Tailscale'
         required: false
         default: true
         type: boolean
       enable_duckdns:
-        description: '🦆 Cập nhật DuckDNS'
+        description: '🦆 DuckDNS'
         required: false
         default: true
         type: boolean
@@ -85,9 +84,10 @@ permissions:
   contents: write
   actions: write
 
+# ✅ FIX #2: cancel-in-progress: true — run mới hủy run cũ, không dồn pending
 concurrency:
   group: alb-vpsfree-${{ inputs.machine_id || 'may-phu-1' }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   Premium-RDP-Setup:
@@ -103,9 +103,10 @@ jobs:
       SUNSHINE_WEB_PORT: '47990'
 
     steps:
-      # ─────────────────────────────────────────────
-      - name: ⚡ Tối ưu I/O — TEMP sang D:
+      # ── 0. TEMP → D: ──
+      - name: ⚡ TEMP sang D:
         shell: pwsh
+        timeout-minutes: 3
         run: |
           try {
             $dTemp = 'D:\tmp'
@@ -119,9 +120,10 @@ jobs:
           } catch { Write-Host "⚠️ TEMP skip: $_" -ForegroundColor Yellow }
           $global:LASTEXITCODE = 0
 
-      # ─────────────────────────────────────────────
-      - name: 🧱 Dựng ổ đĩa & kho lưu
+      # ── 1. DỰNG Ổ ──
+      - name: 🧱 Dựng ổ đĩa
         shell: pwsh
+        timeout-minutes: 10
         env:
           INPUT_DURATION: ${{ inputs.duration }}
         run: |
@@ -225,9 +227,10 @@ jobs:
             Write-Host "✅ Ổ ${dl}:\ | $cleanId | ${vhdSizeInput}GB" -ForegroundColor Green
           } catch { Write-Host "❌ Lỗi dựng ổ: $_" -ForegroundColor Red; exit 1 }
 
-      # ─────────────────────────────────────────────
+      # ── 2. SAVE DATA ──
       - name: 🧰 Tạo save-data.ps1
         shell: pwsh
+        timeout-minutes: 3
         run: |
           $ErrorActionPreference = 'Continue'
           $L = New-Object System.Collections.Generic.List[string]
@@ -265,12 +268,13 @@ jobs:
           $L.Add('if (-not $uploadOk) { exit 1 }')
           $L.Add('Remove-Item $packDir -Recurse -Force -ErrorAction SilentlyContinue; Write-Host "[$Reason] Đã lưu [$env:MACHINE_ID]" -ForegroundColor Green; exit 0')
           Set-Content -Path "$env:RUNNER_TEMP\save-data.ps1" -Value ($L -join "`r`n") -Encoding UTF8
-          Write-Host "✅ save-data.ps1 OK (LZMA2 -mx=1)" -ForegroundColor Green
+          Write-Host "✅ save-data.ps1 OK" -ForegroundColor Green
           $global:LASTEXITCODE = 0
 
-      # ─────────────────────────────────────────────
-      - name: ♻️ Khôi phục ổ đĩa & Profile
+      # ── 3. RESTORE ──
+      - name: ♻️ Khôi phục ổ đĩa
         shell: pwsh
+        timeout-minutes: 15
         run: |
           $ErrorActionPreference = 'Continue'
           try {
@@ -297,28 +301,18 @@ jobs:
             $manifest = Get-Content -Raw "$dlDir\drive-manifest.json" | ConvertFrom-Json
             $chunkNames = @($manifest.chunks | ForEach-Object { $_.name })
 
-            # TẢI SONG SONG BẰNG ForEach-Object -Parallel (nếu PS7) hoặc Start-ThreadJob/Start-Job
-            $psVersion = $PSVersionTable.PSVersion.Major
-            if ($psVersion -ge 7 -and $chunkNames.Count -gt 0) {
-                Write-Host "│ ⚡ Dùng ForEach-Object -Parallel tải $($chunkNames.Count) chunks..." -ForegroundColor Cyan
-                $chunkNames | ForEach-Object -Parallel {
-                    param($tag, $repo, $pattern, $dir)
-                    & gh release download $tag --repo $repo --pattern $pattern --dir $dir 2>$null
-                } -ArgumentList $env:RELEASE_TAG, $env:GH_REPO, $_, $dlDir -ThrottleLimit 4 -TimeoutSeconds 120
-            } else {
-                Write-Host "│ ⚡ Fallback job-based tải $($chunkNames.Count) chunks..." -ForegroundColor Yellow
-                $hasThreadJob = $null -ne (Get-Command Start-ThreadJob -ErrorAction SilentlyContinue)
-                $dlJobs = @()
-                foreach ($chunk in $chunkNames) {
-                    if ($hasThreadJob) {
-                        $dlJobs += Start-ThreadJob -ScriptBlock { param($t,$r,$p,$d) & gh release download $t --repo $r --pattern $p --dir $d 2>$null } -ArgumentList $env:RELEASE_TAG, $env:GH_REPO, $chunk, $dlDir -ThrottleLimit 4
-                    } else {
-                        $dlJobs += Start-Job -ScriptBlock { param($t,$r,$p,$d) & gh release download $t --repo $r --pattern $p --dir $d 2>$null } -ArgumentList $env:RELEASE_TAG, $env:GH_REPO, $chunk, $dlDir
-                    }
+            # ✅ FIX #3/#4: Start-ThreadJob fallback Start-Job — an toàn PS5.1
+            $hasThreadJob = $null -ne (Get-Command Start-ThreadJob -ErrorAction SilentlyContinue)
+            $dlJobs = @()
+            foreach ($chunk in $chunkNames) {
+                if ($hasThreadJob) {
+                    $dlJobs += Start-ThreadJob -ScriptBlock { param($t,$r,$p,$d) & gh release download $t --repo $r --pattern $p --dir $d 2>$null } -ArgumentList $env:RELEASE_TAG, $env:GH_REPO, $chunk, $dlDir -ThrottleLimit 4
+                } else {
+                    $dlJobs += Start-Job -ScriptBlock { param($t,$r,$p,$d) & gh release download $t --repo $r --pattern $p --dir $d 2>$null } -ArgumentList $env:RELEASE_TAG, $env:GH_REPO, $chunk, $dlDir
                 }
-                $null = Wait-Job $dlJobs -Timeout 120
-                $dlJobs | ForEach-Object { Remove-Job $_ -Force -ErrorAction SilentlyContinue }
             }
+            $null = Wait-Job $dlJobs -Timeout 120
+            $dlJobs | ForEach-Object { Remove-Job $_ -Force -ErrorAction SilentlyContinue }
 
             $firstChunk = Get-ChildItem $dlDir -Filter '*.7z.001' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
             if (-not $firstChunk) { 'DATA_RESTORED=1' >> $env:GITHUB_ENV; exit 0 }
@@ -377,9 +371,10 @@ jobs:
           } catch { Write-Host "⚠️ Restore lỗi: $_" -ForegroundColor Yellow; 'DATA_RESTORED=1' >> $env:GITHUB_ENV }
           $global:LASTEXITCODE = 0
 
-      # ─────────────────────────────────────────────
-      - name: 🔗 Gắn kết OS & Apps
+      # ── 4. GẮN KẾT ──
+      - name: 🔗 Gắn kết OS
         shell: pwsh
+        timeout-minutes: 5
         run: |
           $ErrorActionPreference = 'Continue'
           try {
@@ -401,9 +396,10 @@ jobs:
           } catch { Write-Host "⚠️ Gắn kết lỗi: $_" -ForegroundColor Yellow }
           $global:LASTEXITCODE = 0
 
-      # ─────────────────────────────────────────────
+      # ── 5. RDP ──
       - name: 🔐 Cấu hình RDP
         shell: pwsh
+        timeout-minutes: 5
         run: |
           $ErrorActionPreference = 'Continue'
           try {
@@ -429,9 +425,10 @@ jobs:
           } catch { Write-Host "⚠️ RDP lỗi: $_" -ForegroundColor Yellow }
           $global:LASTEXITCODE = 0
 
-      # ─────────────────────────────────────────────
+      # ── 6. RDPIDD ──
       - name: 🔐 Fix RDPIDD.DLL
         shell: pwsh
+        timeout-minutes: 2
         run: |
           try {
             $rdpidd = 'C:\Windows\System32\drivers\UMDF\RDPidd.dll'
@@ -439,10 +436,11 @@ jobs:
           } catch {}
           $global:LASTEXITCODE = 0
 
-      # ─────────────────────────────────────────────
-      - name: ⚡ Fix lag + mở khóa 100% CPU + GPU
+      # ── 7. FIX LAG ──
+      - name: ⚡ Fix lag + CPU + GPU
         if: ${{ inputs.optimize_windows == true || inputs.optimize_windows == 'true' }}
         shell: pwsh
+        timeout-minutes: 5
         run: |
           $ErrorActionPreference = 'SilentlyContinue'
           tzutil /s 'SE Asia Standard Time' 2>$null
@@ -491,9 +489,10 @@ jobs:
           Write-Host "✅ Fix lag OK | CPU: $cpuName" -ForegroundColor Green
           $global:LASTEXITCODE = 0
 
-      # ─────────────────────────────────────────────
+      # ── 8. TAILSCALE ──
       - name: 🌐 Tailscale + Funnel
         if: ${{ inputs.enable_tailscale == true || inputs.enable_tailscale == 'true' }}
+        timeout-minutes: 8
         env:
           TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         shell: pwsh
@@ -580,9 +579,10 @@ jobs:
           } catch { Write-Host "⚠️ Tailscale lỗi: $_" -ForegroundColor Yellow; "TAILSCALE_IP=127.0.0.1" >> $env:GITHUB_ENV; "FUNNEL_URL=" >> $env:GITHUB_ENV; "TS_STATUS=ERROR" >> $env:GITHUB_ENV }
           $global:LASTEXITCODE = 0
 
-      # ─────────────────────────────────────────────
+      # ── 9. DUCKDNS ──
       - name: 🦆 DuckDNS
         if: ${{ inputs.enable_duckdns == true || inputs.enable_duckdns == 'true' }}
+        timeout-minutes: 3
         shell: pwsh
         env:
           DUCKDNS_TOKEN: ${{ secrets.DUCKDNS_TOKEN }}
@@ -597,8 +597,9 @@ jobs:
           } catch {}
           $global:LASTEXITCODE = 0
 
-      # ─────────────────────────────────────────────
+      # ── 10. VDD + AUDIO + SUNSHINE ──
       - name: 🖥️🔊☀️ VDD + VB-Audio + Sunshine
+        timeout-minutes: 12
         shell: pwsh
         env:
           VDD_RES: ${{ inputs.vdd_resolution }}
@@ -614,7 +615,7 @@ jobs:
           $vHeight = if ($resParts.Count -ge 2) { [int]$resParts[1] } else { 1080 }
           $vHz     = if ($resParts.Count -ge 3) { [int]$resParts[2] } else { 60 }
 
-          # VDD — cache
+          # VDD
           try {
             $vddCacheFile = "$instCache\.vdd-installed"
             $vddInstalled = Test-Path $vddCacheFile
@@ -654,7 +655,7 @@ jobs:
             } else { Write-Host "│ ⚡ VDD đã có" -ForegroundColor Green }
           } catch { Write-Host "│ ⚠️ VDD lỗi: $_" -ForegroundColor Yellow }
 
-          # VB-Audio — cache
+          # VB-Audio
           try {
             $vbCacheFile = "$instCache\.vb-installed"
             $vbInstalled = Test-Path $vbCacheFile
@@ -686,7 +687,7 @@ jobs:
           "AUDIO_DEVICE_NAME=$($audioDevs -join ', ')" >> $env:GITHUB_ENV
           $global:LASTEXITCODE = 0
 
-          # Sunshine — restore hoặc tải trực tiếp
+          # Sunshine
           try {
             $sunDir = 'C:\Program Files\Sunshine'; $sunExe = "$sunDir\sunshine.exe"
             $sunBackupDir = "$env:SHARED_OS_DIR\Sunshine-Portable"
@@ -759,9 +760,10 @@ jobs:
           Write-Host "✅ VDD+Audio+Sunshine OK sau $([math]::Round(((Get-Date)-$startTime).TotalSeconds))s" -ForegroundColor Green
           $global:LASTEXITCODE = 0
 
-      # ─────────────────────────────────────────────
+      # ── 11. USER + WALLPAPER ──
       - name: 👤 User + Mật khẩu + Wallpaper
         shell: pwsh
+        timeout-minutes: 8
         env:
           FIXED_PASS_INPUT: ${{ inputs.fixed_password }}
           WALLPAPER_URL_INPUT: ${{ inputs.wallpaper_url }}
@@ -875,8 +877,9 @@ jobs:
           Write-Host "✅ User+Wallpaper OK sau $([math]::Round(((Get-Date)-$startTime).TotalSeconds))s" -ForegroundColor Green
           $global:LASTEXITCODE = 0
 
-      # ─────────────────────────────────────────────
-      - name: 🚀 Cài app — ForEach-Object -Parallel (PS7) / fallback job
+      # ── 12. CÀI APP ──
+      - name: 🚀 Cài app — song song
+        timeout-minutes: 20
         shell: pwsh
         env:
           PKGS: ${{ inputs.choco_packages }}
@@ -892,10 +895,15 @@ jobs:
           $startupDir = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup"
           New-Item -ItemType Directory -Force -Path $instCache,$appsDir,"$appsDir\EVKey",$desktopDir,$downloadsDir,$startupDir | Out-Null
 
-          $psMajor = $PSVersionTable.PSVersion.Major
+          # ✅ FIX #3: Start-ThreadJob fallback Start-Job — không dùng ForEach -Parallel
           $hasThreadJob = $null -ne (Get-Command Start-ThreadJob -ErrorAction SilentlyContinue)
+          function Start-ParJob {
+            param([scriptblock]$Block, [object[]]$ArgList)
+            if ($hasThreadJob) { return Start-ThreadJob -ScriptBlock $Block -ArgumentList $ArgList }
+            else { return Start-Job -ScriptBlock $Block -ArgumentList $ArgList }
+          }
 
-          # ── TẢI SONG SONG ──
+          # Tải song song
           $dlTasks = @(
             @{ Name='EVKey'; Url='https://github.com/lamquangminh/EVKey/releases/download/Release/EVKey.zip'; File="$instCache\EVKey.zip" }
             @{ Name='VSCode'; Url='https://update.code.visualstudio.com/latest/win32-x64-system/stable'; File="$instCache\VSCodeSetup-x64.exe" }
@@ -907,26 +915,17 @@ jobs:
           )
 
           Write-Host "━━━ TẢI SONG SONG $($dlTasks.Count) INSTALLER ━━━" -ForegroundColor Cyan
-
-          if ($psMajor -ge 7) {
-            $dlTasks | ForEach-Object -Parallel {
-              $t = $_
-              if (-not (Test-Path $t.File) -or (Get-Item $t.File).Length -lt 100KB) {
-                & curl.exe -L --retry 2 --connect-timeout 15 -s -A 'Mozilla/5.0' $t.Url -o $t.File 2>$null
+          $dlJobs = @()
+          foreach ($task in $dlTasks) {
+            $dlJobs += Start-ParJob -Block {
+              param($u,$f)
+              if (-not (Test-Path $f) -or (Get-Item $f).Length -lt 100KB) {
+                & curl.exe -L --retry 2 --connect-timeout 15 -s -A 'Mozilla/5.0' $u -o $f 2>$null
               }
-            } -ThrottleLimit 4 -TimeoutSeconds 120
-          } else {
-            $dlJobs = @()
-            foreach ($task in $dlTasks) {
-              if ($hasThreadJob) {
-                $dlJobs += Start-ThreadJob -ScriptBlock { param($u,$f) if (-not (Test-Path $f) -or (Get-Item $f).Length -lt 100KB) { & curl.exe -L --retry 2 --connect-timeout 15 -s -A 'Mozilla/5.0' $u -o $f 2>$null } } -ArgumentList $task.Url, $task.File -ThrottleLimit 4
-              } else {
-                $dlJobs += Start-Job -ScriptBlock { param($u,$f) if (-not (Test-Path $f) -or (Get-Item $f).Length -lt 100KB) { & curl.exe -L --retry 2 --connect-timeout 15 -s -A 'Mozilla/5.0' $u -o $f 2>$null } } -ArgumentList $task.Url, $task.File
-              }
-            }
-            $null = Wait-Job $dlJobs -Timeout 120
-            $dlJobs | ForEach-Object { Remove-Job $_ -Force -ErrorAction SilentlyContinue }
+            } -ArgList @($task.Url, $task.File)
           }
+          $null = Wait-Job $dlJobs -Timeout 120
+          $dlJobs | ForEach-Object { Remove-Job $_ -Force -ErrorAction SilentlyContinue }
           Write-Host "│ ✅ Tải xong sau $([math]::Round(((Get-Date)-$startTime).TotalSeconds))s" -ForegroundColor Green
 
           # EVKey extract
@@ -947,54 +946,86 @@ jobs:
             }
           } catch {}
 
-          # ── CÀI SONG SONG ──
+          # Cài song song
           Write-Host "━━━ CÀI SONG SONG ━━━" -ForegroundColor Cyan
-
-          $installTasks = @(
-            @{ Name='VSCode'; Exe='C:\Program Files\Microsoft VS Code\Code.exe'; Cmd={ param($ic) $i="$ic\VSCodeSetup-x64.exe"; if ((Test-Path $i) -and (Get-Item $i).Length -gt 40MB) { Start-Process $i -ArgumentList '/VERYSILENT','/NORESTART','/MERGETASKS=!runcode,addtopath' -Wait -NoNewWindow -ErrorAction SilentlyContinue } } }
-            @{ Name='Discord'; Exe="$env:LOCALAPPDATA\Discord\Update.exe"; Cmd={ param($ic) $i="$ic\DiscordSetup.exe"; if ((Test-Path $i) -and (Get-Item $i).Length -gt 20MB) { $p=Start-Process $i -ArgumentList '--silent' -PassThru -NoNewWindow -ErrorAction SilentlyContinue; $null=$p.WaitForExit(60) } } }
-            @{ Name='Spotify'; Exe="$env:LOCALAPPDATA\Spotify\Spotify.exe"; Cmd={ param($ic) $i="$ic\SpotifySetup.exe"; if ((Test-Path $i) -and (Get-Item $i).Length -gt 5MB) { $p=Start-Process $i -ArgumentList '/silent','/skip-app-launch' -PassThru -NoNewWindow -ErrorAction SilentlyContinue; $null=$p.WaitForExit(40) } } }
-            @{ Name='Bandicam'; Exe='C:\Program Files\Bandicam\bdcam.exe'; Cmd={ param($ic) $i="$ic\bdcamsetup.exe"; if ((Test-Path $i) -and (Get-Item $i).Length -gt 10MB) { Start-Process $i -ArgumentList '/S' -Wait -NoNewWindow -ErrorAction SilentlyContinue } } }
-            @{ Name='Roblox'; Exe="$env:LOCALAPPDATA\Roblox\Versions"; Cmd={ param($ic) $i="$ic\RobloxPlayerInstaller.exe"; if ((Test-Path $i) -and (Get-Item $i).Length -gt 500KB) { Start-Process $i -ArgumentList '-q','--no-ui' -Wait -NoNewWindow -ErrorAction SilentlyContinue; Start-Sleep -Seconds 8 } } }
-          )
-
-          if ($psMajor -ge 7) {
-            $installTasks | ForEach-Object -Parallel {
-              $task = $_
-              if (-not (Test-Path $task.Exe)) {
-                & $task.Cmd $using:instCache
-              }
-            } -ThrottleLimit 3 -TimeoutSeconds 120
-          } else {
-            $installJobs = @()
-            foreach ($task in $installTasks) {
-              if ($hasThreadJob) {
-                $installJobs += Start-ThreadJob -ScriptBlock { param($exe,$cmd,$ic) if (-not (Test-Path $exe)) { & $cmd $ic } } -ArgumentList $task.Exe, $task.Cmd, $instCache -ThrottleLimit 3
-              } else {
-                $installJobs += Start-Job -ScriptBlock { param($exe,$cmd,$ic) if (-not (Test-Path $exe)) { & $cmd $ic } } -ArgumentList $task.Exe, $task.Cmd, $instCache
+          $installJobs = @()
+          $installJobs += Start-ParJob -Block {
+            param($ic,$dd)
+            $vsExe = 'C:\Program Files\Microsoft VS Code\Code.exe'
+            if (-not (Test-Path $vsExe)) {
+              $inst = "$ic\VSCodeSetup-x64.exe"
+              if ((Test-Path $inst) -and (Get-Item $inst).Length -gt 40MB) {
+                Start-Process $inst -ArgumentList '/VERYSILENT','/NORESTART','/MERGETASKS=!runcode,addtopath' -Wait -NoNewWindow -ErrorAction SilentlyContinue
               }
             }
-            $null = Wait-Job $installJobs -Timeout 120
-            $installJobs | ForEach-Object { Remove-Job $_ -Force -ErrorAction SilentlyContinue }
-          }
+            if (Test-Path $vsExe) { $ws = New-Object -ComObject WScript.Shell; $lnk = $ws.CreateShortcut("$dd\Visual Studio Code.lnk"); $lnk.TargetPath = $vsExe; $lnk.Save() }
+          } -ArgList @($instCache, $desktopDir)
+
+          $installJobs += Start-ParJob -Block {
+            param($ic,$dd)
+            $dcExe = "$env:LOCALAPPDATA\Discord\Update.exe"
+            if (-not (Test-Path $dcExe)) {
+              $inst = "$ic\DiscordSetup.exe"
+              if ((Test-Path $inst) -and (Get-Item $inst).Length -gt 20MB) {
+                $p = Start-Process $inst -ArgumentList '--silent' -PassThru -NoNewWindow -ErrorAction SilentlyContinue
+                $null = $p.WaitForExit(60)
+              }
+            }
+            $dcApp = Get-ChildItem "$env:LOCALAPPDATA\Discord" -Filter 'Discord.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($dcApp) { $ws = New-Object -ComObject WScript.Shell; $lnk = $ws.CreateShortcut("$dd\Discord.lnk"); $lnk.TargetPath = $dcApp.FullName; $lnk.Save() }
+          } -ArgList @($instCache, $desktopDir)
+
+          $installJobs += Start-ParJob -Block {
+            param($ic)
+            if (-not (Test-Path "$env:LOCALAPPDATA\Spotify\Spotify.exe")) {
+              $inst = "$ic\SpotifySetup.exe"
+              if ((Test-Path $inst) -and (Get-Item $inst).Length -gt 5MB) {
+                $p = Start-Process $inst -ArgumentList '/silent','/skip-app-launch' -PassThru -NoNewWindow -ErrorAction SilentlyContinue
+                $null = $p.WaitForExit(40)
+              }
+            }
+          } -ArgList @($instCache)
+
+          $installJobs += Start-ParJob -Block {
+            param($ic,$dd)
+            $bdExe = 'C:\Program Files\Bandicam\bdcam.exe'
+            if (-not (Test-Path $bdExe)) {
+              $inst = "$ic\bdcamsetup.exe"
+              if ((Test-Path $inst) -and (Get-Item $inst).Length -gt 10MB) {
+                Start-Process $inst -ArgumentList '/S' -Wait -NoNewWindow -ErrorAction SilentlyContinue
+              }
+            }
+            if (Test-Path $bdExe) { $ws = New-Object -ComObject WScript.Shell; $lnk = $ws.CreateShortcut("$dd\Bandicam.lnk"); $lnk.TargetPath = $bdExe; $lnk.Save() }
+          } -ArgList @($instCache, $desktopDir)
+
+          $installJobs += Start-ParJob -Block {
+            param($ic,$dd)
+            $robloxInstalled = Test-Path "$env:LOCALAPPDATA\Roblox\Versions" -ErrorAction SilentlyContinue
+            if (-not $robloxInstalled) {
+              $rb = "$ic\RobloxPlayerInstaller.exe"
+              if ((Test-Path $rb) -and (Get-Item $rb).Length -gt 500KB) {
+                Start-Process $rb -ArgumentList '-q','--no-ui' -Wait -NoNewWindow -ErrorAction SilentlyContinue
+                Start-Sleep -Seconds 8
+              }
+            }
+            $robloxExe = Get-ChildItem "$env:LOCALAPPDATA\Roblox\Versions" -Filter 'RobloxPlayerBeta.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($robloxExe) { $ws = New-Object -ComObject WScript.Shell; $lnk = $ws.CreateShortcut("$dd\Roblox.lnk"); $lnk.TargetPath = $robloxExe.FullName; $lnk.Save() }
+          } -ArgList @($instCache, $desktopDir)
+
+          $null = Wait-Job $installJobs -Timeout 150
+          $installJobs | ForEach-Object { Remove-Job $_ -Force -ErrorAction SilentlyContinue }
           Write-Host "│ ✅ Cài song song xong sau $([math]::Round(((Get-Date)-$startTime).TotalSeconds))s" -ForegroundColor Green
 
-          # Desktop shortcuts
+          # Shortcuts phụ
           try {
             $ws = New-Object -ComObject WScript.Shell
-            if (Test-Path 'C:\Program Files\Microsoft VS Code\Code.exe') { $lnk = $ws.CreateShortcut("$desktopDir\Visual Studio Code.lnk"); $lnk.TargetPath = 'C:\Program Files\Microsoft VS Code\Code.exe'; $lnk.Save() }
-            $dcApp = Get-ChildItem "$env:LOCALAPPDATA\Discord" -Filter 'Discord.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($dcApp) { $lnk = $ws.CreateShortcut("$desktopDir\Discord.lnk"); $lnk.TargetPath = $dcApp.FullName; $lnk.Save() }
-            if (Test-Path 'C:\Program Files\Bandicam\bdcam.exe') { $lnk = $ws.CreateShortcut("$desktopDir\Bandicam.lnk"); $lnk.TargetPath = 'C:\Program Files\Bandicam\bdcam.exe'; $lnk.Save() }
-            $robloxExe = Get-ChildItem "$env:LOCALAPPDATA\Roblox\Versions" -Filter 'RobloxPlayerBeta.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($robloxExe) { $lnk = $ws.CreateShortcut("$desktopDir\Roblox.lnk"); $lnk.TargetPath = $robloxExe.FullName; $lnk.Save() }
             $tsExe = 'C:\Program Files\Tailscale\tailscale-ipn.exe'
             if (Test-Path $tsExe) { $lnk = $ws.CreateShortcut("$desktopDir\Tailscale.lnk"); $lnk.TargetPath = $tsExe; $lnk.Save() }
             $sd = "$instCache\StarDesk_latest.exe"
             if (Test-Path $sd) { $bytes = [System.IO.File]::ReadAllBytes($sd)[0..1]; if ($bytes[0] -eq 0x4D -and $bytes[1] -eq 0x5A) { Copy-Item $sd "$downloadsDir\StarDesk_latest.exe" -Force } }
           } catch {}
 
-          # Choco packages thêm
+          # Choco thêm
           $pkgListFile = "$env:SHARED_OS_DIR\installed-choco-packages.txt"
           $savedPkgs = @()
           if (Test-Path $pkgListFile) { $savedPkgs = @(Get-Content $pkgListFile | Where-Object { $_ -match '^[A-Za-z0-9._\-]+$' }) }
@@ -1003,16 +1034,20 @@ jobs:
           $allPkgs = @($savedPkgs + $inputPkgs | Select-Object -Unique)
           if ($allPkgs.Count -gt 0) {
             $allPkgs | Set-Content $pkgListFile -Encoding UTF8
-            $null = $allPkgs | ForEach-Object -Parallel {
-              choco install $_ -y --no-progress --limit-output 2>&1 | Out-Null
-            } -ThrottleLimit 2 -TimeoutSeconds 120
+            $chocoJobs = @()
+            foreach ($pkg in $allPkgs) {
+              $chocoJobs += Start-ParJob -Block { param($p) choco install $p -y --no-progress --limit-output 2>&1 | Out-Null } -ArgList @($pkg)
+            }
+            $null = Wait-Job $chocoJobs -Timeout 120
+            $chocoJobs | ForEach-Object { Remove-Job $_ -Force -ErrorAction SilentlyContinue }
           }
           Write-Host "✅ App hoàn tất sau $([math]::Round(((Get-Date)-$startTime).TotalSeconds))s" -ForegroundColor Green
           $global:LASTEXITCODE = 0
 
-      # ─────────────────────────────────────────────
+      # ── 13. RDP TEST ──
       - name: 🔍 RDP connection test
         shell: pwsh
+        timeout-minutes: 3
         run: |
           try {
             $rdpOk = $false
@@ -1030,9 +1065,10 @@ jobs:
           } catch {}
           $global:LASTEXITCODE = 0
 
-      # ─────────────────────────────────────────────
-      - name: 🌐 Web Panel (an toàn YAML)
+      # ── 14. WEB PANEL ──
+      - name: 🌐 Web Panel
         shell: pwsh
+        timeout-minutes: 5
         run: |
           $ErrorActionPreference = 'Continue'
           $tsIp = $env:TAILSCALE_IP
@@ -1053,10 +1089,11 @@ jobs:
           $state = [ordered]@{ machineId=$machineId; releaseTag=$env:RELEASE_TAG; user=$rdpUser; password=$savePass; passwordSource=$env:RDP_PASS_SOURCE; driveLetter=$driveLetter; tailscaleIp=$tsIp; funnelUrl=$env:FUNNEL_URL; webPanelUrl=$webPanelUrl; sunshineUrl=$sunshineUrl; durationMinutes=[int]$env:TOTAL_MINUTES; startUtc=(Get-Date).ToUniversalTime().ToString('o'); runId=$env:GITHUB_RUN_ID }
           $state | ConvertTo-Json -Depth 5 -Compress | Set-Content $env:SHARED_STATE_FILE -Encoding UTF8
 
+          # ✅ FIX #1: HTML sinh qua List<string> — KHÔNG heredoc
           $h = New-Object System.Collections.Generic.List[string]
-          $h.Add('<!DOCTYPE html><html><head><meta charset="utf-8"><title>ALB Panel v36.0</title>')
+          $h.Add('<!DOCTYPE html><html><head><meta charset="utf-8"><title>ALB Panel v37.0</title>')
           $h.Add('<style>body{background:#07090f;color:#eef2f8;font-family:Inter,Arial,sans-serif;padding:24px;max-width:640px;margin:auto}h1{color:#ffd700;margin:0 0 6px;font-size:22px}.sub{color:#8a9bb8;font-size:12px;margin-bottom:18px}.row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)}.label{color:#8a9bb8;font-size:12px}.val{font-weight:600;font-size:13px}.val a{color:#38bdf8;text-decoration:none}.gold{color:#ffd700}</style></head><body>')
-          $h.Add("<h1>🖥️ ALB PANEL v36.0 — SUPREME</h1><div class='sub'>$machineId &bull; $tsIp</div>")
+          $h.Add("<h1>🖥️ ALB PANEL v37.0</h1><div class='sub'>$machineId &bull; $tsIp</div>")
           $h.Add("<div class='row'><span class='label'>⏱️ Còn lại</span><span class='val gold' id='remain'>Loading...</span></div>")
           $h.Add("<div class='row'><span class='label'>🌐 Web Panel</span><span class='val'><a href='$webPanelUrl' target='_blank'>$webPanelUrl</a></span></div>")
           $h.Add("<div class='row'><span class='label'>☀️ Sunshine</span><span class='val'><a href='$sunshineUrl' target='_blank'>$sunshineUrl</a></span></div>")
@@ -1067,6 +1104,7 @@ jobs:
           $h.Add("<script>async function loadStatus(){try{const r=await fetch('/api/status');const j=await r.json();if(j.remaining_display){document.getElementById('remain').textContent=j.remaining_display}if(j.apps){document.getElementById('apps').innerHTML=j.apps.map(a=>(a.ok?'✅ ':'❌ ')+a.name).join(' &nbsp; ')}}catch(e){}}loadStatus();setInterval(loadStatus,10000);</script></body></html>")
           Set-Content -Path "$env:RUNNER_TEMP\panel.html" -Value ($h -join "`r`n") -Encoding UTF8
 
+          # ✅ FIX #1: Server script qua List<string>
           $w = New-Object System.Collections.Generic.List[string]
           $w.Add('$ErrorActionPreference = "Continue"')
           $w.Add('$listener = [System.Net.HttpListener]::new()')
@@ -1097,9 +1135,10 @@ jobs:
           } catch { Write-Host "⚠️ Web panel lỗi: $_" -ForegroundColor Yellow }
           $global:LASTEXITCODE = 0
 
-      # ─────────────────────────────────────────────
+      # ── 15. VERIFY ──
       - name: 🔍 Verify link
         shell: pwsh
+        timeout-minutes: 3
         run: |
           try {
             if (Test-NetConnection 127.0.0.1 -Port 47990 -WarningAction SilentlyContinue -InformationLevel Quiet) { Write-Host "│ ✅ Sunshine 47990" -ForegroundColor Green }
@@ -1107,14 +1146,15 @@ jobs:
           } catch {}
           $global:LASTEXITCODE = 0
 
-      # ─────────────────────────────────────────────
-      - name: 🎉 Thông tin kết nối v36.0
+      # ── 16. THÔNG TIN ──
+      - name: 🎉 Thông tin kết nối
         shell: pwsh
+        timeout-minutes: 2
         run: |
           $pass = if ($env:RDP_PASS_SOURCE -eq 'secret') { '(secret)' } else { $env:RDP_PASS }
           Write-Host ""
           Write-Host "╔══════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-          Write-Host "║        ALB-VPSFREE-ULTIMATE v36.0 — SUPREME             ║" -ForegroundColor Cyan
+          Write-Host "║        ALB-VPSFREE-ULTIMATE v37.0 — CERTIFIED            ║" -ForegroundColor Cyan
           Write-Host "╠══════════════════════════════════════════════════════════╣" -ForegroundColor Cyan
           Write-Host "║ 🏷️  Máy         : $($env:MACHINE_ID.PadRight(38)) ║" -ForegroundColor White
           Write-Host "║ 🌐 Tailscale IP : $($env:TAILSCALE_IP.PadRight(38)) ║" -ForegroundColor White
@@ -1131,10 +1171,11 @@ jobs:
           Write-Host "╚══════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
           $global:LASTEXITCODE = 0
 
-      # ─────────────────────────────────────────────
+      # ── 17. WATCHDOG ──
       - name: ⏳ Watchdog
         id: keepalive
         shell: pwsh
+        timeout-minutes: 355
         run: |
           function Test-Port { param($Port,$TimeoutMs=1500) try { $tcp = [System.Net.Sockets.TcpClient]::new(); $t = $tcp.ConnectAsync('127.0.0.1', $Port); if ($t.Wait($TimeoutMs)) { $tcp.Close(); return $true }; $tcp.Close(); return $false } catch { return $false } }
           $jobStart = if ($env:JOB_START_EPOCH) { [long]$env:JOB_START_EPOCH } else { [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() }
@@ -1202,10 +1243,11 @@ jobs:
           }
           $global:LASTEXITCODE = 0
 
-      # ─────────────────────────────────────────────
+      # ── 18. LƯU CUỐI ──
       - name: 💾 Lưu cuối phiên
         if: always()
         shell: pwsh
+        timeout-minutes: 10
         run: |
           try {
             Stop-Service SunshineService,sunshinesvc -Force -ErrorAction SilentlyContinue
@@ -1216,10 +1258,11 @@ jobs:
           } catch { Write-Host "⚠️ Save lỗi: $_" -ForegroundColor Yellow }
           $global:LASTEXITCODE = 0
 
-      # ─────────────────────────────────────────────
+      # ── 19. DỌN DẸP ──
       - name: 🧹 Dọn dẹp
         if: always()
         shell: pwsh
+        timeout-minutes: 5
         run: |
           try {
             & taskkill.exe /F /IM 'StarDesk*' /T *> $null
@@ -1231,10 +1274,11 @@ jobs:
           } catch {}
           $global:LASTEXITCODE = 0
 
-      # ─────────────────────────────────────────────
+      # ── 20. AUTO RESTART ──
       - name: 🔁 Auto-restart
         if: ${{ always() && steps.keepalive.outcome == 'success' && env.FORCE_STOP_ONLY != '1' && (inputs.auto_restart == true || inputs.auto_restart == 'true' || env.FORCE_NEXT_SESSION == '1') }}
         shell: pwsh
+        timeout-minutes: 5
         env:
           DURATION: ${{ inputs.duration }}
           WIN_IMAGE: ${{ inputs.windows_image }}
