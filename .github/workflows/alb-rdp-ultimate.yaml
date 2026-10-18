@@ -1,4 +1,4 @@
-﻿name: ALB ULTIMATE RDP v13.0
+name: ALB ULTIMATE RDP v15.0
 
 on:
   workflow_dispatch:
@@ -175,7 +175,7 @@ jobs:
           }
           $global:LASTEXITCODE = 0; Write-Host "OK mount ${dl}:\ | May: $cleanId" -ForegroundColor Green
 
-      - name: 🧰 Tạo save-data.ps1
+      - name: 🧰 Tạo save-data.ps1 (LƯU STARDESK)
         shell: pwsh
         run: |
           $scriptLines = @(
@@ -202,6 +202,18 @@ jobs:
               'reg export "HKCU\Control Panel\Desktop" "$regBk\User-Desktop.reg" /y *> $null; reg export "HKCU\Control Panel\Desktop\WindowMetrics" "$regBk\User-WindowMetrics.reg" /y *> $null; reg export "HKCU\Control Panel\Personalization" "$regBk\User-Personalization.reg" /y *> $null; reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes" "$regBk\User-Themes.reg" /y *> $null; reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" "$regBk\User-Wallpapers.reg" /y *> $null; reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "$regBk\User-Explorer.reg" /y *> $null; reg export "HKCU\Software\Microsoft\Multimedia\Audio" "$regBk\User-Audio.reg" /y *> $null; reg export "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio" "$regBk\System-MMDevices-Audio.reg" /y *> $null'
               'if (("$u") -and ("$profSrc") -and (Test-Path "$profSrc")) { $profDst = [System.IO.Path]::Combine("$root", "Users", "$u"); New-Item -ItemType Directory -Force -Path "$profDst" | Out-Null; $excludeDirs = @("$profSrc\AppData\Roaming\Microsoft\Protect","$profSrc\AppData\Roaming\Microsoft\Crypto","$profSrc\AppData\Local\Microsoft\Credentials","$profSrc\AppData\Roaming\Microsoft\Credentials","$profSrc\AppData\Local\Temp","$profSrc\AppData\Local\Packages","$profSrc\AppData\Local\TileDataLayer","$profSrc\AppData\Local\ConnectedDevicesPlatform","$profSrc\AppData\Local\Microsoft\Windows\Explorer","$profSrc\AppData\Local\Microsoft\Windows\INetCache","$profSrc\AppData\Local\Microsoft\Windows\WebCache","$profSrc\AppData\Local\Microsoft\Windows\Caches","$profSrc\AppData\Local\D3DSCache"); robocopy "$profSrc" "$profDst" /MIR /XJ /R:2 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP /XF NTUSER.DAT* ntuser.ini UsrClass.dat* WebCacheV01.dat parent.lock lockfile SingletonLock SingletonCookie SingletonSocket /XD @excludeDirs *> $null; $global:LASTEXITCODE = 0 }'
               'if (("$env:BASELINE_FILE") -and (Test-Path "$env:BASELINE_FILE")) { try { $base = Get-Content -Raw -Path "$env:BASELINE_FILE" | ConvertFrom-Json; $skipNames = @("Tailscale","chocolatey","Package Cache","Microsoft","Windows Defender"); $cOverlay = [System.IO.Path]::Combine("$osDir", "C-Drive-Overlay"); New-Item -ItemType Directory -Force -Path "$cOverlay\PF64" | Out-Null; New-Item -ItemType Directory -Force -Path "$cOverlay\PF86" | Out-Null; New-Item -ItemType Directory -Force -Path "$cOverlay\PD" | Out-Null; Get-ChildItem "C:\Program Files" -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -notin ($base.PF64)) -and ($_.Name -notin ($skipNames)) } | ForEach-Object { $dest = [System.IO.Path]::Combine("$cOverlay\PF64", $_.Name); robocopy ($_.FullName) "$dest" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null }; Get-ChildItem "C:\Program Files (x86)" -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -notin ($base.PF86)) -and ($_.Name -notin ($skipNames)) } | ForEach-Object { $dest = [System.IO.Path]::Combine("$cOverlay\PF86", $_.Name); robocopy ($_.FullName) "$dest" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null }; Get-ChildItem "C:\ProgramData" -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -notin ($base.PD)) -and ($_.Name -notin ($skipNames)) } | ForEach-Object { $dest = [System.IO.Path]::Combine("$cOverlay\PD", $_.Name); robocopy ($_.FullName) "$dest" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null } } catch {} }'
+              # ═══ LƯU STARDESK ═══
+              '$sdBackupDir = [System.IO.Path]::Combine("$osDir", "StarDesk-Backup")'
+              'if (Test-Path "$sdBackupDir") { Remove-Item -Path "$sdBackupDir" -Recurse -Force -ErrorAction SilentlyContinue }'
+              'New-Item -ItemType Directory -Force -Path "$sdBackupDir" | Out-Null'
+              'if (Test-Path "C:\Program Files\StarDesk") { robocopy "C:\Program Files\StarDesk" "$sdBackupDir\ProgramFiles" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }'
+              'if (Test-Path "C:\ProgramData\StarDesk") { robocopy "C:\ProgramData\StarDesk" "$sdBackupDir\ProgramData" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }'
+              'if (Test-Path "$env:LOCALAPPDATA\StarDesk") { robocopy "$env:LOCALAPPDATA\StarDesk" "$sdBackupDir\LocalAppData" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }'
+              'if (Test-Path "$env:APPDATA\StarDesk") { robocopy "$env:APPDATA\StarDesk" "$sdBackupDir\RoamingAppData" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }'
+              'if (Test-Path "$env:USERPROFILE\.stardesk") { robocopy "$env:USERPROFILE\.stardesk" "$sdBackupDir\DotStarDesk" /MIR /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }'
+              '$sdRegDir = [System.IO.Path]::Combine("$sdBackupDir", "Registry"); New-Item -ItemType Directory -Force -Path "$sdRegDir" | Out-Null'
+              'reg export "HKCU\Software\StarDesk" "$sdRegDir\HKCU-StarDesk.reg" /y *> $null; reg export "HKLM\SOFTWARE\StarDesk" "$sdRegDir\HKLM-StarDesk.reg" /y *> $null; reg export "HKLM\SOFTWARE\WOW6432Node\StarDesk" "$sdRegDir\HKLM-WOW6432-StarDesk.reg" /y *> $null'
+              'Write-Host "[$Reason] Da luu StarDesk vao $sdBackupDir" -ForegroundColor Green'
               '$global:LASTEXITCODE = 0'
               '$gitStage = [System.IO.Path]::Combine("$env:RUNNER_TEMP", "git-state-sync")'
               'try { if (Test-Path "$gitStage") { Remove-Item -Path "$gitStage" -Recurse -Force -ErrorAction SilentlyContinue }; New-Item -ItemType Directory -Force -Path "$gitStage" | Out-Null; Push-Location "$gitStage"; git init -q; git config user.name "ALB-Bot"; git config user.email "bot@alb.local"; $encodedToken = [System.Uri]::EscapeDataString($env:GH_TOKEN); git remote add origin "https://x-access-token:$encodedToken@github.com/$($env:GH_REPO).git"; git fetch origin "$env:STATE_BRANCH" -q 2>$null; if (($LASTEXITCODE) -eq 0) { git checkout -B "$env:STATE_BRANCH" "origin/$env:STATE_BRANCH" -q } else { git checkout --orphan "$env:STATE_BRANCH" -q }; robocopy "$env:SHARED_SESSION_DIR" "$gitStage\sessions" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null; robocopy "$regBk" "$gitStage\registry" /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0; git add -A; git commit -m "Sync state [$env:MACHINE_ID]" -q 2>$null; git push -u origin "$env:STATE_BRANCH" --force -q 2>$null; Pop-Location } catch { if (((Get-Location).Path) -eq "$gitStage") { Pop-Location } }'
@@ -219,7 +231,7 @@ jobs:
           $saveScriptPath = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'save-data.ps1')
           Set-Content -Path "$saveScriptPath" -Value ($scriptLines -join "`r`n") -Encoding UTF8
 
-      - name: ♻️ Khôi phục ổ đĩa & Profile
+      - name: ♻️ Khôi phục ổ đĩa & Profile (KHÔI PHỤC STARDESK)
         shell: pwsh
         run: |
           $dl = "$env:MOUNT_LETTER"
@@ -260,6 +272,19 @@ jobs:
           Remove-Item -Path "$stage" -Recurse -Force -ErrorAction SilentlyContinue
           $regBk = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'Registry')
           if (Test-Path "$regBk") { Get-ChildItem -Path "$regBk" -Filter '*.reg' -Recurse | ForEach-Object { reg import ($_.FullName) *>$null }; & RUNDLL32.EXE user32.dll,UpdatePerUserSystemParameters 1, True }
+          # ═══ KHÔI PHỤC STARDESK ═══
+          $sdBackup = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", "StarDesk-Backup")
+          if (Test-Path "$sdBackup") {
+              Write-Host "  Khoi phuc StarDesk tu $sdBackup..." -ForegroundColor Cyan
+              if (Test-Path "$sdBackup\ProgramFiles") { robocopy "$sdBackup\ProgramFiles" "C:\Program Files\StarDesk" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }
+              if (Test-Path "$sdBackup\ProgramData") { robocopy "$sdBackup\ProgramData" "C:\ProgramData\StarDesk" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }
+              if (Test-Path "$sdBackup\LocalAppData") { robocopy "$sdBackup\LocalAppData" "$env:LOCALAPPDATA\StarDesk" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }
+              if (Test-Path "$sdBackup\RoamingAppData") { robocopy "$sdBackup\RoamingAppData" "$env:APPDATA\StarDesk" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }
+              if (Test-Path "$sdBackup\DotStarDesk") { robocopy "$sdBackup\DotStarDesk" "$env:USERPROFILE\.stardesk" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }
+              $sdRegDir = [System.IO.Path]::Combine("$sdBackup", "Registry")
+              if (Test-Path "$sdRegDir") { Get-ChildItem -Path "$sdRegDir" -Filter '*.reg' | ForEach-Object { reg import ($_.FullName) *>$null } }
+              Write-Host "  OK: Khoi phuc StarDesk thanh cong" -ForegroundColor Green
+          }
           if (Test-Path "$env:SHARED_STATE_FILE") { try { $state = Get-Content -Raw -Path "$env:SHARED_STATE_FILE" | ConvertFrom-Json; if ($state.password) { "RESTORE_PASS=$($state.password)" >> "$env:GITHUB_ENV" } } catch {} }
           'DATA_RESTORED=1' >> "$env:GITHUB_ENV"; exit 0
 
@@ -302,8 +327,7 @@ jobs:
           Restart-Service -Name TermService -Force -ErrorAction SilentlyContinue
           Start-Sleep -Seconds 3
           $netstat = netstat -ano | Select-String ":3389"
-          if ($netstat) { Write-Host "  OK: RDP port 3389 dang listen" -ForegroundColor Green; $netstat | ForEach-Object { Write-Host "    $_" -ForegroundColor Gray } } else { Write-Host "  ERROR: RDP port 3389 KHONG listen!" -ForegroundColor Red }
-          Write-Host "  HOAN TAT: NLA=0, TLS=0, fPromptForPassword=1, Firewall=AllProfiles" -ForegroundColor Green
+          if ($netstat) { Write-Host "  OK: RDP port 3389 dang listen" -ForegroundColor Green } else { Write-Host "  ERROR: RDP port 3389 KHONG listen!" -ForegroundColor Red }
           exit 0
 
       - name: ⚙️ Tối ưu Windows
@@ -422,14 +446,27 @@ jobs:
           try { $desktopDir = [System.IO.Path]::Combine("$profPath", 'Desktop'); New-Item -ItemType Directory -Force -Path "$desktopDir" | Out-Null; $ws = New-Object -ComObject WScript.Shell; @("$desktopDir", 'C:\Users\Public\Desktop') | ForEach-Object { $d = "$_"; $ws.CreateShortcut("$d\WEB-QUAN-LY-RDP.url").TargetPath = "http://127.0.0.1:$($env:WEB_PORT)/"; $ws.CreateShortcut("$d\WEB-QUAN-LY-RDP.url").Save(); $ws.CreateShortcut("$d\SUNSHINE-WEB-UI.url").TargetPath = "https://127.0.0.1:$($env:SUNSHINE_WEB_PORT)/"; $ws.CreateShortcut("$d\SUNSHINE-WEB-UI.url").Save() } } catch {}
           'SESSION_READY=1' >> "$env:GITHUB_ENV"; exit 0
 
-      - name: 📦 Cài sẵn Discord & StarDesk (SIÊU TỐC)
+      - name: 📦 Cài sẵn Discord & StarDesk (RESTORE STARDESK)
         shell: pwsh
         run: |
-          Write-Host "CAI DISCORD + STARDESK - SIEU TOC" -ForegroundColor Yellow
+          Write-Host "CAI DISCORD + STARDESK - RESTORE STARDESK" -ForegroundColor Yellow
           $ProgressPreference = 'SilentlyContinue'
           $tmp = "$env:TEMP\ALB-Apps"; New-Item -ItemType Directory -Force -Path "$tmp" | Out-Null
           try { Write-Host "  [1/2] Discord..." -ForegroundColor Cyan; Get-Process -Name "Discord*", "DiscordSetup*", "Update*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; Remove-Item -Path "$env:LOCALAPPDATA\Discord" -Recurse -Force -ErrorAction SilentlyContinue; $discord = "$tmp\DiscordSetup.exe"; Invoke-WebRequest -Uri "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x64" -OutFile $discord -UseBasicParsing -TimeoutSec 45; if (Test-Path $discord) { $proc = Start-Process -FilePath $discord -PassThru -NoNewWindow; $waited = 0; while ((-not $proc.HasExited) -and ($waited -lt 75)) { Start-Sleep -Seconds 1; $waited += 1 }; if (-not $proc.HasExited) { Write-Host "  WARN: Discord qua 75s, kill..." -ForegroundColor Yellow; Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } else { Write-Host "  OK: Discord (${waited}s)" -ForegroundColor Green } } } catch { Write-Host "  WARN: Discord - $($_.Exception.Message)" -ForegroundColor Yellow }
-          try { Write-Host "  [2/2] StarDesk..." -ForegroundColor Cyan; $sd = "$tmp\StarDeskSetup.exe"; Invoke-WebRequest -Uri "https://stardesk.net/download/windows" -OutFile $sd -UseBasicParsing -TimeoutSec 45; if (Test-Path $sd) { $proc = Start-Process -FilePath $sd -ArgumentList "/S" -PassThru -NoNewWindow; $waited = 0; while ((-not $proc.HasExited) -and ($waited -lt 45)) { Start-Sleep -Seconds 1; $waited += 1 }; if (-not $proc.HasExited) { Write-Host "  WARN: StarDesk qua 45s, kill..." -ForegroundColor Yellow; Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } else { Write-Host "  OK: StarDesk (${waited}s)" -ForegroundColor Green } } } catch { Write-Host "  WARN: StarDesk - $($_.Exception.Message)" -ForegroundColor Yellow }
+          try { Write-Host "  [2/2] StarDesk..." -ForegroundColor Cyan; $sdBackup = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", "StarDesk-Backup"); $appExe = "C:\Program Files\StarDesk\StarDesk.exe"
+            if (Test-Path "$sdBackup\ProgramFiles") { Write-Host "  Khoi phuc StarDesk tu backup..." -ForegroundColor Cyan
+              if (Test-Path "$sdBackup\ProgramFiles") { robocopy "$sdBackup\ProgramFiles" "C:\Program Files\StarDesk" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }
+              if (Test-Path "$sdBackup\ProgramData") { robocopy "$sdBackup\ProgramData" "C:\ProgramData\StarDesk" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }
+              if (Test-Path "$sdBackup\LocalAppData") { robocopy "$sdBackup\LocalAppData" "$env:LOCALAPPDATA\StarDesk" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }
+              if (Test-Path "$sdBackup\RoamingAppData") { robocopy "$sdBackup\RoamingAppData" "$env:APPDATA\StarDesk" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }
+              if (Test-Path "$sdBackup\DotStarDesk") { robocopy "$sdBackup\DotStarDesk" "$env:USERPROFILE\.stardesk" /E /XJ /R:1 /W:1 /MT:8 /NFL /NDL /NJH /NJS /NP *> $null; $global:LASTEXITCODE = 0 }
+              $sdRegDir = [System.IO.Path]::Combine("$sdBackup", "Registry"); if (Test-Path "$sdRegDir") { Get-ChildItem -Path "$sdRegDir" -Filter '*.reg' | ForEach-Object { reg import ($_.FullName) *>$null } }
+              Write-Host "  OK: Khoi phuc StarDesk thanh cong" -ForegroundColor Green
+            } elseif (-not (Test-Path "$appExe")) { Write-Host "  Tai & cai StarDesk..." -ForegroundColor Cyan; $downloadUrl = 'https://download943.mediafire.com/be95vz5kgnig_m7acKGr-mRjXQQKAN0i2WdjIR_d-q70MeLboolFJnUHit6ZmqJYm8_rJigOgY0P5NhtdANnLGXOaEmKg9eWSEUGCEEIZdCrV2NNZ0ubdEO1hyPHR6l2Re85XT5kJpCd3Q4GXpeU0ZD2QSr5gc_6aPfM7r15_YltcA/mf82krdrzcy3dz8/StarDesk_1.5.3.exe'; $dlDir = [System.IO.Path]::Combine("$env:PROFILE_PATH", 'Downloads'); New-Item -ItemType Directory -Force -Path "$dlDir" | Out-Null; $installerPath = [System.IO.Path]::Combine("$dlDir", 'StarDesk_1.5.3.exe')
+              try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; & curl.exe -L --retry 3 --connect-timeout 30 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "$downloadUrl" -o "$installerPath" 2>$null; if ((-not (Test-Path "$installerPath")) -or ((Get-Item "$installerPath").Length -lt 1MB)) { Invoke-WebRequest -Uri "$downloadUrl" -OutFile "$installerPath" -UseBasicParsing -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -TimeoutSec 120 } } catch { Write-Host "  WARN: Loi tai - $($_.Exception.Message)" -ForegroundColor Yellow }
+              if ((Test-Path "$installerPath") -and ((Get-Item "$installerPath").Length -gt 1MB)) { $proc = Start-Process -FilePath "$installerPath" -ArgumentList '/S' -PassThru -NoNewWindow; $waited = 0; while ((-not $proc.HasExited) -and ($waited -lt 60)) { Start-Sleep -Seconds 2; $waited += 2 }; if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }; Write-Host "  OK: Da cai StarDesk" -ForegroundColor Green }
+            } else { Write-Host "  OK: StarDesk da co san" -ForegroundColor Green }
+          } catch { Write-Host "  WARN: StarDesk - $($_.Exception.Message)" -ForegroundColor Yellow }
           Start-Sleep -Seconds 2; Write-Host ""; Write-Host "KIEM TRA:" -ForegroundColor Cyan
           if (Test-Path "$env:LOCALAPPDATA\Discord\Update.exe") { Write-Host "  OK: Discord" -ForegroundColor Green } else { Write-Host "  WARN: Discord not found" -ForegroundColor Yellow }
           if (Test-Path "C:\Program Files\StarDesk\StarDesk.exe") { Write-Host "  OK: StarDesk" -ForegroundColor Green } else { Write-Host "  WARN: StarDesk not found" -ForegroundColor Yellow }
@@ -500,7 +537,7 @@ jobs:
         run: |
           $passText = "$env:RDP_PASS"; $audioName = if ($env:AUDIO_DEVICE_NAME) { $env:AUDIO_DEVICE_NAME } else { 'N/A' }
           Write-Host "============================================================" -ForegroundColor Cyan
-          Write-Host "  ALB ULTIMATE RDP v13.0 — HOAN CHINH" -ForegroundColor Cyan
+          Write-Host "  ALB ULTIMATE RDP v15.0 FINAL" -ForegroundColor Cyan
           Write-Host "============================================================" -ForegroundColor Cyan
           Write-Host "  May         : $env:MACHINE_ID" -ForegroundColor Cyan
           Write-Host "  Creator     : $env:CREATOR" -ForegroundColor Cyan
@@ -511,11 +548,10 @@ jobs:
           Write-Host "  Audio       : $audioName" -ForegroundColor Green
           Write-Host "  Web Panel   : http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Yellow
           Write-Host "  Sunshine    : https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/" -ForegroundColor Yellow
-          Write-Host "  Discord     : Da cai san (khong silent + timeout 75s)" -ForegroundColor Green
-          Write-Host "  StarDesk    : Da cai san (NSIS /S + timeout 45s)" -ForegroundColor Green
-          Write-Host "  RDP Prompt  : NLA=0, TLS=0, fPromptForPassword=1 (2 vi tri), cmdkey cleaned" -ForegroundColor Yellow
-          Write-Host "  Servy       : Da fix (kiem tra + cai + refresh PATH + fallback)" -ForegroundColor Yellow
-          Write-Host "  Tailscale   : UNATTENDED MODE (duy tri ket noi khi tat may)" -ForegroundColor Yellow
+          Write-Host "  Discord     : Da cai san" -ForegroundColor Green
+          Write-Host "  StarDesk    : Da cai san + backup/restore" -ForegroundColor Green
+          Write-Host "  RDP Prompt  : NLA=0, TLS=0, fPromptForPassword=1 (2 vi tri)" -ForegroundColor Yellow
+          Write-Host "  Tailscale   : UNATTENDED MODE" -ForegroundColor Yellow
           Write-Host "============================================================" -ForegroundColor Cyan
           exit 0
 
