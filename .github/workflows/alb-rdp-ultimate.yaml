@@ -1,4 +1,4 @@
-name: ALB ULTIMATE RDP v15.0
+name: ALB ULTIMATE RDP v16.0
 
 on:
   workflow_dispatch:
@@ -298,18 +298,22 @@ jobs:
           if ("$curPath" -notlike "*$binDir*") { Set-ItemProperty -Path "$sysEnv" -Name 'Path' -Value "$binDir;$curPath" -Force }
           "INSTALLER_CACHE=$instCache" >> "$env:GITHUB_ENV"; "SUNSHINE_PERSIST_CFG=$sunCfgDir" >> "$env:GITHUB_ENV"
 
-      - name: 🔧 CẤU HÌNH RDP (FIX NLA + FIREWALL)
+      - name: 🔧 CẤU HÌNH RDP (FIX PROMPT PASSWORD)
         shell: pwsh
         run: |
-          Write-Host "CAU HINH RDP - FIX NLA + FIREWALL" -ForegroundColor Yellow
+          Write-Host "CAU HINH RDP - FIX PROMPT PASSWORD" -ForegroundColor Yellow
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0 -Force
           $p = 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
           Set-ItemProperty -Path "$p" -Name 'UserAuthentication' -Value 0 -Type DWord -Force
           Set-ItemProperty -Path "$p" -Name 'SecurityLayer' -Value 0 -Type DWord -Force
-          Set-ItemProperty -Path "$p" -Name 'fPromptForPassword' -Value 1 -Type DWord -Force
+          Write-Host "  OK: NLA=0, TLS=0" -ForegroundColor Green
           $tsPolicy = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
-          New-Item -Path "$tsPolicy" -Force | Out-Null
-          Set-ItemProperty -Path "$tsPolicy" -Name 'fPromptForPassword' -Value 1 -Type DWord -Force
+          if (Test-Path "$tsPolicy") {
+              Remove-ItemProperty -Path "$tsPolicy" -Name 'fPromptForPassword' -Force -ErrorAction SilentlyContinue
+              Write-Host "  OK: Da xoa policy fPromptForPassword (khong hoi pass trong may)" -ForegroundColor Green
+          }
+          Set-ItemProperty -Path "$p" -Name 'fPromptForPassword' -Value 0 -Type DWord -Force
+          Write-Host "  OK: fPromptForPassword = 0 (client hoi pass truoc khi vao)" -ForegroundColor Green
           $creds = cmdkey /list 2>$null | Select-String "TERMSRV"
           if ($creds) { $creds | ForEach-Object { if ($_ -match 'TERMSRV/([^\s]+)') { cmdkey /delete:$($Matches[0]) 2>$null } } }
           Set-ItemProperty -Path "$p" -Name 'fDisableAudioCapture' -Value 0 -Type DWord -Force
@@ -328,6 +332,7 @@ jobs:
           Start-Sleep -Seconds 3
           $netstat = netstat -ano | Select-String ":3389"
           if ($netstat) { Write-Host "  OK: RDP port 3389 dang listen" -ForegroundColor Green } else { Write-Host "  ERROR: RDP port 3389 KHONG listen!" -ForegroundColor Red }
+          Write-Host "  HOAN TAT: NLA=0, fPromptForPassword=0, Policy removed" -ForegroundColor Green
           exit 0
 
       - name: ⚙️ Tối ưu Windows
@@ -537,7 +542,7 @@ jobs:
         run: |
           $passText = "$env:RDP_PASS"; $audioName = if ($env:AUDIO_DEVICE_NAME) { $env:AUDIO_DEVICE_NAME } else { 'N/A' }
           Write-Host "============================================================" -ForegroundColor Cyan
-          Write-Host "  ALB ULTIMATE RDP v15.0 FINAL" -ForegroundColor Cyan
+          Write-Host "  ALB ULTIMATE RDP v16.0 — FIX PROMPT PASSWORD" -ForegroundColor Cyan
           Write-Host "============================================================" -ForegroundColor Cyan
           Write-Host "  May         : $env:MACHINE_ID" -ForegroundColor Cyan
           Write-Host "  Creator     : $env:CREATOR" -ForegroundColor Cyan
@@ -550,7 +555,7 @@ jobs:
           Write-Host "  Sunshine    : https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/" -ForegroundColor Yellow
           Write-Host "  Discord     : Da cai san" -ForegroundColor Green
           Write-Host "  StarDesk    : Da cai san + backup/restore" -ForegroundColor Green
-          Write-Host "  RDP Prompt  : NLA=0, TLS=0, fPromptForPassword=1 (2 vi tri)" -ForegroundColor Yellow
+          Write-Host "  RDP Prompt  : NLA=0, fPromptForPassword=0, Policy removed" -ForegroundColor Yellow
           Write-Host "  Tailscale   : UNATTENDED MODE" -ForegroundColor Yellow
           Write-Host "============================================================" -ForegroundColor Cyan
           exit 0
