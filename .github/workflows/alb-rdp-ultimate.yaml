@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# ALB-VPSFREE-ULTIMATE v70.0 — SUPREME ZENOVA TỐI THƯỢNG
+# ALB-VPSFREE-ULTIMATE v70.1 — SUPREME ZENOVA TỐI THƯỢNG
 # [CHUẨN HÓA TOÀN DIỆN CHO CẢ WINDOWS SERVER 2022 & 2025 - ÁP DỤNG TẤT CẢ CÁC MÁY]
 # 1. Tên ổ đĩa hệ thống & phân vùng ảo đồng bộ: ZENOVA-OS
 # 2. Fix triệt để màn hình đen / hình nền đen RDP & Sunshine (Giữ nguyên 100% ảnh gốc)
@@ -12,9 +12,9 @@
 # 9. Tối ưu hóa hiệu năng chuyên sâu (Ultimate Performance, Unpark CPU, TCP Low Latency, Tắt bloatware)
 # 10. Tự động lưu dữ liệu lên GitHub Release và tự động kích hoạt phiên mới 24/24 không gián đoạn
 # ═══════════════════════════════════════════════════════════════════════════════
-name: ALB-VPSFREE-ULTIMATE v70.0
+name: ALB-VPSFREE-ULTIMATE v70.1
 
-on:
+'on':
   workflow_dispatch:
     inputs:
       machine_id:
@@ -28,21 +28,6 @@ on:
         default: '5h00m'
         type: choice
         options: ['1h', '3h', '5h00m']
-      auto_restart:
-        description: '🔁 Tự khởi động phiên mới khi hết giờ (Treo 24/24)'
-        required: false
-        default: true
-        type: boolean
-      drive_letter:
-        description: '💽 Ký tự ổ đĩa riêng ZENOVA-OS'
-        required: false
-        default: 'X'
-        type: string
-      vhd_size_gb:
-        description: '📦 Dung lượng VHDX ZENOVA-OS (GB)'
-        required: false
-        default: '100'
-        type: string
       windows_image:
         description: '🪟 Hệ điều hành Windows'
         required: false
@@ -60,30 +45,30 @@ on:
         default: '1920x1080@60'
         type: choice
         options: ['1920x1080@60', '1920x1080@120', '2560x1440@60', '3840x2160@60']
-      choco_packages:
-        description: '📦 Gói ứng dụng Chocolatey cài thêm (cách nhau bởi dấu cách)'
+      vhd_size_gb:
+        description: '📦 Dung lượng VHDX ZENOVA-OS (GB)'
         required: false
-        default: ''
+        default: '100'
         type: string
+      drive_letter:
+        description: '💽 Ký tự ổ đĩa riêng ZENOVA-OS'
+        required: false
+        default: 'X'
+        type: string
+      auto_restart:
+        description: '🔁 Tự khởi động phiên mới khi hết giờ (Treo 24/24)'
+        required: false
+        default: true
+        type: boolean
       optimize_windows:
         description: '⚙️ Siêu tối ưu hóa Windows & Fix Lag toàn diện'
         required: false
         default: true
         type: boolean
-      enable_tailscale:
-        description: '🌐 Mạng Tailscale P2P'
+      choco_packages:
+        description: '📦 Gói ứng dụng Chocolatey cài thêm (cách nhau bởi dấu cách)'
         required: false
-        default: true
-        type: boolean
-      enable_duckdns:
-        description: '🦆 Cập nhật tên miền DuckDNS'
-        required: false
-        default: true
-        type: boolean
-      bot_webhook_url:
-        description: '🤖 Webhook URL thông báo máy cho Bot quản lý'
-        required: false
-        default: 'http://datdemo.duckdns.org:3000/api/rdp/report'
+        default: ''
         type: string
 
 permissions:
@@ -96,7 +81,7 @@ concurrency:
 
 jobs:
   Supreme-ZENOVA-RDP:
-    runs-on: ${{ inputs.windows_image }}
+    runs-on: ${{ inputs.windows_image || 'windows-2022' }}
     timeout-minutes: 355
     env:
       GH_TOKEN: ${{ secrets.PAT_TOKEN || github.token }}
@@ -107,7 +92,7 @@ jobs:
       WEB_PORT: '8080'
       SUNSHINE_WEB_PORT: '47990'
       SUNSHINE_PASS: ${{ inputs.fixed_password || 'Aistv@2026' }}
-      BOT_WEBHOOK_URL: ${{ inputs.bot_webhook_url || secrets.BOT_WEBHOOK_URL || 'http://datdemo.duckdns.org:3000/api/rdp/report' }}
+      BOT_WEBHOOK_URL: ${{ secrets.BOT_WEBHOOK_URL || 'http://datdemo.duckdns.org:3000/api/rdp/report' }}
       BOT_API_SECRET: ${{ secrets.BOT_API_SECRET || secrets.ADMIN_PASSWORD || '2008' }}
 
     steps:
@@ -132,7 +117,7 @@ jobs:
 
           "JOB_START_EPOCH=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())" >> $env:GITHUB_ENV
 
-          # Đổi tên ổ C: thành ZENOVA-OS
+          # Đổi tên nhãn ổ C: thành ZENOVA-OS
           try { & label C: ZENOVA-OS *> $null } catch {}
 
           $vhdSizeInput = [int64](<("$env:VHD_SIZE_GB" -replace '[^0-9]', ''>))
@@ -583,8 +568,6 @@ jobs:
       - name: 🌐 Mạng Tailscale & DuckDNS
         timeout-minutes: 5
         env:
-          EN_TS: ${{ inputs.enable_tailscale }}
-          EN_DNS: ${{ inputs.enable_duckdns }}
           TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
           DUCKDNS_TOKEN: ${{ secrets.DUCKDNS_TOKEN }}
           DUCKDNS_DOMAIN: ${{ secrets.DUCKDNS_DOMAIN }}
@@ -592,38 +575,36 @@ jobs:
         run: |
           $ErrorActionPreference = 'Continue'
           $tsIp = '127.0.0.1'; $tsStatus = 'DISABLED'; $funnelUrl = ''
-          if ($env:EN_TS -eq 'true') {
-            if (-not $env:TAILSCALE_AUTH_KEY) { $tsStatus = 'NO_KEY' } else {
-              try {
-                $ts = 'C:\Program Files\Tailscale\tailscale.exe'
-                if (-not (Test-Path $ts)) {
-                  $msi = "$env:INSTALLER_CACHE\tailscale.msi"
-                  if (Test-Path $msi) { Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /quiet /norestart" -Wait -NoNewWindow }
-                }
-                if (Test-Path $ts) {
-                  Set-Service Tailscale -StartupType Automatic -EA SilentlyContinue
-                  Start-Service Tailscale -EA SilentlyContinue
-                  Start-Sleep -Seconds 3
-                  & $ts up "--authkey=$env:TAILSCALE_AUTH_KEY" "--hostname=zenova-$($env:MACHINE_ID)" --accept-routes --accept-dns --reset --unattended
-                  if ($LASTEXITCODE -eq 0) {
-                    & $ts set --unattended=true 2>&1 | Out-Null
-                    1..15 | ForEach-Object {
-                      if ($tsIp -eq '127.0.0.1') {
-                        $ipOut = (& $ts ip -4 2>&1 | Out-String).Trim()
-                        if ($ipOut -match '^\d+\.\d+\.\d+\.\d+$') { $tsIp = $ipOut; $tsStatus = 'CONNECTED' } else { Start-Sleep -Seconds 2 }
-                      }
+          if (-not $env:TAILSCALE_AUTH_KEY) { $tsStatus = 'NO_KEY' } else {
+            try {
+              $ts = 'C:\Program Files\Tailscale\tailscale.exe'
+              if (-not (Test-Path $ts)) {
+                $msi = "$env:INSTALLER_CACHE\tailscale.msi"
+                if (Test-Path $msi) { Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /quiet /norestart" -Wait -NoNewWindow }
+              }
+              if (Test-Path $ts) {
+                Set-Service Tailscale -StartupType Automatic -EA SilentlyContinue
+                Start-Service Tailscale -EA SilentlyContinue
+                Start-Sleep -Seconds 3
+                & $ts up "--authkey=$env:TAILSCALE_AUTH_KEY" "--hostname=zenova-$($env:MACHINE_ID)" --accept-routes --accept-dns --reset --unattended
+                if ($LASTEXITCODE -eq 0) {
+                  & $ts set --unattended=true 2>&1 | Out-Null
+                  1..15 | ForEach-Object {
+                    if ($tsIp -eq '127.0.0.1') {
+                      $ipOut = (& $ts ip -4 2>&1 | Out-String).Trim()
+                      if ($ipOut -match '^\d+\.\d+\.\d+\.\d+$') { $tsIp = $ipOut; $tsStatus = 'CONNECTED' } else { Start-Sleep -Seconds 2 }
                     }
-                    try {
-                      & $ts funnel reset 2>&1 | Out-Null
-                      & $ts funnel --bg $env:WEB_PORT 2>&1 | Out-Null
-                      Start-Sleep -Seconds 2
-                      $fStat = (& $ts funnel status 2>&1 | Out-String)
-                      if ($fStat -match '(https://[^\s]+)') { $funnelUrl = $Matches[1].TrimEnd('/') }
-                    } catch {}
-                  } else { $tsStatus = 'AUTH_FAIL' }
-                } else { $tsStatus = 'INSTALL_FAIL' }
-              } catch { $tsStatus = 'ERROR' }
-            }
+                  }
+                  try {
+                    & $ts funnel reset 2>&1 | Out-Null
+                    & $ts funnel --bg $env:WEB_PORT 2>&1 | Out-Null
+                    Start-Sleep -Seconds 2
+                    $fStat = (& $ts funnel status 2>&1 | Out-String)
+                    if ($fStat -match '(https://[^\s]+)') { $funnelUrl = $Matches[1].TrimEnd('/') }
+                  } catch {}
+                } else { $tsStatus = 'AUTH_FAIL' }
+              } else { $tsStatus = 'INSTALL_FAIL' }
+            } catch { $tsStatus = 'ERROR' }
           }
           "TAILSCALE_IP=$tsIp" >> $env:GITHUB_ENV
           "FUNNEL_URL=$funnelUrl" >> $env:GITHUB_ENV
@@ -631,7 +612,7 @@ jobs:
 
           $pubIp = ''; try { $pubIp = (Invoke-WebRequest -Uri 'https://api.ipify.org' -UseBasicParsing -TimeoutSec 5).Content.Trim() } catch {}
           $ddnsUrl = ''
-          if ($env:EN_DNS -eq 'true' -and $env:DUCKDNS_TOKEN -and $env:DUCKDNS_DOMAIN) {
+          if ($env:DUCKDNS_TOKEN -and $env:DUCKDNS_DOMAIN) {
             try {
               $targetIp = if ($tsIp -ne '127.0.0.1') { $tsIp } else { $pubIp }
               $cleanDom = ($env:DUCKDNS_DOMAIN.Trim().ToLower()) -replace '\.duckdns\.org$', ''
@@ -750,11 +731,8 @@ jobs:
             # Tự động cưỡng chế hình nền mỗi khi người dùng kết nối vào RDP hoặc Sunshine (Chống màn hình đen 100%)
             $startupDirAll = 'C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup'
             New-Item -ItemType Directory -Force -Path $startupDirAll | Out-Null
-            $vbsLines = @(
-              'Set WshShell = CreateObject("WScript.Shell")',
-              'WshShell.Run "powershell.exe -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File ""C:\Windows\Web\Wallpaper\ApplyWallpaper.ps1""", 0, False'
-            )
-            Set-Content -Path "$startupDirAll\SetZenovaWallpaper.vbs" -Value ($vbsLines -join "`r`n") -Encoding ASCII -Force
+            $vbsCode = 'Set WshShell = CreateObject("WScript.Shell")' + "`r`n" + 'WshShell.Run "powershell.exe -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File C:\Windows\Web\Wallpaper\ApplyWallpaper.ps1", 0, False'
+            Set-Content -Path "$startupDirAll\SetZenovaWallpaper.vbs" -Value $vbsCode -Encoding ASCII -Force
 
             "WALLPAPER_STATUS=Zenova Original (Da Fix Triet De Hinh Nen Den)" >> $env:GITHUB_ENV
             Write-Host "✅ Đã áp dụng hình nền Zenova Cloud Aurora Lake gốc & Fix triệt để màn hình đen!" -ForegroundColor Green
@@ -991,158 +969,8 @@ jobs:
         timeout-minutes: 3
         run: |
           $port = $env:WEB_PORT
-          $htmlCode = @'
-          <!DOCTYPE html>
-          <html lang="vi">
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>ZENOVA CLOUD - CONTROL PANEL v70</title>
-            <style>
-              :root {
-                --bg: #0b0f19;
-                --card-bg: #151d30;
-                --border: #233152;
-                --accent: #ec4899;
-                --accent-glow: rgba(236, 72, 153, 0.3);
-                --cyan: #06b6d4;
-                --green: #10b981;
-                --yellow: #f59e0b;
-                --text: #f1f5f9;
-                --text-dim: #94a3b8;
-              }
-              * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
-              body { background: var(--bg); color: var(--text); padding: 24px; display: flex; justify-content: center; min-height: 100vh; }
-              .container { max-width: 680px; width: 100%; display: flex; flex-direction: column; gap: 20px; }
-              .header { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 20px 24px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-              .brand { display: flex; align-items: center; gap: 14px; }
-              .logo-icon { font-size: 32px; filter: drop-shadow(0 0 10px var(--accent-glow)); }
-              .title { font-size: 20px; font-weight: 700; color: #fff; letter-spacing: 0.5px; }
-              .title span { color: var(--accent); }
-              .subtitle { font-size: 13px; color: var(--text-dim); }
-              .status-badge { display: flex; align-items: center; gap: 8px; background: rgba(16, 185, 129, 0.15); border: 1px solid var(--green); color: var(--green); padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; }
-              .pulse { width: 8px; height: 8px; background: var(--green); border-radius: 50%; box-shadow: 0 0 8px var(--green); animation: pulseAnim 1.5s infinite; }
-              @keyframes pulseAnim { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(1.3); } 100% { opacity: 1; transform: scale(1); } }
-              .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
-              .card-title { font-size: 15px; font-weight: 600; color: var(--cyan); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
-              .grid-info { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-              .info-item { background: rgba(11, 15, 25, 0.6); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
-              .info-label { font-size: 12px; color: var(--text-dim); }
-              .info-value { font-size: 14px; font-weight: 600; color: #fff; word-break: break-all; display: flex; justify-content: space-between; align-items: center; }
-              .copy-btn { background: none; border: none; color: var(--cyan); cursor: pointer; font-size: 12px; padding: 2px 6px; border-radius: 4px; transition: 0.2s; }
-              .copy-btn:hover { background: rgba(6, 182, 212, 0.2); }
-              .sunshine-box { background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(236, 72, 153, 0.1)); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 14px; padding: 16px; margin-top: 10px; }
-              .sunshine-btn { display: flex; justify-content: center; align-items: center; gap: 10px; width: 100%; padding: 14px; background: linear-gradient(90deg, #f59e0b, #ec4899); color: white; text-decoration: none; font-weight: 700; font-size: 15px; border-radius: 10px; box-shadow: 0 4px 15px rgba(236, 72, 153, 0.4); transition: transform 0.2s, box-shadow 0.2s; }
-              .sunshine-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(236, 72, 153, 0.6); }
-              .sunshine-hint { font-size: 12px; color: var(--text-dim); margin-top: 10px; line-height: 1.5; }
-              .sunshine-hint b { color: #f59e0b; }
-              .btn-group { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
-              .action-btn { width: 100%; padding: 14px 18px; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; justify-content: space-between; align-items: center; color: white; transition: 0.2s; }
-              .btn-save { background: #0284c7; } .btn-save:hover { background: #0369a1; }
-              .btn-restart { background: #d97706; } .btn-restart:hover { background: #b45309; }
-              .btn-stop { background: #dc2626; } .btn-stop:hover { background: #b91c1c; }
-              .footer-note { font-size: 12px; color: var(--text-dim); text-align: center; margin-top: 8px; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <div class="brand">
-                  <div class="logo-icon">🌸</div>
-                  <div>
-                    <div class="title">ZENOVA <span>CLOUD v70</span></div>
-                    <div class="subtitle">Bảng Quản Lý RDP, Sunshine & Lưu Ổ Đĩa Tối Thượng</div>
-                  </div>
-                </div>
-                <div class="status-badge">
-                  <div class="pulse"></div> ĐANG HOẠT ĐỘNG
-                </div>
-              </div>
-
-              <div class="card">
-                <div class="card-title">🖥️ Thông Tin Máy & Kết Nối</div>
-                <div class="grid-info">
-                  <div class="info-item">
-                    <div class="info-label">🏷️ Tên Định Danh Máy</div>
-                    <div class="info-value"><span>{{MACHINE_ID}}</span></div>
-                  </div>
-                  <div class="info-item">
-                    <div class="info-label">⏳ Thời Gian Còn Lại</div>
-                    <div class="info-value"><span id="remain-timer" style="color: #4ade80;">{{REMAIN_TEXT}}</span></div>
-                  </div>
-                  <div class="info-item">
-                    <div class="info-label">🌐 IP Tailscale (P2P)</div>
-                    <div class="info-value">
-                      <span>{{TAILSCALE_IP}}</span>
-                      <button class="copy-btn" onclick="navigator.clipboard.writeText('{{TAILSCALE_IP}}')">Sao chép</button>
-                    </div>
-                  </div>
-                  <div class="info-item">
-                    <div class="info-label">🦆 Tên Miền DuckDNS</div>
-                    <div class="info-value"><span>{{DUCKDNS_URL}}</span></div>
-                  </div>
-                  <div class="info-item">
-                    <div class="info-label">👤 Tài Khoản RDP & Sunshine</div>
-                    <div class="info-value">
-                      <span>{{RDP_USER}}</span>
-                      <button class="copy-btn" onclick="navigator.clipboard.writeText('{{RDP_USER}}')">Sao chép</button>
-                    </div>
-                  </div>
-                  <div class="info-item">
-                    <div class="info-label">🔐 Mật Khẩu Đăng Nhập</div>
-                    <div class="info-value">
-                      <span style="color: #facc15;">{{RDP_PASS}}</span>
-                      <button class="copy-btn" onclick="navigator.clipboard.writeText('{{RDP_PASS}}')">Sao chép</button>
-                    </div>
-                  </div>
-                  <div class="info-item">
-                    <div class="info-label">⚡ Vi Xử Lý (CPU)</div>
-                    <div class="info-value"><span>{{CPU_INFO}}</span></div>
-                  </div>
-                  <div class="info-item">
-                    <div class="info-label">💽 Ổ Đĩa ZENOVA-OS ({{MOUNT_LETTER}}:)</div>
-                    <div class="info-value"><span>Đã dùng: {{DISK_USED}} GB / Còn trống: {{DISK_FREE}} GB</span></div>
-                  </div>
-                </div>
-
-                <div class="sunshine-box">
-                  <a href="https://{{TAILSCALE_IP}}:{{SUNSHINE_PORT}}/" target="_blank" class="sunshine-btn">
-                    ☀️ Mở Sunshine Web UI (Port {{SUNSHINE_PORT}}) ➔
-                  </a>
-                  <div class="sunshine-hint">
-                    💡 <b>Hướng dẫn kết nối Sunshine:</b> Trình duyệt sẽ hiện cảnh báo chứng chỉ SSL tự ký (Not Secure). Hãy nhấn <b>Nâng cao (Advanced)</b> ➔ <b>Tiếp tục truy cập (Proceed)</b>. Đăng nhập bằng tài khoản <code>{{RDP_USER}}</code> hoặc <code>admin</code> và mật khẩu: <code>{{RDP_PASS}}</code>.
-                  </div>
-                </div>
-              </div>
-
-              <div class="card">
-                <div class="card-title">⚙️ Điều Khiển & Lưu Dữ Liệu</div>
-                <div class="btn-group">
-                  <form action="/save" method="POST">
-                    <button type="submit" class="action-btn btn-save">
-                      <span>💾 Lưu Dữ Liệu Ngay Lập Tức</span>
-                      <span>(Không ngắt máy) ➔</span>
-                    </button>
-                  </form>
-                  <form action="/restart" method="POST">
-                    <button type="submit" class="action-btn btn-restart">
-                      <span>🔁 Lưu Toàn Bộ & Khởi Động Phiên Mới</span>
-                      <span>(Treo 24/24) ➔</span>
-                    </button>
-                  </form>
-                  <form action="/stop" method="POST">
-                    <button type="submit" class="action-btn btn-stop">
-                      <span>🛑 Lưu Dữ Liệu & Tắt Hẳn Server</span>
-                      <span>(An toàn 100%) ➔</span>
-                    </button>
-                  </form>
-                </div>
-                <div class="footer-note">💡 Hãy dùng các nút trên để tắt hoặc khởi động lại máy để đảm bảo toàn bộ dữ liệu ổ đĩa được nén và đẩy lên GitHub an toàn!</div>
-              </div>
-            </div>
-          </body>
-          </html>
-'@
+          $b64Html = 'ICAgICAgICAgIDwhRE9DVFlQRSBodG1sPgogICAgICAgICAgPGh0bWwgbGFuZz0idmkiPgogICAgICAgICAgPGhlYWQ+CiAgICAgICAgICAgIDxtZXRhIGNoYXJzZXQ9IlVURi04Ij4KICAgICAgICAgICAgPG1ldGEgbmFtZT0idmlld3BvcnQiIGNvbnRlbnQ9IndpZHRoPWRldmljZS13aWR0aCwgaW5pdGlhbC1zY2FsZT0xLjAiPgogICAgICAgICAgICA8dGl0bGU+WkVOT1ZBIENMT1VEIC0gQ09OVFJPTCBQQU5FTCB2NzA8L3RpdGxlPgogICAgICAgICAgICA8c3R5bGU+CiAgICAgICAgICAgICAgOnJvb3QgewogICAgICAgICAgICAgICAgLS1iZzogIzBiMGYxOTsKICAgICAgICAgICAgICAgIC0tY2FyZC1iZzogIzE1MWQzMDsKICAgICAgICAgICAgICAgIC0tYm9yZGVyOiAjMjMzMTUyOwogICAgICAgICAgICAgICAgLS1hY2NlbnQ6ICNlYzQ4OTk7CiAgICAgICAgICAgICAgICAtLWFjY2VudC1nbG93OiByZ2JhKDIzNiwgNzIsIDE1MywgMC4zKTsKICAgICAgICAgICAgICAgIC0tY3lhbjogIzA2YjZkNDsKICAgICAgICAgICAgICAgIC0tZ3JlZW46ICMxMGI5ODE7CiAgICAgICAgICAgICAgICAtLXllbGxvdzogI2Y1OWUwYjsKICAgICAgICAgICAgICAgIC0tdGV4dDogI2YxZjVmOTsKICAgICAgICAgICAgICAgIC0tdGV4dC1kaW06ICM5NGEzYjg7CiAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICogeyBib3gtc2l6aW5nOiBib3JkZXItYm94OyBtYXJnaW46IDA7IHBhZGRpbmc6IDA7IGZvbnQtZmFtaWx5OiAnU2Vnb2UgVUknLCBzeXN0ZW0tdWksIC1hcHBsZS1zeXN0ZW0sIHNhbnMtc2VyaWY7IH0KICAgICAgICAgICAgICBib2R5IHsgYmFja2dyb3VuZDogdmFyKC0tYmcpOyBjb2xvcjogdmFyKC0tdGV4dCk7IHBhZGRpbmc6IDI0cHg7IGRpc3BsYXk6IGZsZXg7IGp1c3RpZnktY29udGVudDogY2VudGVyOyBtaW4taGVpZ2h0OiAxMDB2aDsgfQogICAgICAgICAgICAgIC5jb250YWluZXIgeyBtYXgtd2lkdGg6IDY4MHB4OyB3aWR0aDogMTAwJTsgZGlzcGxheTogZmxleDsgZmxleC1kaXJlY3Rpb246IGNvbHVtbjsgZ2FwOiAyMHB4OyB9CiAgICAgICAgICAgICAgLmhlYWRlciB7IGJhY2tncm91bmQ6IHZhcigtLWNhcmQtYmcpOyBib3JkZXI6IDFweCBzb2xpZCB2YXIoLS1ib3JkZXIpOyBib3JkZXItcmFkaXVzOiAxNnB4OyBwYWRkaW5nOiAyMHB4IDI0cHg7IGRpc3BsYXk6IGZsZXg7IGp1c3RpZnktY29udGVudDogc3BhY2UtYmV0d2VlbjsgYWxpZ24taXRlbXM6IGNlbnRlcjsgYm94LXNoYWRvdzogMCAxMHB4IDMwcHggcmdiYSgwLDAsMCwwLjUpOyB9CiAgICAgICAgICAgICAgLmJyYW5kIHsgZGlzcGxheTogZmxleDsgYWxpZ24taXRlbXM6IGNlbnRlcjsgZ2FwOiAxNHB4OyB9CiAgICAgICAgICAgICAgLmxvZ28taWNvbiB7IGZvbnQtc2l6ZTogMzJweDsgZmlsdGVyOiBkcm9wLXNoYWRvdygwIDAgMTBweCB2YXIoLS1hY2NlbnQtZ2xvdykpOyB9CiAgICAgICAgICAgICAgLnRpdGxlIHsgZm9udC1zaXplOiAyMHB4OyBmb250LXdlaWdodDogNzAwOyBjb2xvcjogI2ZmZjsgbGV0dGVyLXNwYWNpbmc6IDAuNXB4OyB9CiAgICAgICAgICAgICAgLnRpdGxlIHNwYW4geyBjb2xvcjogdmFyKC0tYWNjZW50KTsgfQogICAgICAgICAgICAgIC5zdWJ0aXRsZSB7IGZvbnQtc2l6ZTogMTNweDsgY29sb3I6IHZhcigtLXRleHQtZGltKTsgfQogICAgICAgICAgICAgIC5zdGF0dXMtYmFkZ2UgeyBkaXNwbGF5OiBmbGV4OyBhbGlnbi1pdGVtczogY2VudGVyOyBnYXA6IDhweDsgYmFja2dyb3VuZDogcmdiYSgxNiwgMTg1LCAxMjksIDAuMTUpOyBib3JkZXI6IDFweCBzb2xpZCB2YXIoLS1ncmVlbik7IGNvbG9yOiB2YXIoLS1ncmVlbik7IHBhZGRpbmc6IDZweCAxNHB4OyBib3JkZXItcmFkaXVzOiAyMHB4OyBmb250LXNpemU6IDEzcHg7IGZvbnQtd2VpZ2h0OiA2MDA7IH0KICAgICAgICAgICAgICAucHVsc2UgeyB3aWR0aDogOHB4OyBoZWlnaHQ6IDhweDsgYmFja2dyb3VuZDogdmFyKC0tZ3JlZW4pOyBib3JkZXItcmFkaXVzOiA1MCU7IGJveC1zaGFkb3c6IDAgMCA4cHggdmFyKC0tZ3JlZW4pOyBhbmltYXRpb246IHB1bHNlQW5pbSAxLjVzIGluZmluaXRlOyB9CiAgICAgICAgICAgICAgQGtleWZyYW1lcyBwdWxzZUFuaW0geyAwJSB7IG9wYWNpdHk6IDE7IHRyYW5zZm9ybTogc2NhbGUoMSk7IH0gNTAlIHsgb3BhY2l0eTogMC40OyB0cmFuc2Zvcm06IHNjYWxlKDEuMyk7IH0gMTAwJSB7IG9wYWNpdHk6IDE7IHRyYW5zZm9ybTogc2NhbGUoMSk7IH0gfQogICAgICAgICAgICAgIC5jYXJkIHsgYmFja2dyb3VuZDogdmFyKC0tY2FyZC1iZyk7IGJvcmRlcjogMXB4IHNvbGlkIHZhcigtLWJvcmRlcik7IGJvcmRlci1yYWRpdXM6IDE2cHg7IHBhZGRpbmc6IDIwcHg7IGJveC1zaGFkb3c6IDAgMTBweCAzMHB4IHJnYmEoMCwwLDAsMC40KTsgfQogICAgICAgICAgICAgIC5jYXJkLXRpdGxlIHsgZm9udC1zaXplOiAxNXB4OyBmb250LXdlaWdodDogNjAwOyBjb2xvcjogdmFyKC0tY3lhbik7IG1hcmdpbi1ib3R0b206IDE2cHg7IGRpc3BsYXk6IGZsZXg7IGFsaWduLWl0ZW1zOiBjZW50ZXI7IGdhcDogOHB4OyB0ZXh0LXRyYW5zZm9ybTogdXBwZXJjYXNlOyBsZXR0ZXItc3BhY2luZzogMC41cHg7IH0KICAgICAgICAgICAgICAuZ3JpZC1pbmZvIHsgZGlzcGxheTogZ3JpZDsgZ3JpZC10ZW1wbGF0ZS1jb2x1bW5zOiByZXBlYXQoMiwgMWZyKTsgZ2FwOiAxMnB4OyB9CiAgICAgICAgICAgICAgLmluZm8taXRlbSB7IGJhY2tncm91bmQ6IHJnYmEoMTEsIDE1LCAyNSwgMC42KTsgYm9yZGVyOiAxcHggc29saWQgdmFyKC0tYm9yZGVyKTsgYm9yZGVyLXJhZGl1czogMTBweDsgcGFkZGluZzogMTJweCAxNHB4OyBkaXNwbGF5OiBmbGV4OyBmbGV4LWRpcmVjdGlvbjogY29sdW1uOyBnYXA6IDRweDsgfQogICAgICAgICAgICAgIC5pbmZvLWxhYmVsIHsgZm9udC1zaXplOiAxMnB4OyBjb2xvcjogdmFyKC0tdGV4dC1kaW0pOyB9CiAgICAgICAgICAgICAgLmluZm8tdmFsdWUgeyBmb250LXNpemU6IDE0cHg7IGZvbnQtd2VpZ2h0OiA2MDA7IGNvbG9yOiAjZmZmOyB3b3JkLWJyZWFrOiBicmVhay1hbGw7IGRpc3BsYXk6IGZsZXg7IGp1c3RpZnktY29udGVudDogc3BhY2UtYmV0d2VlbjsgYWxpZ24taXRlbXM6IGNlbnRlcjsgfQogICAgICAgICAgICAgIC5jb3B5LWJ0biB7IGJhY2tncm91bmQ6IG5vbmU7IGJvcmRlcjogbm9uZTsgY29sb3I6IHZhcigtLWN5YW4pOyBjdXJzb3I6IHBvaW50ZXI7IGZvbnQtc2l6ZTogMTJweDsgcGFkZGluZzogMnB4IDZweDsgYm9yZGVyLXJhZGl1czogNHB4OyB0cmFuc2l0aW9uOiAwLjJzOyB9CiAgICAgICAgICAgICAgLmNvcHktYnRuOmhvdmVyIHsgYmFja2dyb3VuZDogcmdiYSg2LCAxODIsIDIxMiwgMC4yKTsgfQogICAgICAgICAgICAgIC5zdW5zaGluZS1ib3ggeyBiYWNrZ3JvdW5kOiBsaW5lYXItZ3JhZGllbnQoMTM1ZGVnLCByZ2JhKDI0NSwgMTU4LCAxMSwgMC4xKSwgcmdiYSgyMzYsIDcyLCAxNTMsIDAuMSkpOyBib3JkZXI6IDFweCBzb2xpZCByZ2JhKDI0NSwgMTU4LCAxMSwgMC40KTsgYm9yZGVyLXJhZGl1czogMTRweDsgcGFkZGluZzogMTZweDsgbWFyZ2luLXRvcDogMTBweDsgfQogICAgICAgICAgICAgIC5zdW5zaGluZS1idG4geyBkaXNwbGF5OiBmbGV4OyBqdXN0aWZ5LWNvbnRlbnQ6IGNlbnRlcjsgYWxpZ24taXRlbXM6IGNlbnRlcjsgZ2FwOiAxMHB4OyB3aWR0aDogMTAwJTsgcGFkZGluZzogMTRweDsgYmFja2dyb3VuZDogbGluZWFyLWdyYWRpZW50KDkwZGVnLCAjZjU5ZTBiLCAjZWM0ODk5KTsgY29sb3I6IHdoaXRlOyB0ZXh0LWRlY29yYXRpb246IG5vbmU7IGZvbnQtd2VpZ2h0OiA3MDA7IGZvbnQtc2l6ZTogMTVweDsgYm9yZGVyLXJhZGl1czogMTBweDsgYm94LXNoYWRvdzogMCA0cHggMTVweCByZ2JhKDIzNiwgNzIsIDE1MywgMC40KTsgdHJhbnNpdGlvbjogdHJhbnNmb3JtIDAuMnMsIGJveC1zaGFkb3cgMC4yczsgfQogICAgICAgICAgICAgIC5zdW5zaGluZS1idG46aG92ZXIgeyB0cmFuc2Zvcm06IHRyYW5zbGF0ZVkoLTJweCk7IGJveC1zaGFkb3c6IDAgNnB4IDIwcHggcmdiYSgyMzYsIDcyLCAxNTMsIDAuNik7IH0KICAgICAgICAgICAgICAuc3Vuc2hpbmUtaGludCB7IGZvbnQtc2l6ZTogMTJweDsgY29sb3I6IHZhcigtLXRleHQtZGltKTsgbWFyZ2luLXRvcDogMTBweDsgbGluZS1oZWlnaHQ6IDEuNTsgfQogICAgICAgICAgICAgIC5zdW5zaGluZS1oaW50IGIgeyBjb2xvcjogI2Y1OWUwYjsgfQogICAgICAgICAgICAgIC5idG4tZ3JvdXAgeyBkaXNwbGF5OiBmbGV4OyBmbGV4LWRpcmVjdGlvbjogY29sdW1uOyBnYXA6IDEwcHg7IG1hcmdpbi10b3A6IDhweDsgfQogICAgICAgICAgICAgIC5hY3Rpb24tYnRuIHsgd2lkdGg6IDEwMCU7IHBhZGRpbmc6IDE0cHggMThweDsgYm9yZGVyOiBub25lOyBib3JkZXItcmFkaXVzOiAxMHB4OyBmb250LXNpemU6IDE0cHg7IGZvbnQtd2VpZ2h0OiA2MDA7IGN1cnNvcjogcG9pbnRlcjsgZGlzcGxheTogZmxleDsganVzdGlmeS1jb250ZW50OiBzcGFjZS1iZXR3ZWVuOyBhbGlnbi1pdGVtczogY2VudGVyOyBjb2xvcjogd2hpdGU7IHRyYW5zaXRpb246IDAuMnM7IH0KICAgICAgICAgICAgICAuYnRuLXNhdmUgeyBiYWNrZ3JvdW5kOiAjMDI4NGM3OyB9IC5idG4tc2F2ZTpob3ZlciB7IGJhY2tncm91bmQ6ICMwMzY5YTE7IH0KICAgICAgICAgICAgICAuYnRuLXJlc3RhcnQgeyBiYWNrZ3JvdW5kOiAjZDk3NzA2OyB9IC5idG4tcmVzdGFydDpob3ZlciB7IGJhY2tncm91bmQ6ICNiNDUzMDk7IH0KICAgICAgICAgICAgICAuYnRuLXN0b3AgeyBiYWNrZ3JvdW5kOiAjZGMyNjI2OyB9IC5idG4tc3RvcDpob3ZlciB7IGJhY2tncm91bmQ6ICNiOTFjMWM7IH0KICAgICAgICAgICAgICAuZm9vdGVyLW5vdGUgeyBmb250LXNpemU6IDEycHg7IGNvbG9yOiB2YXIoLS10ZXh0LWRpbSk7IHRleHQtYWxpZ246IGNlbnRlcjsgbWFyZ2luLXRvcDogOHB4OyB9CiAgICAgICAgICAgIDwvc3R5bGU+CiAgICAgICAgICA8L2hlYWQ+CiAgICAgICAgICA8Ym9keT4KICAgICAgICAgICAgPGRpdiBjbGFzcz0iY29udGFpbmVyIj4KICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJoZWFkZXIiPgogICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iYnJhbmQiPgogICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJsb2dvLWljb24iPvCfjLg8L2Rpdj4KICAgICAgICAgICAgICAgICAgPGRpdj4KICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJ0aXRsZSI+WkVOT1ZBIDxzcGFuPkNMT1VEIHY3MDwvc3Bhbj48L2Rpdj4KICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJzdWJ0aXRsZSI+QuG6o25nIFF14bqjbiBMw70gUkRQLCBTdW5zaGluZSAmIEzGsHUg4buUIMSQxKlhIFThu5FpIFRoxrDhu6NuZzwvZGl2PgogICAgICAgICAgICAgICAgICA8L2Rpdj4KICAgICAgICAgICAgICAgIDwvZGl2PgogICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0ic3RhdHVzLWJhZGdlIj4KICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0icHVsc2UiPjwvZGl2PiDEkEFORyBIT+G6oFQgxJDhu5hORwogICAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgICAgPC9kaXY+CgogICAgICAgICAgICAgIDxkaXYgY2xhc3M9ImNhcmQiPgogICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iY2FyZC10aXRsZSI+8J+Wpe+4jyBUaMO0bmcgVGluIE3DoXkgJiBL4bq/dCBO4buRaTwvZGl2PgogICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iZ3JpZC1pbmZvIj4KICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iaW5mby1pdGVtIj4KICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJpbmZvLWxhYmVsIj7wn4+377iPIFTDqm4gxJDhu4tuaCBEYW5oIE3DoXk8L2Rpdj4KICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJpbmZvLXZhbHVlIj48c3Bhbj57e01BQ0hJTkVfSUR9fTwvc3Bhbj48L2Rpdj4KICAgICAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9ImluZm8taXRlbSI+CiAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iaW5mby1sYWJlbCI+4o+zIFRo4budaSBHaWFuIEPDsm4gTOG6oWk8L2Rpdj4KICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJpbmZvLXZhbHVlIj48c3BhbiBpZD0icmVtYWluLXRpbWVyIiBzdHlsZT0iY29sb3I6ICM0YWRlODA7Ij57e1JFTUFJTl9URVhUfX08L3NwYW4+PC9kaXY+CiAgICAgICAgICAgICAgICAgIDwvZGl2PgogICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJpbmZvLWl0ZW0iPgogICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9ImluZm8tbGFiZWwiPvCfjJAgSVAgVGFpbHNjYWxlIChQMlApPC9kaXY+CiAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iaW5mby12YWx1ZSI+CiAgICAgICAgICAgICAgICAgICAgICA8c3Bhbj57e1RBSUxTQ0FMRV9JUH19PC9zcGFuPgogICAgICAgICAgICAgICAgICAgICAgPGJ1dHRvbiBjbGFzcz0iY29weS1idG4iIG9uY2xpY2s9Im5hdmlnYXRvci5jbGlwYm9hcmQud3JpdGVUZXh0KCd7e1RBSUxTQ0FMRV9JUH19JykiPlNhbyBjaMOpcDwvYnV0dG9uPgogICAgICAgICAgICAgICAgICAgIDwvZGl2PgogICAgICAgICAgICAgICAgICA8L2Rpdj4KICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iaW5mby1pdGVtIj4KICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJpbmZvLWxhYmVsIj7wn6aGIFTDqm4gTWnhu4FuIER1Y2tETlM8L2Rpdj4KICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJpbmZvLXZhbHVlIj48c3Bhbj57e0RVQ0tETlNfVVJMfX08L3NwYW4+PC9kaXY+CiAgICAgICAgICAgICAgICAgIDwvZGl2PgogICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJpbmZvLWl0ZW0iPgogICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9ImluZm8tbGFiZWwiPvCfkaQgVMOgaSBLaG/huqNuIFJEUCAmIFN1bnNoaW5lPC9kaXY+CiAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iaW5mby12YWx1ZSI+CiAgICAgICAgICAgICAgICAgICAgICA8c3Bhbj57e1JEUF9VU0VSfX08L3NwYW4+CiAgICAgICAgICAgICAgICAgICAgICA8YnV0dG9uIGNsYXNzPSJjb3B5LWJ0biIgb25jbGljaz0ibmF2aWdhdG9yLmNsaXBib2FyZC53cml0ZVRleHQoJ3t7UkRQX1VTRVJ9fScpIj5TYW8gY2jDqXA8L2J1dHRvbj4KICAgICAgICAgICAgICAgICAgICA8L2Rpdj4KICAgICAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9ImluZm8taXRlbSI+CiAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iaW5mby1sYWJlbCI+8J+UkCBN4bqtdCBLaOG6qXUgxJDEg25nIE5o4bqtcDwvZGl2PgogICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9ImluZm8tdmFsdWUiPgogICAgICAgICAgICAgICAgICAgICAgPHNwYW4gc3R5bGU9ImNvbG9yOiAjZmFjYzE1OyI+e3tSRFBfUEFTU319PC9zcGFuPgogICAgICAgICAgICAgICAgICAgICAgPGJ1dHRvbiBjbGFzcz0iY29weS1idG4iIG9uY2xpY2s9Im5hdmlnYXRvci5jbGlwYm9hcmQud3JpdGVUZXh0KCd7e1JEUF9QQVNTfX0nKSI+U2FvIGNow6lwPC9idXR0b24+CiAgICAgICAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgICAgICAgIDwvZGl2PgogICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJpbmZvLWl0ZW0iPgogICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9ImluZm8tbGFiZWwiPuKaoSBWaSBY4butIEzDvSAoQ1BVKTwvZGl2PgogICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9ImluZm8tdmFsdWUiPjxzcGFuPnt7Q1BVX0lORk99fTwvc3Bhbj48L2Rpdj4KICAgICAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9ImluZm8taXRlbSI+CiAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iaW5mby1sYWJlbCI+8J+SvSDhu5QgxJDEqWEgWkVOT1ZBLU9TICh7e01PVU5UX0xFVFRFUn19Oik8L2Rpdj4KICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJpbmZvLXZhbHVlIj48c3Bhbj7EkMOjIGTDuW5nOiB7e0RJU0tfVVNFRH19IEdCIC8gQ8OybiB0cuG7kW5nOiB7e0RJU0tfRlJFRX19IEdCPC9zcGFuPjwvZGl2PgogICAgICAgICAgICAgICAgICA8L2Rpdj4KICAgICAgICAgICAgICAgIDwvZGl2PgoKICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9InN1bnNoaW5lLWJveCI+CiAgICAgICAgICAgICAgICAgIDxhIGhyZWY9Imh0dHBzOi8ve3tUQUlMU0NBTEVfSVB9fTp7e1NVTlNISU5FX1BPUlR9fS8iIHRhcmdldD0iX2JsYW5rIiBjbGFzcz0ic3Vuc2hpbmUtYnRuIj4KICAgICAgICAgICAgICAgICAgICDimIDvuI8gTeG7nyBTdW5zaGluZSBXZWIgVUkgKFBvcnQge3tTVU5TSElORV9QT1JUfX0pIOKelAogICAgICAgICAgICAgICAgICA8L2E+CiAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9InN1bnNoaW5lLWhpbnQiPgogICAgICAgICAgICAgICAgICAgIPCfkqEgPGI+SMaw4bubbmcgZOG6q24ga+G6v3QgbuG7kWkgU3Vuc2hpbmU6PC9iPiBUcsOsbmggZHV54buHdCBz4bq9IGhp4buHbiBj4bqjbmggYsOhbyBjaOG7qW5nIGNo4buJIFNTTCB04buxIGvDvSAoTm90IFNlY3VyZSkuIEjDo3kgbmjhuqVuIDxiPk7Dom5nIGNhbyAoQWR2YW5jZWQpPC9iPiDinpQgPGI+VGnhur9wIHThu6VjIHRydXkgY+G6rXAgKFByb2NlZWQpPC9iPi4gxJDEg25nIG5o4bqtcCBi4bqxbmcgdMOgaSBraG/huqNuIDxjb2RlPnt7UkRQX1VTRVJ9fTwvY29kZT4gaG/hurdjIDxjb2RlPmFkbWluPC9jb2RlPiB2w6AgbeG6rXQga2jhuql1OiA8Y29kZT57e1JEUF9QQVNTfX08L2NvZGU+LgogICAgICAgICAgICAgICAgICA8L2Rpdj4KICAgICAgICAgICAgICAgIDwvZGl2PgogICAgICAgICAgICAgIDwvZGl2PgoKICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJjYXJkIj4KICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9ImNhcmQtdGl0bGUiPuKame+4jyDEkGnhu4F1IEtoaeG7g24gJiBMxrB1IEThu68gTGnhu4d1PC9kaXY+CiAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJidG4tZ3JvdXAiPgogICAgICAgICAgICAgICAgICA8Zm9ybSBhY3Rpb249Ii9zYXZlIiBtZXRob2Q9IlBPU1QiPgogICAgICAgICAgICAgICAgICAgIDxidXR0b24gdHlwZT0ic3VibWl0IiBjbGFzcz0iYWN0aW9uLWJ0biBidG4tc2F2ZSI+CiAgICAgICAgICAgICAgICAgICAgICA8c3Bhbj7wn5K+IEzGsHUgROG7ryBMaeG7h3UgTmdheSBM4bqtcCBU4bupYzwvc3Bhbj4KICAgICAgICAgICAgICAgICAgICAgIDxzcGFuPihLaMO0bmcgbmfhuq90IG3DoXkpIOKelDwvc3Bhbj4KICAgICAgICAgICAgICAgICAgICA8L2J1dHRvbj4KICAgICAgICAgICAgICAgICAgPC9mb3JtPgogICAgICAgICAgICAgICAgICA8Zm9ybSBhY3Rpb249Ii9yZXN0YXJ0IiBtZXRob2Q9IlBPU1QiPgogICAgICAgICAgICAgICAgICAgIDxidXR0b24gdHlwZT0ic3VibWl0IiBjbGFzcz0iYWN0aW9uLWJ0biBidG4tcmVzdGFydCI+CiAgICAgICAgICAgICAgICAgICAgICA8c3Bhbj7wn5SBIEzGsHUgVG/DoG4gQuG7mSAmIEto4bufaSDEkOG7mW5nIFBoacOqbiBN4bubaTwvc3Bhbj4KICAgICAgICAgICAgICAgICAgICAgIDxzcGFuPihUcmVvIDI0LzI0KSDinpQ8L3NwYW4+CiAgICAgICAgICAgICAgICAgICAgPC9idXR0b24+CiAgICAgICAgICAgICAgICAgIDwvZm9ybT4KICAgICAgICAgICAgICAgICAgPGZvcm0gYWN0aW9uPSIvc3RvcCIgbWV0aG9kPSJQT1NUIj4KICAgICAgICAgICAgICAgICAgICA8YnV0dG9uIHR5cGU9InN1Ym1pdCIgY2xhc3M9ImFjdGlvbi1idG4gYnRuLXN0b3AiPgogICAgICAgICAgICAgICAgICAgICAgPHNwYW4+8J+bkSBMxrB1IEThu68gTGnhu4d1ICYgVOG6r3QgSOG6s24gU2VydmVyPC9zcGFuPgogICAgICAgICAgICAgICAgICAgICAgPHNwYW4+KEFuIHRvw6BuIDEwMCUpIOKelDwvc3Bhbj4KICAgICAgICAgICAgICAgICAgICA8L2J1dHRvbj4KICAgICAgICAgICAgICAgICAgPC9mb3JtPgogICAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJmb290ZXItbm90ZSI+8J+SoSBIw6N5IGTDuW5nIGPDoWMgbsO6dCB0csOqbiDEkeG7gyB04bqvdCBob+G6t2Mga2jhu59pIMSR4buZbmcgbOG6oWkgbcOheSDEkeG7gyDEkeG6o20gYuG6o28gdG/DoG4gYuG7mSBk4buvIGxp4buHdSDhu5UgxJHEqWEgxJHGsOG7o2MgbsOpbiB2w6AgxJHhuql5IGzDqm4gR2l0SHViIGFuIHRvw6BuITwvZGl2PgogICAgICAgICAgICAgIDwvZGl2PgogICAgICAgICAgICA8L2Rpdj4KICAgICAgICAgIDwvYm9keT4KICAgICAgICAgIDwvaHRtbD4='
+          $htmlCode = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($b64Html))
           # Thay thế các biến ban đầu vào template
           $tsIpVal = if ($env:TAILSCALE_IP) { $env:TAILSCALE_IP } else { '127.0.0.1' }
           $ddnsVal = if ($env:DUCKDNS_URL) { $env:DUCKDNS_URL } else { 'Chưa cấu hình' }
@@ -1157,121 +985,8 @@ jobs:
           Set-Content -Path "$env:RUNNER_TEMP\panel.html" -Value $htmlCode -Encoding UTF8
 
           # Server HTTP backend trong PowerShell hỗ trợ REST API (/api/info, /api/cmd) & Dashboard
-          $serverScript = @'
-          $ErrorActionPreference = "Continue"
-          $port = $env:WEB_PORT
-          if (-not $port) { $port = 8080 }
-          $listener = [System.Net.HttpListener]::new()
-          $listener.Prefixes.Add("http://+:" + $port + "/")
-          $listener.Start()
-
-          $startEpoch = [long]$env:JOB_START_EPOCH
-          $totalMinutes = [long]$env:TOTAL_MINUTES
-          $endEpoch = $startEpoch + ($totalMinutes * 60)
-          $machineId = $env:MACHINE_ID
-          $tsIp = if ($env:TAILSCALE_IP) { $env:TAILSCALE_IP } else { '127.0.0.1' }
-          $user = $env:RDP_USER
-          $pass = $env:RDP_PASS
-          $sunPort = $env:SUNSHINE_WEB_PORT
-          $ddns = $env:DUCKDNS_URL
-          $mountLetter = $env:MOUNT_LETTER
-
-          while ($listener.IsListening) {
-            try {
-              $ctx = $listener.GetContext()
-              $req = $ctx.Request
-              $resp = $ctx.Response
-              $urlPath = $req.Url.AbsolutePath.ToLower()
-
-              $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-              $remainSec = [math]::Max(0, $endEpoch - $now)
-              $h = [math]::Floor($remainSec / 3600)
-              $m = [math]::Floor(($remainSec % 3600) / 60)
-              $s = $remainSec % 60
-              $remainText = "${h}h ${m}m ${s}s"
-
-              $diskUsed = 0; $diskFree = 0
-              try {
-                $dObj = Get-PSDrive -Name $mountLetter -ErrorAction SilentlyContinue
-                if ($dObj) {
-                  $diskUsed = [math]::Round($dObj.Used / 1GB, 1)
-                  $diskFree = [math]::Round($dObj.Free / 1GB, 1)
-                }
-              } catch {}
-
-              $apps = @()
-              @('sunshine', 'StarDesk', 'Discord', 'chrome', 'Spotify', 'Code', 'bdcam') | ForEach-Object {
-                if (Get-Process -Name $_ -ErrorAction SilentlyContinue) { $apps += $_ }
-              }
-
-              if ($urlPath -eq '/api/info') {
-                $info = [ordered]@{
-                  ok = $true
-                  machineId = $machineId
-                  tailscaleIp = $tsIp
-                  duckdnsUrl = $ddns
-                  webPort = $port
-                  sunshinePort = $sunPort
-                  user = $user
-                  password = $pass
-                  remainSeconds = $remainSec
-                  remainText = $remainText
-                  diskUsedGb = $diskUsed
-                  diskFreeGb = $diskFree
-                  activeApps = $apps
-                }
-                $buf = [System.Text.Encoding]::UTF8.GetBytes(($info | ConvertTo-Json -Depth 5))
-                $resp.ContentType = "application/json; charset=utf-8"
-                $resp.ContentLength64 = $buf.Length
-                $resp.OutputStream.Write($buf, 0, $buf.Length)
-              }
-              elseif ($urlPath -eq '/api/cmd' -and $req.HttpMethod -eq 'POST') {
-                $reader = [System.IO.StreamReader]::new($req.InputStream, [System.Text.Encoding]::UTF8)
-                $bodyStr = $reader.ReadToEnd()
-                $reader.Close()
-                $cmdObj = $null
-                try { $cmdObj = $bodyStr | ConvertFrom-Json } catch {}
-                $c = if ($cmdObj -and $cmdObj.cmd) { $cmdObj.cmd.ToLower() } else { '' }
-                $text = if ($cmdObj -and $cmdObj.text) { $cmdObj.text } else { '' }
-
-                if ($c -eq 'save') { Set-Content -Path $env:CONTROL_SIGNAL_FILE -Value 'SAVE_NOW' -Force }
-                elseif ($c -eq 'restart') { Set-Content -Path $env:CONTROL_SIGNAL_FILE -Value 'RESTART_SESSION' -Force }
-                elseif ($c -eq 'stop') { Set-Content -Path $env:CONTROL_SIGNAL_FILE -Value 'STOP_SESSION' -Force }
-                elseif ($c -eq 'pass' -and $text) {
-                  & net user $user "$text" *> $null
-                  $env:RDP_PASS = $text
-                }
-                elseif ($c -eq 'msg' -and $text) {
-                  & msg * "$text" *> $null
-                }
-
-                $respObj = @{ ok = $true; cmd = $c; pong = ($c -eq 'ping') }
-                $buf = [System.Text.Encoding]::UTF8.GetBytes(($respObj | ConvertTo-Json))
-                $resp.ContentType = "application/json; charset=utf-8"
-                $resp.ContentLength64 = $buf.Length
-                $resp.OutputStream.Write($buf, 0, $buf.Length)
-              }
-              elseif ($req.HttpMethod -eq 'POST') {
-                if ($urlPath -eq '/save') { Set-Content -Path $env:CONTROL_SIGNAL_FILE -Value 'SAVE_NOW' -Force }
-                elseif ($urlPath -eq '/restart') { Set-Content -Path $env:CONTROL_SIGNAL_FILE -Value 'RESTART_SESSION' -Force }
-                elseif ($urlPath -eq '/stop') { Set-Content -Path $env:CONTROL_SIGNAL_FILE -Value 'STOP_SESSION' -Force }
-                $resp.Redirect('/')
-              }
-              else {
-                $html = Get-Content -Raw -Path "$env:RUNNER_TEMP\panel.html" -Encoding UTF8
-                $html = $html.Replace('{{REMAIN_TEXT}}', $remainText)
-                $html = $html.Replace('{{DISK_USED}}', "$diskUsed")
-                $html = $html.Replace('{{DISK_FREE}}', "$diskFree")
-                $buf = [System.Text.Encoding]::UTF8.GetBytes($html)
-                $resp.ContentType = "text/html; charset=utf-8"
-                $resp.ContentLength64 = $buf.Length
-                $resp.OutputStream.Write($buf, 0, $buf.Length)
-              }
-              $resp.OutputStream.Close()
-            } catch {}
-          }
-'@
-          Set-Content -Path "$env:RUNNER_TEMP\web.ps1" -Value $serverScript -Encoding UTF8
+          $b64Server = 'ICAgICAgICAgICRFcnJvckFjdGlvblByZWZlcmVuY2UgPSAiQ29udGludWUiCiAgICAgICAgICAkcG9ydCA9ICRlbnY6V0VCX1BPUlQKICAgICAgICAgIGlmICgtbm90ICRwb3J0KSB7ICRwb3J0ID0gODA4MCB9CiAgICAgICAgICAkbGlzdGVuZXIgPSBbU3lzdGVtLk5ldC5IdHRwTGlzdGVuZXJdOjpuZXcoKQogICAgICAgICAgJGxpc3RlbmVyLlByZWZpeGVzLkFkZCgiaHR0cDovLys6IiArICRwb3J0ICsgIi8iKQogICAgICAgICAgJGxpc3RlbmVyLlN0YXJ0KCkKCiAgICAgICAgICAkc3RhcnRFcG9jaCA9IFtsb25nXSRlbnY6Sk9CX1NUQVJUX0VQT0NICiAgICAgICAgICAkdG90YWxNaW51dGVzID0gW2xvbmddJGVudjpUT1RBTF9NSU5VVEVTCiAgICAgICAgICAkZW5kRXBvY2ggPSAkc3RhcnRFcG9jaCArICgkdG90YWxNaW51dGVzICogNjApCiAgICAgICAgICAkbWFjaGluZUlkID0gJGVudjpNQUNISU5FX0lECiAgICAgICAgICAkdHNJcCA9IGlmICgkZW52OlRBSUxTQ0FMRV9JUCkgeyAkZW52OlRBSUxTQ0FMRV9JUCB9IGVsc2UgeyAnMTI3LjAuMC4xJyB9CiAgICAgICAgICAkdXNlciA9ICRlbnY6UkRQX1VTRVIKICAgICAgICAgICRwYXNzID0gJGVudjpSRFBfUEFTUwogICAgICAgICAgJHN1blBvcnQgPSAkZW52OlNVTlNISU5FX1dFQl9QT1JUCiAgICAgICAgICAkZGRucyA9ICRlbnY6RFVDS0ROU19VUkwKICAgICAgICAgICRtb3VudExldHRlciA9ICRlbnY6TU9VTlRfTEVUVEVSCgogICAgICAgICAgd2hpbGUgKCRsaXN0ZW5lci5Jc0xpc3RlbmluZykgewogICAgICAgICAgICB0cnkgewogICAgICAgICAgICAgICRjdHggPSAkbGlzdGVuZXIuR2V0Q29udGV4dCgpCiAgICAgICAgICAgICAgJHJlcSA9ICRjdHguUmVxdWVzdAogICAgICAgICAgICAgICRyZXNwID0gJGN0eC5SZXNwb25zZQogICAgICAgICAgICAgICR1cmxQYXRoID0gJHJlcS5VcmwuQWJzb2x1dGVQYXRoLlRvTG93ZXIoKQoKICAgICAgICAgICAgICAkbm93ID0gW0RhdGVUaW1lT2Zmc2V0XTo6VXRjTm93LlRvVW5peFRpbWVTZWNvbmRzKCkKICAgICAgICAgICAgICAkcmVtYWluU2VjID0gW21hdGhdOjpNYXgoMCwgJGVuZEVwb2NoIC0gJG5vdykKICAgICAgICAgICAgICAkaCA9IFttYXRoXTo6Rmxvb3IoJHJlbWFpblNlYyAvIDM2MDApCiAgICAgICAgICAgICAgJG0gPSBbbWF0aF06OkZsb29yKCgkcmVtYWluU2VjICUgMzYwMCkgLyA2MCkKICAgICAgICAgICAgICAkcyA9ICRyZW1haW5TZWMgJSA2MAogICAgICAgICAgICAgICRyZW1haW5UZXh0ID0gIiR7aH1oICR7bX1tICR7c31zIgoKICAgICAgICAgICAgICAkZGlza1VzZWQgPSAwOyAkZGlza0ZyZWUgPSAwCiAgICAgICAgICAgICAgdHJ5IHsKICAgICAgICAgICAgICAgICRkT2JqID0gR2V0LVBTRHJpdmUgLU5hbWUgJG1vdW50TGV0dGVyIC1FcnJvckFjdGlvbiBTaWxlbnRseUNvbnRpbnVlCiAgICAgICAgICAgICAgICBpZiAoJGRPYmopIHsKICAgICAgICAgICAgICAgICAgJGRpc2tVc2VkID0gW21hdGhdOjpSb3VuZCgkZE9iai5Vc2VkIC8gMUdCLCAxKQogICAgICAgICAgICAgICAgICAkZGlza0ZyZWUgPSBbbWF0aF06OlJvdW5kKCRkT2JqLkZyZWUgLyAxR0IsIDEpCiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgfSBjYXRjaCB7fQoKICAgICAgICAgICAgICAkYXBwcyA9IEAoKQogICAgICAgICAgICAgIEAoJ3N1bnNoaW5lJywgJ1N0YXJEZXNrJywgJ0Rpc2NvcmQnLCAnY2hyb21lJywgJ1Nwb3RpZnknLCAnQ29kZScsICdiZGNhbScpIHwgRm9yRWFjaC1PYmplY3QgewogICAgICAgICAgICAgICAgaWYgKEdldC1Qcm9jZXNzIC1OYW1lICRfIC1FcnJvckFjdGlvbiBTaWxlbnRseUNvbnRpbnVlKSB7ICRhcHBzICs9ICRfIH0KICAgICAgICAgICAgICB9CgogICAgICAgICAgICAgIGlmICgkdXJsUGF0aCAtZXEgJy9hcGkvaW5mbycpIHsKICAgICAgICAgICAgICAgICRpbmZvID0gW29yZGVyZWRdQHsKICAgICAgICAgICAgICAgICAgb2sgPSAkdHJ1ZQogICAgICAgICAgICAgICAgICBtYWNoaW5lSWQgPSAkbWFjaGluZUlkCiAgICAgICAgICAgICAgICAgIHRhaWxzY2FsZUlwID0gJHRzSXAKICAgICAgICAgICAgICAgICAgZHVja2Ruc1VybCA9ICRkZG5zCiAgICAgICAgICAgICAgICAgIHdlYlBvcnQgPSAkcG9ydAogICAgICAgICAgICAgICAgICBzdW5zaGluZVBvcnQgPSAkc3VuUG9ydAogICAgICAgICAgICAgICAgICB1c2VyID0gJHVzZXIKICAgICAgICAgICAgICAgICAgcGFzc3dvcmQgPSAkcGFzcwogICAgICAgICAgICAgICAgICByZW1haW5TZWNvbmRzID0gJHJlbWFpblNlYwogICAgICAgICAgICAgICAgICByZW1haW5UZXh0ID0gJHJlbWFpblRleHQKICAgICAgICAgICAgICAgICAgZGlza1VzZWRHYiA9ICRkaXNrVXNlZAogICAgICAgICAgICAgICAgICBkaXNrRnJlZUdiID0gJGRpc2tGcmVlCiAgICAgICAgICAgICAgICAgIGFjdGl2ZUFwcHMgPSAkYXBwcwogICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgJGJ1ZiA9IFtTeXN0ZW0uVGV4dC5FbmNvZGluZ106OlVURjguR2V0Qnl0ZXMoKCRpbmZvIHwgQ29udmVydFRvLUpzb24gLURlcHRoIDUpKQogICAgICAgICAgICAgICAgJHJlc3AuQ29udGVudFR5cGUgPSAiYXBwbGljYXRpb24vanNvbjsgY2hhcnNldD11dGYtOCIKICAgICAgICAgICAgICAgICRyZXNwLkNvbnRlbnRMZW5ndGg2NCA9ICRidWYuTGVuZ3RoCiAgICAgICAgICAgICAgICAkcmVzcC5PdXRwdXRTdHJlYW0uV3JpdGUoJGJ1ZiwgMCwgJGJ1Zi5MZW5ndGgpCiAgICAgICAgICAgICAgfQogICAgICAgICAgICAgIGVsc2VpZiAoJHVybFBhdGggLWVxICcvYXBpL2NtZCcgLWFuZCAkcmVxLkh0dHBNZXRob2QgLWVxICdQT1NUJykgewogICAgICAgICAgICAgICAgJHJlYWRlciA9IFtTeXN0ZW0uSU8uU3RyZWFtUmVhZGVyXTo6bmV3KCRyZXEuSW5wdXRTdHJlYW0sIFtTeXN0ZW0uVGV4dC5FbmNvZGluZ106OlVURjgpCiAgICAgICAgICAgICAgICAkYm9keVN0ciA9ICRyZWFkZXIuUmVhZFRvRW5kKCkKICAgICAgICAgICAgICAgICRyZWFkZXIuQ2xvc2UoKQogICAgICAgICAgICAgICAgJGNtZE9iaiA9ICRudWxsCiAgICAgICAgICAgICAgICB0cnkgeyAkY21kT2JqID0gJGJvZHlTdHIgfCBDb252ZXJ0RnJvbS1Kc29uIH0gY2F0Y2gge30KICAgICAgICAgICAgICAgICRjID0gaWYgKCRjbWRPYmogLWFuZCAkY21kT2JqLmNtZCkgeyAkY21kT2JqLmNtZC5Ub0xvd2VyKCkgfSBlbHNlIHsgJycgfQogICAgICAgICAgICAgICAgJHRleHQgPSBpZiAoJGNtZE9iaiAtYW5kICRjbWRPYmoudGV4dCkgeyAkY21kT2JqLnRleHQgfSBlbHNlIHsgJycgfQoKICAgICAgICAgICAgICAgIGlmICgkYyAtZXEgJ3NhdmUnKSB7IFNldC1Db250ZW50IC1QYXRoICRlbnY6Q09OVFJPTF9TSUdOQUxfRklMRSAtVmFsdWUgJ1NBVkVfTk9XJyAtRm9yY2UgfQogICAgICAgICAgICAgICAgZWxzZWlmICgkYyAtZXEgJ3Jlc3RhcnQnKSB7IFNldC1Db250ZW50IC1QYXRoICRlbnY6Q09OVFJPTF9TSUdOQUxfRklMRSAtVmFsdWUgJ1JFU1RBUlRfU0VTU0lPTicgLUZvcmNlIH0KICAgICAgICAgICAgICAgIGVsc2VpZiAoJGMgLWVxICdzdG9wJykgeyBTZXQtQ29udGVudCAtUGF0aCAkZW52OkNPTlRST0xfU0lHTkFMX0ZJTEUgLVZhbHVlICdTVE9QX1NFU1NJT04nIC1Gb3JjZSB9CiAgICAgICAgICAgICAgICBlbHNlaWYgKCRjIC1lcSAncGFzcycgLWFuZCAkdGV4dCkgewogICAgICAgICAgICAgICAgICAmIG5ldCB1c2VyICR1c2VyICIkdGV4dCIgKj4gJG51bGwKICAgICAgICAgICAgICAgICAgJGVudjpSRFBfUEFTUyA9ICR0ZXh0CiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICBlbHNlaWYgKCRjIC1lcSAnbXNnJyAtYW5kICR0ZXh0KSB7CiAgICAgICAgICAgICAgICAgICYgbXNnICogIiR0ZXh0IiAqPiAkbnVsbAogICAgICAgICAgICAgICAgfQoKICAgICAgICAgICAgICAgICRyZXNwT2JqID0gQHsgb2sgPSAkdHJ1ZTsgY21kID0gJGM7IHBvbmcgPSAoJGMgLWVxICdwaW5nJykgfQogICAgICAgICAgICAgICAgJGJ1ZiA9IFtTeXN0ZW0uVGV4dC5FbmNvZGluZ106OlVURjguR2V0Qnl0ZXMoKCRyZXNwT2JqIHwgQ29udmVydFRvLUpzb24pKQogICAgICAgICAgICAgICAgJHJlc3AuQ29udGVudFR5cGUgPSAiYXBwbGljYXRpb24vanNvbjsgY2hhcnNldD11dGYtOCIKICAgICAgICAgICAgICAgICRyZXNwLkNvbnRlbnRMZW5ndGg2NCA9ICRidWYuTGVuZ3RoCiAgICAgICAgICAgICAgICAkcmVzcC5PdXRwdXRTdHJlYW0uV3JpdGUoJGJ1ZiwgMCwgJGJ1Zi5MZW5ndGgpCiAgICAgICAgICAgICAgfQogICAgICAgICAgICAgIGVsc2VpZiAoJHJlcS5IdHRwTWV0aG9kIC1lcSAnUE9TVCcpIHsKICAgICAgICAgICAgICAgIGlmICgkdXJsUGF0aCAtZXEgJy9zYXZlJykgeyBTZXQtQ29udGVudCAtUGF0aCAkZW52OkNPTlRST0xfU0lHTkFMX0ZJTEUgLVZhbHVlICdTQVZFX05PVycgLUZvcmNlIH0KICAgICAgICAgICAgICAgIGVsc2VpZiAoJHVybFBhdGggLWVxICcvcmVzdGFydCcpIHsgU2V0LUNvbnRlbnQgLVBhdGggJGVudjpDT05UUk9MX1NJR05BTF9GSUxFIC1WYWx1ZSAnUkVTVEFSVF9TRVNTSU9OJyAtRm9yY2UgfQogICAgICAgICAgICAgICAgZWxzZWlmICgkdXJsUGF0aCAtZXEgJy9zdG9wJykgeyBTZXQtQ29udGVudCAtUGF0aCAkZW52OkNPTlRST0xfU0lHTkFMX0ZJTEUgLVZhbHVlICdTVE9QX1NFU1NJT04nIC1Gb3JjZSB9CiAgICAgICAgICAgICAgICAkcmVzcC5SZWRpcmVjdCgnLycpCiAgICAgICAgICAgICAgfQogICAgICAgICAgICAgIGVsc2UgewogICAgICAgICAgICAgICAgJGh0bWwgPSBHZXQtQ29udGVudCAtUmF3IC1QYXRoICIkZW52OlJVTk5FUl9URU1QXHBhbmVsLmh0bWwiIC1FbmNvZGluZyBVVEY4CiAgICAgICAgICAgICAgICAkaHRtbCA9ICRodG1sLlJlcGxhY2UoJ3t7UkVNQUlOX1RFWFR9fScsICRyZW1haW5UZXh0KQogICAgICAgICAgICAgICAgJGh0bWwgPSAkaHRtbC5SZXBsYWNlKCd7e0RJU0tfVVNFRH19JywgIiRkaXNrVXNlZCIpCiAgICAgICAgICAgICAgICAkaHRtbCA9ICRodG1sLlJlcGxhY2UoJ3t7RElTS19GUkVFfX0nLCAiJGRpc2tGcmVlIikKICAgICAgICAgICAgICAgICRidWYgPSBbU3lzdGVtLlRleHQuRW5jb2RpbmddOjpVVEY4LkdldEJ5dGVzKCRodG1sKQogICAgICAgICAgICAgICAgJHJlc3AuQ29udGVudFR5cGUgPSAidGV4dC9odG1sOyBjaGFyc2V0PXV0Zi04IgogICAgICAgICAgICAgICAgJHJlc3AuQ29udGVudExlbmd0aDY0ID0gJGJ1Zi5MZW5ndGgKICAgICAgICAgICAgICAgICRyZXNwLk91dHB1dFN0cmVhbS5Xcml0ZSgkYnVmLCAwLCAkYnVmLkxlbmd0aCkKICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgJHJlc3AuT3V0cHV0U3RyZWFtLkNsb3NlKCkKICAgICAgICAgICAgfSBjYXRjaCB7fQogICAgICAgICAgfQ=='
+          [System.IO.File]::WriteAllBytes("$env:RUNNER_TEMP\web.ps1", [System.Convert]::FromBase64String($b64Server))
           Start-Process pwsh.exe -ArgumentList '-NoProfile','-WindowStyle','Hidden','-File',"`"$env:RUNNER_TEMP\web.ps1`""
           Start-Sleep -Seconds 2
 
@@ -1311,7 +1026,7 @@ jobs:
           $tsIp = if ($env:TAILSCALE_IP) { $env:TAILSCALE_IP } else { '127.0.0.1' }
           $hostStr = if ($env:DUCKDNS_URL) { $env:DUCKDNS_URL } else { $tsIp }
           $summary = @(
-            "# 🌸 ZENOVA CLOUD SUPREME v70 TỐI THƯỢNG",
+            "# 🌸 ZENOVA CLOUD SUPREME v70.1 TỐI THƯỢNG",
             "",
             "| Mục cấu hình | Chi tiết kết nối |",
             "|:---|:---|",
@@ -1404,7 +1119,7 @@ jobs:
           $global:LASTEXITCODE = 0
 
       - name: 🔁 Kích Hoạt Phiên Tiếp Theo & Treo Máy 24/24
-        if: ${{ always() && steps.keepalive.outcome == 'success' && env.FORCE_STOP_ONLY != '1' && (inputs.auto_restart || env.FORCE_NEXT_SESSION == '1') }}
+        if: always() && steps.keepalive.outcome == 'success' && env.FORCE_STOP_ONLY != '1' && (inputs.auto_restart || env.FORCE_NEXT_SESSION == '1')
         shell: pwsh
         env:
           DURATION: ${{ inputs.duration }}
@@ -1413,7 +1128,6 @@ jobs:
           VDD_RES: ${{ inputs.vdd_resolution }}
           PKGS: ${{ inputs.choco_packages }}
           OPT: ${{ inputs.optimize_windows }}
-          BOT_URL: ${{ inputs.bot_webhook_url }}
         run: |
           $wf = [System.IO.Path]::GetFileName(("$env:GITHUB_WORKFLOW_REF" -split '@')[0])
           $optStr = ("$env:OPT").ToLower()
@@ -1428,8 +1142,7 @@ jobs:
             -f "fixed_password=$env:FIXED_PASS" `
             -f "vdd_resolution=$env:VDD_RES" `
             -f "choco_packages=$env:PKGS" `
-            -f "optimize_windows=$optStr" `
-            -f "bot_webhook_url=$env:BOT_URL"
+            -f "optimize_windows=$optStr"
           if ($LASTEXITCODE -eq 0) {
             Write-Host "✅ Đã kích hoạt phiên tiếp theo thành công (Treo 24/24 liên tục)!" -ForegroundColor Green
           } else {
