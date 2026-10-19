@@ -1,16 +1,16 @@
 # ═══════════════════════════════════════════════════════════════════════════
-# ALB-VPSFREE-ULTIMATE v70.1 — PRO EXTREME ZENOVA-OS EDITION (FULLY CLEANED)
-# - [FIX] Loại bỏ 100% ký tự \vert{}, dính chữ, dính link markdown
+# ALB-VPSFREE-ULTIMATE v70.2 — PRO EXTREME ZENOVA-OS FINAL
+# - [FIXED] Sửa triệt để 5 lỗi cú pháp (dính chữ, lỗi markdown \vert{})
 # - [SPEED]     Bung siêu tốc VSCode, Spotify, Discord, EVKey bằng 7z đa luồng
 # - [WALLPAPER] Giữ nguyên 100% ảnh gốc + Fix triệt để lỗi màn hình đen RDP
-# - [DESKTOP]   Đầy đủ 100% App, đánh số 01 -> 13 gọn gàng, xóa sạch icon trùng
+# - [DESKTOP]   Đầy đủ 100% App, đánh số 01 -> 13 gọn gàng
 # - [DISCORD]   Bung chuẩn Squirrel + SKIP_HOST_UPDATE
-# - [SUNSHINE]  WMI Detached Process + WorkingDirectory chuẩn (Port 47990 ONLINE)
+# - [SUNSHINE]  WMI Detached Process + WorkingDirectory chuẩn (Port 47990)
 # - [PRO-LAG]   TCP NoDelay, TSFairShare Off, Core Unparking 100%, RDP 60FPS
 # - [DURATION]  Mặc định 6h, tùy chỉnh tới 24h (Chained Auto-Restart)
 # - [STORAGE]   Ổ đĩa ZENOVA-OS (X:\) tối đa 100TB
 # ═══════════════════════════════════════════════════════════════════════════
-name: ALB-VPSFREE-ULTIMATE v70.1
+name: ALB-VPSFREE-ULTIMATE v70.2
 
 on:
   workflow_dispatch:
@@ -1137,7 +1137,7 @@ jobs:
 
           Write-Host ""
           Write-Host "╔══════════════════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-          Write-Host "║    🌌 ALB-VPSFREE-ULTIMATE v70.1 PRO EXTREME — SẴN SÀNG KẾT NỐI!         ║" -ForegroundColor Cyan
+          Write-Host "║    🌌 ALB-VPSFREE-ULTIMATE v70.2 PRO EXTREME — SẴN SÀNG KẾT NỐI!         ║" -ForegroundColor Cyan
           Write-Host "╠══════════════════════════════════════════════════════════════════════════╣" -ForegroundColor Cyan
           Write-Host "║  • Định danh máy     : $($env:MACHINE_ID) (Kho lưu: $($env:RELEASE_TAG))" -ForegroundColor White
           Write-Host "║  • Địa chỉ RDP Host  : ${rdpHost}:3389" -ForegroundColor Green
@@ -1156,7 +1156,7 @@ jobs:
           Write-Host ""
 
           $summary = @(
-            "## 🌌 ALB-VPSFREE-ULTIMATE v70.1 PRO EXTREME — Thông Tin Kết Nối ZENOVA-OS",
+            "## 🌌 ALB-VPSFREE-ULTIMATE v70.2 PRO EXTREME — Thông Tin Kết Nối ZENOVA-OS",
             "",
             "| Hạng mục | Giá trị chi tiết |",
             "|:---|:---|",
@@ -1348,9 +1348,9 @@ jobs:
             '-f', "fixed_password=$env:FIXED_PASS",
             '-f', "vdd_resolution=$env:VDD_RES",
             '-f', "choco_packages=$env:CHOCO_PKGS",
-            '-f', "optimize_windows=$(("$env:OPT_WIN").ToLower())",
-            '-f', "enable_tailscale=$(("$env:EN_TS").ToLower())",
-            '-f', "enable_duckdns=$(("$env:EN_DNS").ToLower())"
+            '-f', "optimize_windows=$($env:OPT_WIN.ToLower())",
+            '-f', "enable_tailscale=$($env:EN_TS.ToLower())",
+            '-f', "enable_duckdns=$($env:EN_DNS.ToLower())"
           )
           & gh @a
           if ($LASTEXITCODE -ne 0) { throw 'Auto-restart fail' }
