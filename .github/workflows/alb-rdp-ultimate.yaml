@@ -1,11 +1,12 @@
 # ═══════════════════════════════════════════════════════════════
-# ALB-VPSFREE-ULTIMATE v55.0 — SUPREME ZENOVA
-# [FIX 1] Web Panel: List<string> thay Here-String
-# [FIX 2] Web Panel: Verify file size, force UTF8
-# [FIX 3] Wallpaper: Set HKCU + HKLM, force refresh
-# [FIX 4] Watchdog: schtasks name chính xác "ALB-Launch-Sunshine"
+# ALB-VPSFREE-ULTIMATE v56.0 — SUPREME ZENOVA FINAL
+# [FIX] Discord: Xóa AppData cũ trước khi cài
+# [FIX] Web Panel: Dùng Here-String chuẩn (không Array)
+# [FIX] Sunshine: Start-Process + Verify port
+# [FIX] Wallpaper: Force refresh HKCU
+# [FIX] Đủ App: Tuần tự, tăng timeout
 # ═══════════════════════════════════════════════════════════════
-name: ALB-VPSFREE-ULTIMATE v55.0
+name: ALB-VPSFREE-ULTIMATE v56.0
 
 on:
   workflow_dispatch:
@@ -195,7 +196,6 @@ jobs:
           "SUNSHINE_PERSIST_CFG=$osDir\Sunshine-Config" >> $env:GITHUB_ENV
           "WALLPAPER_DIR=$osDir\Wallpaper" >> $env:GITHUB_ENV
 
-          # Save script
           $L = New-Object System.Collections.Generic.List[string]
           $L.Add('param([string]$Reason = "session-end")')
           $L.Add('$ErrorActionPreference = "Continue"')
@@ -597,6 +597,7 @@ jobs:
           $j5 = Start-FastJob -ArgsList @($ic) -Block { param($ic) if (-not (Test-Path 'C:\Program Files\StarDesk\StarDesk.exe')) { $p = Start-Process "$ic\StarDesk.exe" -ArgumentList '/S' -PassThru -NoNewWindow -EA SilentlyContinue; if ($p) { $p.WaitForExit(60000) } } }
           $j6 = Start-FastJob -ArgsList @($ic) -Block { 
             param($ic) 
+            if (Test-Path "$env:LOCALAPPDATA\Discord") { Remove-Item "$env:LOCALAPPDATA\Discord" -Recurse -Force -EA SilentlyContinue }
             if (-not (Test-Path "$env:LOCALAPPDATA\Discord\Update.exe")) { 
               $p = Start-Process "$ic\DiscordSetup.exe" -ArgumentList '-s' -PassThru -NoNewWindow -EA SilentlyContinue; 
               if ($p) { $p.WaitForExit(70000) } 
@@ -715,27 +716,6 @@ jobs:
           Write-Host "=============================================" -ForegroundColor Green
           $global:LASTEXITCODE = 0
 
-      - name: ⏳ Watchdog
-        id: keepalive
-        shell: pwsh
-        timeout-minutes: 355
-        run: |
-          function Test-Port { param($P) try { $t=[System.Net.Sockets.TcpClient]::new(); $a=$t.ConnectAsync('127.0.0.1',$P); $ok=$a.Wait(1500); $t.Close(); return $ok } catch { return $false } }
-          $end = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + ([long]$env:TOTAL_MINUTES * 60)
-          $sig = $env:CONTROL_SIGNAL_FILE
-          while ($true) {
-            if (Test-Path $sig) {
-              $c = (Get-Content -Raw $sig).Trim(); Remove-Item $sig -Force -EA SilentlyContinue
-              if ($c -eq 'SAVE_NOW') { & "$env:RUNNER_TEMP\save-data.ps1" -Reason 'manual' }
-              elseif ($c -eq 'RESTART_SESSION') { 'FORCE_NEXT_SESSION=1' >> $env:GITHUB_ENV; break }
-              elseif ($c -eq 'STOP_SESSION') { 'FORCE_STOP_ONLY=1' >> $env:GITHUB_ENV; break }
-            }
-            if ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() -ge $end) { break }
-            if (-not (Test-Port 47990)) { & schtasks.exe /Run /TN "ALB-Launch-Sunshine" *> $null }
-            Start-Sleep -Seconds 5
-          }
-          $global:LASTEXITCODE = 0
-
       - name: 🎉 Thông Tin Kết Nối & Cấu Hình (Sau Watchdog)
         shell: pwsh
         timeout-minutes: 2
@@ -758,6 +738,27 @@ jobs:
             "| Wallpaper | $($env:WALLPAPER_STATUS) |"
           )
           $summary | ForEach-Object { $_ >> $env:GITHUB_STEP_SUMMARY }
+          $global:LASTEXITCODE = 0
+
+      - name: ⏳ Watchdog
+        id: keepalive
+        shell: pwsh
+        timeout-minutes: 355
+        run: |
+          function Test-Port { param($P) try { $t=[System.Net.Sockets.TcpClient]::new(); $a=$t.ConnectAsync('127.0.0.1',$P); $ok=$a.Wait(1500); $t.Close(); return $ok } catch { return $false } }
+          $end = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + ([long]$env:TOTAL_MINUTES * 60)
+          $sig = $env:CONTROL_SIGNAL_FILE
+          while ($true) {
+            if (Test-Path $sig) {
+              $c = (Get-Content -Raw $sig).Trim(); Remove-Item $sig -Force -EA SilentlyContinue
+              if ($c -eq 'SAVE_NOW') { & "$env:RUNNER_TEMP\save-data.ps1" -Reason 'manual' }
+              elseif ($c -eq 'RESTART_SESSION') { 'FORCE_NEXT_SESSION=1' >> $env:GITHUB_ENV; break }
+              elseif ($c -eq 'STOP_SESSION') { 'FORCE_STOP_ONLY=1' >> $env:GITHUB_ENV; break }
+            }
+            if ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() -ge $end) { break }
+            if (-not (Test-Port 47990)) { & schtasks.exe /Run /TN "ALB-Launch-Sunshine" *> $null }
+            Start-Sleep -Seconds 5
+          }
           $global:LASTEXITCODE = 0
 
       - name: 💾 Lưu cuối phiên
