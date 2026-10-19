@@ -1,16 +1,11 @@
 # ═══════════════════════════════════════════════════════════════════════════
-# ALB-VPSFREE-ULTIMATE v70.4 — PRO EXTREME ZENOVA-OS (FULL FEATURES)
-# - [FIXED] Sửa triệt để 5 lỗi cú pháp YAML (không còn treo "Starting job")
-# - [SPEED]     Cài đặt đa luồng siêu tốc VSCode, Spotify, Discord, EVKey
-# - [WALLPAPER] Giữ nguyên 100% ảnh gốc + Fix triệt để màn hình đen RDP
-# - [DESKTOP]   Đầy đủ 100% App, sắp xếp từ 01 -> 13, xóa sạch icon trùng
-# - [DISCORD]   Cài chuẩn Squirrel + SKIP_HOST_UPDATE (vào thẳng 100%)
-# - [SUNSHINE]  WMI Detached Process + WorkingDirectory chuẩn (Port 47990)
-# - [PRO-LAG]   TCP NoDelay, TSFairShare Off, Core Unparking 100%, RDP 60FPS
-# - [DURATION]  Mặc định 6h, tùy chỉnh tới 24h (Chained Auto-Restart)
-# - [STORAGE]   Ổ đĩa ZENOVA-OS (X:\) tối đa 100TB
+# ALB-VPSFREE-ULTIMATE v70.5 — FINAL ULTIMATE EDITION
+# - [FIX] Sửa lỗi cú pháp if: always() (thiếu ${{ }} gây treo Starting job)
+# - [FIX] Sửa lỗi nối dòng bằng backtick (`) trong gh workflow run
+# - [FIX] Sửa lỗi dấu nháy kép bị biến thành curly quotes
+# - [SPEED] Cài đặt đa luồng siêu tốc, không chờ đợi
 # ═══════════════════════════════════════════════════════════════════════════
-name: ALB-VPSFREE-ULTIMATE v70.4
+name: ALB-VPSFREE-ULTIMATE v70.5
 
 on:
   workflow_dispatch:
@@ -21,7 +16,7 @@ on:
         default: 'may-phu-1'
         type: string
       duration:
-        description: '🕐 Thời gian sử dụng máy (Mặc định: 6h, tối đa: 24h)'
+        description: '🕐 Thời gian sử dụng máy'
         required: false
         default: '6h'
         type: choice
@@ -37,7 +32,7 @@ on:
         default: 'X'
         type: string
       vhd_size_gb:
-        description: '📦 Dung lượng ổ ZENOVA-OS (GB - Tối đa 100TB)'
+        description: '📦 Dung lượng ổ ZENOVA-OS (GB)'
         required: false
         default: '100'
         type: string
@@ -106,7 +101,7 @@ jobs:
         uses: actions/checkout@v4
         continue-on-error: true
 
-      - name: ⚡ Khởi tạo Ổ Đĩa Riêng ZENOVA-OS (6h - 24h) & Engine Lưu Trữ
+      - name: ⚡ Khởi tạo Ổ Đĩa Riêng ZENOVA-OS & Engine Lưu Trữ
         shell: pwsh
         timeout-minutes: 8
         env:
@@ -1137,7 +1132,7 @@ jobs:
 
           Write-Host ""
           Write-Host "╔══════════════════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-          Write-Host "║    🌌 ALB-VPSFREE-ULTIMATE v70.4 PRO EXTREME — SẴN SÀNG KẾT NỐI!         ║" -ForegroundColor Cyan
+          Write-Host "║    🌌 ALB-VPSFREE-ULTIMATE v70.5 PRO EXTREME — SẴN SÀNG KẾT NỐI!         ║" -ForegroundColor Cyan
           Write-Host "╠══════════════════════════════════════════════════════════════════════════╣" -ForegroundColor Cyan
           Write-Host "║  • Định danh máy     : $($env:MACHINE_ID) (Kho lưu: $($env:RELEASE_TAG))" -ForegroundColor White
           Write-Host "║  • Địa chỉ RDP Host  : ${rdpHost}:3389" -ForegroundColor Green
@@ -1156,7 +1151,7 @@ jobs:
           Write-Host ""
 
           $summary = @(
-            "## 🌌 ALB-VPSFREE-ULTIMATE v70.4 PRO EXTREME — Thông Tin Kết Nối ZENOVA-OS",
+            "## 🌌 ALB-VPSFREE-ULTIMATE v70.5 PRO EXTREME — Thông Tin Kết Nối ZENOVA-OS",
             "",
             "| Hạng mục | Giá trị chi tiết |",
             "|:---|:---|",
@@ -1279,7 +1274,7 @@ jobs:
           $global:LASTEXITCODE = 0
 
       - name: 💾 Lưu toàn bộ ổ đĩa ZENOVA-OS cuối phiên
-        if: always()
+        if: ${{ always() }}
         shell: pwsh
         timeout-minutes: 10
         run: |
@@ -1294,7 +1289,7 @@ jobs:
           $global:LASTEXITCODE = 0
 
       - name: 🧹 Dọn dẹp hệ thống
-        if: always()
+        if: ${{ always() }}
         shell: pwsh
         timeout-minutes: 5
         run: |
