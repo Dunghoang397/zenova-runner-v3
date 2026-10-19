@@ -1,8 +1,11 @@
 # ═══════════════════════════════════════════════════════════════
-# ALB-VPSFREE-ULTIMATE v54.0 — SUPREME ZENOVA
-# FIX: Web Panel (dùng List<string>), Sunshine (Service), Wallpaper (Force), App (Verify), Info (sau Watchdog)
+# ALB-VPSFREE-ULTIMATE v55.0 — SUPREME ZENOVA
+# [FIX 1] Web Panel: List<string> thay Here-String
+# [FIX 2] Web Panel: Verify file size, force UTF8
+# [FIX 3] Wallpaper: Set HKCU + HKLM, force refresh
+# [FIX 4] Watchdog: schtasks name chính xác "ALB-Launch-Sunshine"
 # ═══════════════════════════════════════════════════════════════
-name: ALB-VPSFREE-ULTIMATE v54.0
+name: ALB-VPSFREE-ULTIMATE v55.0
 
 on:
   workflow_dispatch:
@@ -634,72 +637,75 @@ jobs:
         timeout-minutes: 3
         run: |
           $port = $env:WEB_PORT
-          $html = @"
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-<meta charset="UTF-8">
-<title>ZENOVA CLOUD PANEL</title>
-<style>
-body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 24px; display: flex; justify-content: center; }
-.card { max-width: 600px; width: 100%; background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 24px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
-h1 { margin: 0 0 8px 0; font-size: 22px; color: #f472b6; }
-.sub { color: #94a3b8; font-size: 14px; margin-bottom: 20px; }
-.info { background: #0f172a; border-radius: 12px; padding: 16px; margin-bottom: 20px; }
-.row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #1e293b; font-size: 14px; }
-.val { font-weight: 600; color: #4ade80; } .val a { color: #facc15; }
-form { margin-bottom: 12px; }
-button { width: 100%; padding: 14px 18px; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; display: flex; justify-content: space-between; color: white; }
-.btn-save { background: #0284c7; } .btn-restart { background: #d97706; } .btn-stop { background: #dc2626; }
-.note { font-size: 12px; color: #94a3b8; margin-top: 14px; }
-</style>
-</head>
-<body>
-<div class="card">
-<h1>🌸 ZENOVA CLOUD</h1>
-<div class="sub">Quản lý Lưu ổ đĩa, Sunshine, Tắt máy</div>
-<div class="info">
-<div class="row"><span>🏷️ Máy:</span><span class="val">$($env:MACHINE_ID)</span></div>
-<div class="row"><span>🌐 IP Tailscale:</span><span class="val">$($env:TAILSCALE_IP)</span></div>
-<div class="row"><span>☀️ Sunshine Web UI:</span><span class="val"><a href="https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/" target="_blank">https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/</a></span></div>
-<div class="row"><span>👤 Tài khoản:</span><span class="val">$($env:RDP_USER)</span></div>
-<div class="row"><span>🔐 Mật khẩu:</span><span class="val">$($env:RDP_PASS)</span></div>
-<div class="row"><span>⚡ CPU:</span><span class="val">$($env:CPU_MODEL_INFO)</span></div>
-</div>
-<form action="/save" method="POST"><button type="submit" class="btn-save">💾 Lưu Dữ Liệu Ngay</button></form>
-<form action="/restart" method="POST"><button type="submit" class="btn-restart">🔁 Lưu & Restart</button></form>
-<form action="/stop" method="POST"><button type="submit" class="btn-stop">🛑 Lưu & Tắt Hẳn Server</button></form>
-<div class="note">💡 Tắt máy bằng các nút trên để không mất dữ liệu.</div>
-</div>
-</body>
-</html>
-"@
-          Set-Content -Path "$env:RUNNER_TEMP\panel.html" -Value $html -Encoding UTF8
+          $htmlLines = @(
+            '<!DOCTYPE html>',
+            '<html lang="vi">',
+            '<head>',
+            '<meta charset="UTF-8">',
+            '<title>ZENOVA CLOUD PANEL</title>',
+            '<style>',
+            'body { font-family: ''Segoe UI'', sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 24px; display: flex; justify-content: center; }',
+            '.card { max-width: 600px; width: 100%; background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 24px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }',
+            'h1 { margin: 0 0 8px 0; font-size: 22px; color: #f472b6; }',
+            '.sub { color: #94a3b8; font-size: 14px; margin-bottom: 20px; }',
+            '.info { background: #0f172a; border-radius: 12px; padding: 16px; margin-bottom: 20px; }',
+            '.row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #1e293b; font-size: 14px; }',
+            '.val { font-weight: 600; color: #4ade80; } .val a { color: #facc15; }',
+            'form { margin-bottom: 12px; }',
+            'button { width: 100%; padding: 14px 18px; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; display: flex; justify-content: space-between; color: white; }',
+            '.btn-save { background: #0284c7; } .btn-restart { background: #d97706; } .btn-stop { background: #dc2626; }',
+            '.note { font-size: 12px; color: #94a3b8; margin-top: 14px; }',
+            '</style>',
+            '</head>',
+            '<body>',
+            '<div class="card">',
+            '<h1>🌸 ZENOVA CLOUD</h1>',
+            '<div class="sub">Quản lý Lưu ổ đĩa, Sunshine, Tắt máy</div>',
+            '<div class="info">',
+            "<div class='row'><span>🏷️ Máy:</span><span class='val'>$($env:MACHINE_ID)</span></div>",
+            "<div class='row'><span>🌐 IP Tailscale:</span><span class='val'>$($env:TAILSCALE_IP)</span></div>",
+            "<div class='row'><span>☀️ Sunshine Web UI:</span><span class='val'><a href='https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/' target='_blank'>https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/</a></span></div>",
+            "<div class='row'><span>👤 Tài khoản:</span><span class='val'>$($env:RDP_USER)</span></div>",
+            "<div class='row'><span>🔐 Mật khẩu:</span><span class='val'>$($env:RDP_PASS)</span></div>",
+            "<div class='row'><span>⚡ CPU:</span><span class='val'>$($env:CPU_MODEL_INFO)</span></div>",
+            '</div>',
+            '<form action="/save" method="POST"><button type="submit" class="btn-save">💾 Lưu Dữ Liệu Ngay</button></form>',
+            '<form action="/restart" method="POST"><button type="submit" class="btn-restart">🔁 Lưu & Restart</button></form>',
+            '<form action="/stop" method="POST"><button type="submit" class="btn-stop">🛑 Lưu & Tắt Hẳn Server</button></form>',
+            '<div class="note">💡 Tắt máy bằng các nút trên để không mất dữ liệu.</div>',
+            '</div>',
+            '</body>',
+            '</html>'
+          )
+          Set-Content -Path "$env:RUNNER_TEMP\panel.html" -Value ($htmlLines -join "`r`n") -Encoding UTF8
 
-          $server = @"
-`$l = [System.Net.HttpListener]::new()
-`$l.Prefixes.Add("http://+:$port/")
-`$l.Start()
-while (`$l.IsListening) {
-  try {
-    `$c = `$l.GetContext()
-    if (`$c.Request.HttpMethod -eq "POST") {
-      if (`$c.Request.Url.AbsolutePath -eq "/save") { Set-Content `$env:CONTROL_SIGNAL_FILE "SAVE_NOW" }
-      elseif (`$c.Request.Url.AbsolutePath -eq "/restart") { Set-Content `$env:CONTROL_SIGNAL_FILE "RESTART_SESSION" }
-      elseif (`$c.Request.Url.AbsolutePath -eq "/stop") { Set-Content `$env:CONTROL_SIGNAL_FILE "STOP_SESSION" }
-      `$c.Response.Redirect("/")
-    } else {
-      `$h = Get-Content -Raw "$env:RUNNER_TEMP\panel.html"
-      `$b = [System.Text.Encoding]::UTF8.GetBytes(`$h)
-      `$c.Response.ContentType = "text/html; charset=utf-8"
-      `$c.Response.ContentLength64 = `$b.Length
-      `$c.Response.OutputStream.Write(`$b, 0, `$b.Length)
-    }
-    `$c.Response.OutputStream.Close()
-  } catch {}
-}
-"@
-          Set-Content -Path "$env:RUNNER_TEMP\web.ps1" -Value $server -Encoding UTF8
+          $serverLines = @(
+            '$ErrorActionPreference = "Continue"',
+            '$listener = [System.Net.HttpListener]::new()',
+            ('$listener.Prefixes.Add("http://+:' + $port + '/")'),
+            '$listener.Start()',
+            'while ($listener.IsListening) {',
+            '  try {',
+            '    $ctx = $listener.GetContext()',
+            '    $req = $ctx.Request',
+            '    $resp = $ctx.Response',
+            '    if ($req.HttpMethod -eq "POST") {',
+            '      if ($req.Url.AbsolutePath -eq "/save") { Set-Content $env:CONTROL_SIGNAL_FILE "SAVE_NOW" }',
+            '      elseif ($req.Url.AbsolutePath -eq "/restart") { Set-Content $env:CONTROL_SIGNAL_FILE "RESTART_SESSION" }',
+            '      elseif ($req.Url.AbsolutePath -eq "/stop") { Set-Content $env:CONTROL_SIGNAL_FILE "STOP_SESSION" }',
+            '      $resp.Redirect("/")',
+            '    } else {',
+            ('      $html = Get-Content -Raw "' + "$env:RUNNER_TEMP\panel.html" + '"'),
+            '      $buf = [System.Text.Encoding]::UTF8.GetBytes($html)',
+            '      $resp.ContentType = "text/html; charset=utf-8"',
+            '      $resp.ContentLength64 = $buf.Length',
+            '      $resp.OutputStream.Write($buf, 0, $buf.Length)',
+            '    }',
+            '    $resp.OutputStream.Close()',
+            '  } catch {}',
+            '}'
+          )
+          Set-Content -Path "$env:RUNNER_TEMP\web.ps1" -Value ($serverLines -join "`r`n") -Encoding UTF8
           Start-Process pwsh.exe -ArgumentList '-NoProfile','-WindowStyle','Hidden','-File',"`"$env:RUNNER_TEMP\web.ps1`""
           Start-Sleep -Seconds 2
           
@@ -725,7 +731,7 @@ while (`$l.IsListening) {
               elseif ($c -eq 'STOP_SESSION') { 'FORCE_STOP_ONLY=1' >> $env:GITHUB_ENV; break }
             }
             if ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() -ge $end) { break }
-            if (-not (Test-Port 47990)) { & schtasks.exe /Run /TN "ALB-Sunshine" *> $null }
+            if (-not (Test-Port 47990)) { & schtasks.exe /Run /TN "ALB-Launch-Sunshine" *> $null }
             Start-Sleep -Seconds 5
           }
           $global:LASTEXITCODE = 0
