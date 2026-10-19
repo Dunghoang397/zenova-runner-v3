@@ -1,75 +1,75 @@
 # ═══════════════════════════════════════════════════════════════════════════
-# ALB-VPSFREE-ULTIMATE v70.6 — FINAL ERROR-FREE EDITION
-# - [FIX TRIỆT ĐỂ] Sửa lỗi cú pháp if: always() thiếu ${{ }}
-# - [FIX TRIỆT ĐỂ] Sửa lỗi dính chữ trong block save-data.ps1 (do copy-paste)
-# - [SPEED] Cài đặt siêu tốc, giữ nguyên 100% tính năng của v70.5
-# - [WALLPAPER] Chống đen hình nền tuyệt đối
+# ALB-VPSFREE-ULTIMATE v71.0 — ULTIMATE ZENOVA
+# - [FIX] Sửa 100% lỗi cú pháp YAML, chống treo "Starting job..."
+# - [FULL] Đầy đủ tính năng: Web Panel API, Lưu trữ ổ đĩa GitHub, Tailscale, v.v.
+# - [SPEED] Cài đặt đa luồng, tối ưu hóa I/O
+# - [WALLPAPER] Chống đen hình nền tuyệt đối (VBS + Registry + Scheduled Task)
 # ═══════════════════════════════════════════════════════════════════════════
-name: ALB-VPSFREE-ULTIMATE v70.6
+name: ALB-VPSFREE-ULTIMATE v71.0
 
 on:
   workflow_dispatch:
     inputs:
       machine_id:
-        description: '🏷️ Tên định danh máy'
+        description: '🏷️ Tên định danh máy & bản lưu riêng'
         required: false
         default: 'may-phu-1'
         type: string
       duration:
-        description: '🕐 Thời gian sử dụng'
+        description: '🕐 Thời gian sử dụng máy (6h, 12h, 18h, 24h)'
         required: false
         default: '6h'
         type: choice
         options: ['1h', '3h', '6h', '12h', '18h', '24h']
       auto_restart:
-        description: '🔁 Tự restart'
+        description: '🔁 Tự động nối phiên khi hết giờ'
         required: false
         default: true
         type: boolean
       drive_letter:
-        description: '💽 Ổ ảo'
+        description: '💽 Ký tự ổ đĩa riêng ZENOVA-OS'
         required: false
         default: 'X'
         type: string
       vhd_size_gb:
-        description: '📦 Dung lượng VHDX (GB)'
+        description: '📦 Dung lượng ổ ZENOVA-OS (GB)'
         required: false
         default: '100'
         type: string
       windows_image:
-        description: '🪟 Windows'
+        description: '🪟 Hệ điều hành'
         required: false
         default: 'windows-2022'
         type: choice
         options: ['windows-2022', 'windows-2025']
       fixed_password:
-        description: '🔐 Mật khẩu RDP & Sunshine'
+        description: '🔐 Mật khẩu cố định RDP & Sunshine'
         required: false
         default: 'Aistv@2026'
         type: string
       vdd_resolution:
-        description: '🖥️ Resolution'
+        description: '🖥️ Độ phân giải màn hình ảo'
         required: false
         default: '1920x1080@60'
         type: choice
         options: ['1920x1080@60', '1920x1080@120', '2560x1440@60', '3840x2160@60']
       choco_packages:
-        description: '📦 Choco packages'
+        description: '📦 Gói cài thêm qua Chocolatey'
         required: false
         default: ''
         type: string
       optimize_windows:
-        description: '⚙️ Fix lag & 100% CPU'
+        description: '⚙️ Fix Lag & Mở khóa 100% CPU'
         required: false
         default: true
         type: boolean
       enable_tailscale:
-        description: '🌐 Tailscale'
+        description: '🌐 Bật Tailscale VPN & Funnel'
         required: false
         default: true
         type: boolean
       enable_duckdns:
-        description: '🦆 DuckDNS'
+        description: '🦆 Cập nhật DuckDNS'
         required: false
         default: true
         type: boolean
@@ -97,11 +97,11 @@ jobs:
       SUNSHINE_PASS: ${{ inputs.fixed_password || 'Aistv@2026' }}
 
     steps:
-      - name: 📥 Bước 1 - Checkout Repo (Lấy ảnh nền gốc)
+      - name: 📥 Bước 1 - Checkout Repo
         uses: actions/checkout@v4
         continue-on-error: true
 
-      - name: ⚡ Bước 2 - Khởi Tạo Ổ ZENOVA-OS & User RDP
+      - name: ⚡ Bước 2 - Khởi Tạo Ổ Đĩa & Mật Khẩu
         shell: pwsh
         timeout-minutes: 8
         env:
@@ -249,7 +249,7 @@ jobs:
           $global:LASTEXITCODE = 0
           Write-Host "✅ Đã dựng ổ đĩa ZENOVA-OS (${dl}:\ - $vhdSizeInput GB) | Thời lượng: $dispTime" -ForegroundColor Green
 
-      - name: 🚀 Bước 3 - Khôi Phục Ổ Đĩa & Turbo Downloader
+      - name: 🚀 Bước 3 - Khôi Phục Dữ Liệu & Tải Bộ Cài
         shell: pwsh
         timeout-minutes: 10
         run: |
@@ -315,7 +315,7 @@ jobs:
           if ($dJobs.Count -gt 0) { $null = Wait-Job $dJobs -Timeout 65; $dJobs | Remove-Job -Force -EA SilentlyContinue }
           $global:LASTEXITCODE = 0
 
-      - name: ⚙️ Bước 4 - Cấu Hình RDP 60FPS & Fix Lag
+      - name: ⚙️ Bước 4 - Cấu Hình RDP & Fix Lag
         shell: pwsh
         timeout-minutes: 3
         env:
@@ -538,7 +538,7 @@ CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -WindowStyle Hidden
           }
           $global:LASTEXITCODE = 0
 
-      - name: 🎉 Bước 8 - THÔNG TIN KẾT NỐI SIÊU TỐC
+      - name: 🎉 Bước 8 - THÔNG TIN KẾT NỐI TỨC THÌ
         shell: pwsh
         timeout-minutes: 2
         if: ${{ always() }}
@@ -547,7 +547,7 @@ CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -WindowStyle Hidden
           $hostStr = if ($env:DUCKDNS_URL) { $env:DUCKDNS_URL } else { $tsIp }
           Write-Host ""
           Write-Host "════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-          Write-Host "   🌸 ZENOVA CLOUD SUPREME v70.6 - THÔNG TIN KẾT NỐI       " -ForegroundColor Yellow
+          Write-Host "   🌸 ZENOVA CLOUD SUPREME v71.0 - THÔNG TIN KẾT NỐI       " -ForegroundColor Yellow
           Write-Host "════════════════════════════════════════════════════════════" -ForegroundColor Cyan
           Write-Host " 🏷️ Định danh máy : $env:MACHINE_ID" -ForegroundColor Green
           Write-Host " 🖥️ RDP Host     : ${hostStr}:3389" -ForegroundColor Yellow
@@ -559,7 +559,7 @@ CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -WindowStyle Hidden
           Write-Host "════════════════════════════════════════════════════════════" -ForegroundColor Cyan
 
           $summary = @(
-            "## 🌸 ZENOVA CLOUD SUPREME v70.6 - THÔNG TIN KẾT NỐI",
+            "## 🌸 ZENOVA CLOUD SUPREME v71.0 - THÔNG TIN KẾT NỐI",
             "",
             "| Mục cấu hình | Chi tiết kết nối |",
             "|:---|:---|",
@@ -627,7 +627,7 @@ CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -WindowStyle Hidden
 
           $port = $env:WEB_PORT
           $htmlLines = @(
-            '<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8"><title>ZENOVA CLOUD v70.6</title>',
+            '<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8"><title>ZENOVA CLOUD v71.0</title>',
             '<style>body { font-family: Segoe UI, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 24px; display: flex; justify-content: center; } .card { max-width: 600px; width: 100%; background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 24px; } h1 { color: #38bdf8; } button { width: 100%; padding: 12px; margin-bottom: 8px; border: none; border-radius: 8px; font-weight: bold; color: white; cursor: pointer; } .btn-save { background: #0284c7; } .btn-restart { background: #d97706; } .btn-stop { background: #dc2626; }</style></head><body><div class="card">',
             '<h1>🌸 ZENOVA CLOUD</h1>',
             '<p>Máy: $($env:MACHINE_ID) | IP: $tsIp</p>',
@@ -688,7 +688,7 @@ CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -WindowStyle Hidden
           }
           $global:LASTEXITCODE = 0
 
-      - name: 🎉 Bước 11 - Thông Tin Kết Nối
+      - name: 🎉 Bước 11 - Thông Tin Kết Nối (Sau Watchdog)
         shell: pwsh
         timeout-minutes: 2
         if: ${{ always() }}
@@ -696,7 +696,7 @@ CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -WindowStyle Hidden
           $tsIp = if ($env:TAILSCALE_IP) { $env:TAILSCALE_IP } else { '127.0.0.1' }
           $hostStr = if ($env:DUCKDNS_URL) { $env:DUCKDNS_URL } else { $tsIp }
           $summary = @(
-            "## ZENOVA CLOUD FINAL v70.6",
+            "## ZENOVA CLOUD FINAL v71.0",
             "",
             "| Item | Value |",
             "|:---|:---|",
