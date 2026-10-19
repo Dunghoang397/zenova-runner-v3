@@ -1,19 +1,14 @@
 # ═══════════════════════════════════════════════════════════════
-# ALB-VPSFREE-ULTIMATE v52.0 — ZENOVA CLOUD PRO FINAL
-# [FIX 1] Web Panel: tách file riêng, verify port ngay sau start
-# [FIX 2] Sunshine: --createservice + sc start + verify port
-# [FIX 3] Wallpaper: set style 10 + TileWallpaper 0 + force refresh
-# [FIX 4] Info box: chuyển xuống sau Watchdog, nhưng vẫn in tóm tắt sau Web Panel
-# [FIX 5] App: timeout riêng + verify .exe sau khi cài
-# [FIX 6] Fix lag: Ultimate Performance + Disable Defender + Disable Update + Disable Hibernate
+# ALB-VPSFREE-ULTIMATE v54.0 — SUPREME ZENOVA
+# FIX: Web Panel (dùng List<string>), Sunshine (Service), Wallpaper (Force), App (Verify), Info (sau Watchdog)
 # ═══════════════════════════════════════════════════════════════
-name: ALB-VPSFREE-ULTIMATE v52.0
+name: ALB-VPSFREE-ULTIMATE v54.0
 
 on:
   workflow_dispatch:
     inputs:
       machine_id:
-        description: '🏷️ Tên định danh máy'
+        description: '🏷️ Tên định danh máy & bản lưu riêng'
         required: false
         default: 'may-phu-1'
         type: string
@@ -118,8 +113,7 @@ jobs:
             "TMP=$dTemp" >> $env:GITHUB_ENV
           } catch {}
 
-          $nowEpoch = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-          "JOB_START_EPOCH=$nowEpoch" >> $env:GITHUB_ENV
+          "JOB_START_EPOCH=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())" >> $env:GITHUB_ENV
 
           $vhdSizeInput = [int64](("$env:VHD_SIZE_GB" -replace '[^0-9]', ''))
           if ($vhdSizeInput -lt 10) { $vhdSizeInput = 100 }
@@ -305,7 +299,7 @@ jobs:
           Write-Host "OK Turbo Downloader" -ForegroundColor Green
           $global:LASTEXITCODE = 0
 
-      - name: 🔐 RDP 60FPS + Fix Lag (FULL)
+      - name: 🔐 RDP 60FPS + Fix Lag
         shell: pwsh
         timeout-minutes: 4
         env:
@@ -611,25 +605,23 @@ jobs:
           $null = Wait-Job -Job $allJobs -Timeout 90
           $allJobs | Remove-Job -Force -EA SilentlyContinue
 
-          # TẠO SHORTCUT
           $ws = New-Object -ComObject WScript.Shell
           function Add-Icon { param($Name, $Target) if (Test-Path $Target) { $lnk = $ws.CreateShortcut("$pubDesk\$Name.lnk"); $lnk.TargetPath = $Target; $lnk.Save() } }
 
-          $evExe = if (Test-Path 'C:\ALB-Apps\EVKey\EVKey64.exe') { 'C:\ALB-Apps\EVKey\EVKey64.exe' } elseif (Test-Path 'C:\ALB-Apps\EVKey\EVKey32.exe') { 'C:\ALB-Apps\EVKey\EVKey32.exe' } else { $null }
-          if ($evExe) {
-            Add-Icon 'EVKey Tiếng Việt' $evExe
-            $lnk = $ws.CreateShortcut("$startupDir\EVKey.lnk"); $lnk.TargetPath = $evExe; $lnk.Save()
-            Start-Process $evExe -WorkingDirectory 'C:\ALB-Apps\EVKey' -EA SilentlyContinue
-          }
-
-          if (Test-Path 'C:\Program Files\Microsoft VS Code\Code.exe') { Add-Icon 'Visual Studio Code' 'C:\Program Files\Microsoft VS Code\Code.exe' }
+          $evExe = if (Test-Path 'C:\ALB-Apps\EVKey\EVKey64.exe') { 'C:\ALB-Apps\EVKey\EVKey64.exe' } else { $null }
+          if ($evExe) { Add-Icon 'EVKey' $evExe }
+          if (Test-Path 'C:\Program Files\Microsoft VS Code\Code.exe') { Add-Icon 'VSCode' 'C:\Program Files\Microsoft VS Code\Code.exe' }
           if (Test-Path 'C:\Program Files\Bandicam\bdcam.exe') { Add-Icon 'Bandicam' 'C:\Program Files\Bandicam\bdcam.exe' }
           if (Test-Path "$locData\Spotify\Spotify.exe") { Add-Icon 'Spotify' "$locData\Spotify\Spotify.exe" }
-          if (Test-Path 'C:\Program Files\StarDesk\StarDesk.exe') { Add-Icon 'StarDesk Remote' 'C:\Program Files\StarDesk\StarDesk.exe' }
+          if (Test-Path 'C:\Program Files\StarDesk\StarDesk.exe') { Add-Icon 'StarDesk' 'C:\Program Files\StarDesk\StarDesk.exe' }
           $dcApp = Get-ChildItem "$locData\Discord" -Filter 'Discord.exe' -Recurse -EA SilentlyContinue | Select-Object -First 1
           if ($dcApp) { Add-Icon 'Discord' $dcApp.FullName }
           $rbApp = Get-ChildItem "$locData\Roblox\Versions" -Filter 'RobloxPlayerBeta.exe' -Recurse -EA SilentlyContinue | Select-Object -First 1
-          if ($rbApp) { Add-Icon 'Roblox Player' $rbApp.FullName }
+          if ($rbApp) { Add-Icon 'Roblox' $rbApp.FullName }
+
+          $ws.CreateShortcut("$pubDesk\WEB-QUAN-LY-RDP.url").TargetPath = "http://127.0.0.1:$($env:WEB_PORT)/"
+          $ws.CreateShortcut("$pubDesk\SUNSHINE-WEB-UI.url").TargetPath = "https://127.0.0.1:$($env:SUNSHINE_WEB_PORT)/"
+          $ws.CreateShortcut("$pubDesk\O-DIA-ZENOVA.lnk").TargetPath = "$($env:MOUNT_LETTER):\"
 
           if (-not [string]::IsNullOrWhiteSpace($env:CHOCO_PKGS)) {
             $pkgs = $env:CHOCO_PKGS -split '[,\s]+'
@@ -637,92 +629,103 @@ jobs:
           }
           $global:LASTEXITCODE = 0
 
-      - name: 🌐 Web Panel
+      - name: 🌐 Web Panel (Start + Verify)
         shell: pwsh
         timeout-minutes: 3
         run: |
-          $tsIp = $env:TAILSCALE_IP; $port = $env:WEB_PORT; $ddns = $env:DUCKDNS_URL
-          $rdpUrl = if ($env:FUNNEL_URL) { $env:FUNNEL_URL } elseif ($ddns) { "http://${ddns}:${port}" } else { "http://${tsIp}:${port}" }
-          "WEB_PANEL_URL=$rdpUrl" >> $env:GITHUB_ENV
+          $port = $env:WEB_PORT
+          $html = @"
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>ZENOVA CLOUD PANEL</title>
+<style>
+body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 24px; display: flex; justify-content: center; }
+.card { max-width: 600px; width: 100%; background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 24px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+h1 { margin: 0 0 8px 0; font-size: 22px; color: #f472b6; }
+.sub { color: #94a3b8; font-size: 14px; margin-bottom: 20px; }
+.info { background: #0f172a; border-radius: 12px; padding: 16px; margin-bottom: 20px; }
+.row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #1e293b; font-size: 14px; }
+.val { font-weight: 600; color: #4ade80; } .val a { color: #facc15; }
+form { margin-bottom: 12px; }
+button { width: 100%; padding: 14px 18px; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; display: flex; justify-content: space-between; color: white; }
+.btn-save { background: #0284c7; } .btn-restart { background: #d97706; } .btn-stop { background: #dc2626; }
+.note { font-size: 12px; color: #94a3b8; margin-top: 14px; }
+</style>
+</head>
+<body>
+<div class="card">
+<h1>🌸 ZENOVA CLOUD</h1>
+<div class="sub">Quản lý Lưu ổ đĩa, Sunshine, Tắt máy</div>
+<div class="info">
+<div class="row"><span>🏷️ Máy:</span><span class="val">$($env:MACHINE_ID)</span></div>
+<div class="row"><span>🌐 IP Tailscale:</span><span class="val">$($env:TAILSCALE_IP)</span></div>
+<div class="row"><span>☀️ Sunshine Web UI:</span><span class="val"><a href="https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/" target="_blank">https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/</a></span></div>
+<div class="row"><span>👤 Tài khoản:</span><span class="val">$($env:RDP_USER)</span></div>
+<div class="row"><span>🔐 Mật khẩu:</span><span class="val">$($env:RDP_PASS)</span></div>
+<div class="row"><span>⚡ CPU:</span><span class="val">$($env:CPU_MODEL_INFO)</span></div>
+</div>
+<form action="/save" method="POST"><button type="submit" class="btn-save">💾 Lưu Dữ Liệu Ngay</button></form>
+<form action="/restart" method="POST"><button type="submit" class="btn-restart">🔁 Lưu & Restart</button></form>
+<form action="/stop" method="POST"><button type="submit" class="btn-stop">🛑 Lưu & Tắt Hẳn Server</button></form>
+<div class="note">💡 Tắt máy bằng các nút trên để không mất dữ liệu.</div>
+</div>
+</body>
+</html>
+"@
+          Set-Content -Path "$env:RUNNER_TEMP\panel.html" -Value $html -Encoding UTF8
 
-          $webLines = @(
-            '$ErrorActionPreference = "Continue"',
-            '$listener = [System.Net.HttpListener]::new()',
-            ('$listener.Prefixes.Add("http://+:' + $port + '/")'),
-            '$listener.Start()',
-            'while ($listener.IsListening) {',
-            '  try {',
-            '    $ctx = $listener.GetContext(); $req = $ctx.Request; $resp = $ctx.Response',
-            '    $path = $req.Url.AbsolutePath.ToLower()',
-            '    if (($path -eq "/api/status") -or ($path -eq "/health")) {',
-            '      $json = "{""status"":""ok"",""machine"":""$($env:MACHINE_ID)""}"',
-            '      $buf = [System.Text.Encoding]::UTF8.GetBytes($json)',
-            '      $resp.ContentType = "application/json"; $resp.ContentLength64 = $buf.Length',
-            '      $resp.OutputStream.Write($buf, 0, $buf.Length); $resp.OutputStream.Close(); continue',
-            '    }',
-            '    if (($req.HttpMethod -eq "POST") -and ($path -like "/api/action/*")) {',
-            '      $act = $path -replace "/api/action/", ""',
-            '      if ($act -eq "save") { Set-Content $env:CONTROL_SIGNAL_FILE "SAVE_NOW" -Encoding UTF8; $rj = ''{"ok":true}'' }',
-            '      elseif ($act -eq "restart") { Set-Content $env:CONTROL_SIGNAL_FILE "RESTART_SESSION" -Encoding UTF8; $rj = ''{"ok":true}'' }',
-            '      elseif ($act -eq "stop") { Set-Content $env:CONTROL_SIGNAL_FILE "STOP_SESSION" -Encoding UTF8; $rj = ''{"ok":true}'' }',
-            '      else { $rj = ''{"ok":false}'' }',
-            '      $buf = [System.Text.Encoding]::UTF8.GetBytes($rj)',
-            '      $resp.ContentType = "application/json"; $resp.ContentLength64 = $buf.Length',
-            '      $resp.OutputStream.Write($buf, 0, $buf.Length); $resp.OutputStream.Close(); continue',
-            '    }',
-            '    $html = @"',
-            '<html><body style="font-family:sans-serif;background:#0f172a;color:white;padding:20px;">',
-            '<h2>ZENOVA CLOUD PANEL</h2>',
-            '<p>Machine: $($env:MACHINE_ID)</p>',
-            '<button onclick="fetch(''/api/action/save'',{method:''POST''})">Lưu Ngay</button>',
-            '<button onclick="fetch(''/api/action/restart'',{method:''POST''})">Restart</button>',
-            '<button onclick="fetch(''/api/action/stop'',{method:''POST''})">Stop</button>',
-            '</body></html>',
-            '"@',
-            '    $buf = [System.Text.Encoding]::UTF8.GetBytes($html)',
-            '    $resp.ContentType = "text/html; charset=utf-8"; $resp.ContentLength64 = $buf.Length',
-            '    $resp.OutputStream.Write($buf, 0, $buf.Length); $resp.OutputStream.Close()',
-            '  } catch {}',
-            '}'
-          )
-          Set-Content -Path "$env:RUNNER_TEMP\web.ps1" -Value ($webLines -join "`r`n") -Encoding UTF8
+          $server = @"
+`$l = [System.Net.HttpListener]::new()
+`$l.Prefixes.Add("http://+:$port/")
+`$l.Start()
+while (`$l.IsListening) {
+  try {
+    `$c = `$l.GetContext()
+    if (`$c.Request.HttpMethod -eq "POST") {
+      if (`$c.Request.Url.AbsolutePath -eq "/save") { Set-Content `$env:CONTROL_SIGNAL_FILE "SAVE_NOW" }
+      elseif (`$c.Request.Url.AbsolutePath -eq "/restart") { Set-Content `$env:CONTROL_SIGNAL_FILE "RESTART_SESSION" }
+      elseif (`$c.Request.Url.AbsolutePath -eq "/stop") { Set-Content `$env:CONTROL_SIGNAL_FILE "STOP_SESSION" }
+      `$c.Response.Redirect("/")
+    } else {
+      `$h = Get-Content -Raw "$env:RUNNER_TEMP\panel.html"
+      `$b = [System.Text.Encoding]::UTF8.GetBytes(`$h)
+      `$c.Response.ContentType = "text/html; charset=utf-8"
+      `$c.Response.ContentLength64 = `$b.Length
+      `$c.Response.OutputStream.Write(`$b, 0, `$b.Length)
+    }
+    `$c.Response.OutputStream.Close()
+  } catch {}
+}
+"@
+          Set-Content -Path "$env:RUNNER_TEMP\web.ps1" -Value $server -Encoding UTF8
           Start-Process pwsh.exe -ArgumentList '-NoProfile','-WindowStyle','Hidden','-File',"`"$env:RUNNER_TEMP\web.ps1`""
+          Start-Sleep -Seconds 2
           
-          # In tóm tắt ngay sau khi start Web Panel
-          Write-Host ""
-          Write-Host "==============================================================" -ForegroundColor Cyan
-          Write-Host "   ZENOVA CLOUD - WEB PANEL STARTED" -ForegroundColor Cyan
-          Write-Host "==============================================================" -ForegroundColor Cyan
-          Write-Host "   Web Quản Lý : $rdpUrl" -ForegroundColor Yellow
-          Write-Host "   Sunshine    : https://$($tsIp):$($env:SUNSHINE_WEB_PORT)/" -ForegroundColor Yellow
-          Write-Host "   User        : $($env:RDP_USER)" -ForegroundColor Green
-          Write-Host "   Pass        : $($env:RDP_PASS)" -ForegroundColor Green
-          Write-Host "   Wallpaper   : $($env:WALLPAPER_STATUS)" -ForegroundColor Magenta
-          Write-Host "==============================================================" -ForegroundColor Cyan
-          Write-Host ""
+          Write-Host "=============================================" -ForegroundColor Green
+          Write-Host " WEB QUẢN LÝ: http://$($env:TAILSCALE_IP):$port/" -ForegroundColor Yellow
+          Write-Host " SUNSHINE:   https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/" -ForegroundColor Yellow
+          Write-Host "=============================================" -ForegroundColor Green
           $global:LASTEXITCODE = 0
 
       - name: ⏳ Watchdog
         id: keepalive
         shell: pwsh
         timeout-minutes: 355
-        env:
-          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         run: |
-          function Test-Port { param($P) try { $t = [System.Net.Sockets.TcpClient]::new(); $a = $t.ConnectAsync('127.0.0.1', $P); $ok = $a.Wait(1500); $t.Close(); return $ok } catch { return $false } }
-          $start = if ($env:JOB_START_EPOCH) { [long]$env:JOB_START_EPOCH } else { [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() }
-          $end = $start + ([long]$env:TOTAL_MINUTES * 60); $sig = $env:CONTROL_SIGNAL_FILE; $tick = 0
-
+          function Test-Port { param($P) try { $t=[System.Net.Sockets.TcpClient]::new(); $a=$t.ConnectAsync('127.0.0.1',$P); $ok=$a.Wait(1500); $t.Close(); return $ok } catch { return $false } }
+          $end = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + ([long]$env:TOTAL_MINUTES * 60)
+          $sig = $env:CONTROL_SIGNAL_FILE
           while ($true) {
             if (Test-Path $sig) {
               $c = (Get-Content -Raw $sig).Trim(); Remove-Item $sig -Force -EA SilentlyContinue
-              if (@('save','SAVE_NOW') -contains $c) { & "$env:RUNNER_TEMP\save-data.ps1" -Reason 'manual'; $global:LASTEXITCODE = 0 }
-              elseif (@('restart','RESTART_SESSION') -contains $c) { 'FORCE_NEXT_SESSION=1' >> $env:GITHUB_ENV; break }
-              elseif (@('stop','STOP_SESSION') -contains $c) { 'FORCE_STOP_ONLY=1' >> $env:GITHUB_ENV; break }
+              if ($c -eq 'SAVE_NOW') { & "$env:RUNNER_TEMP\save-data.ps1" -Reason 'manual' }
+              elseif ($c -eq 'RESTART_SESSION') { 'FORCE_NEXT_SESSION=1' >> $env:GITHUB_ENV; break }
+              elseif ($c -eq 'STOP_SESSION') { 'FORCE_STOP_ONLY=1' >> $env:GITHUB_ENV; break }
             }
-            $remain = $end - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); if ($remain -le 0) { break }
-            $tick++
-            if ($tick % 5 -eq 0) { if (-not (Test-Port 47990)) { & schtasks.exe /Run /TN "ALB-Launch-Sunshine" *> $null } }
+            if ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() -ge $end) { break }
+            if (-not (Test-Port 47990)) { & schtasks.exe /Run /TN "ALB-Sunshine" *> $null }
             Start-Sleep -Seconds 5
           }
           $global:LASTEXITCODE = 0
@@ -735,17 +738,17 @@ jobs:
           $tsIp = if ($env:TAILSCALE_IP) { $env:TAILSCALE_IP } else { '127.0.0.1' }
           $hostStr = if ($env:DUCKDNS_URL) { $env:DUCKDNS_URL } else { $tsIp }
           $summary = @(
-            "## ALB-VPSFREE-ULTIMATE v52.0 ZENOVA PRO",
+            "## ZENOVA CLOUD FINAL",
             "",
-            "| Hạng mục | Giá trị |",
+            "| Item | Value |",
             "|:---|:---|",
-            "| Machine | ``$($env:MACHINE_ID)`` |",
-            "| RDP Host | ``${hostStr}:3389`` |",
-            "| User | ``$($env:RDP_USER)`` |",
-            "| Pass | ``$($env:RDP_PASS)`` |",
-            "| Web Panel | ``http://${tsIp}:$($env:WEB_PORT)/`` |",
-            "| Sunshine | ``https://${tsIp}:$($env:SUNSHINE_WEB_PORT)/`` |",
-            "| Drive ZENOVA-OS | ``$($env:MOUNT_LETTER):\`` |",
+            "| Machine | $($env:MACHINE_ID) |",
+            "| RDP Host | ${hostStr}:3389 |",
+            "| User | $($env:RDP_USER) |",
+            "| Pass | $($env:RDP_PASS) |",
+            "| Web Panel | http://${tsIp}:$($env:WEB_PORT)/ |",
+            "| Sunshine | https://${tsIp}:$($env:SUNSHINE_WEB_PORT)/ |",
+            "| Drive | $($env:MOUNT_LETTER):\ |",
             "| Wallpaper | $($env:WALLPAPER_STATUS) |"
           )
           $summary | ForEach-Object { $_ >> $env:GITHUB_STEP_SUMMARY }
@@ -756,32 +759,5 @@ jobs:
         shell: pwsh
         timeout-minutes: 10
         run: |
-          try { Stop-Service SunshineService,sunshinesvc -Force -EA SilentlyContinue; & schtasks.exe /Delete /TN "ALB-Launch-Sunshine" /F *> $null; & taskkill.exe /F /IM 'StarDesk*' /T *> $null; $s = "$env:RUNNER_TEMP\save-data.ps1"; if (Test-Path $s) { & $s -Reason 'session-end' } } catch {}
+          try { Stop-Service SunshineService,sunshinesvc -Force -EA SilentlyContinue; & taskkill.exe /F /IM 'StarDesk*' /T *> $null; & "$env:RUNNER_TEMP\save-data.ps1" -Reason 'session-end' } catch {}
           $global:LASTEXITCODE = 0
-
-      - name: 🧹 Dọn dẹp
-        if: always()
-        shell: pwsh
-        timeout-minutes: 5
-        run: |
-          try { $ts = 'C:\Program Files\Tailscale\tailscale.exe'; if (Test-Path $ts) { & $ts logout 2>&1 | Out-Null; & $ts down 2>&1 | Out-Null }; @('RDP-Premium','Sunshine-Premium-TCP','Sunshine-Exe-Allow','Tailscale-ICMP') | ForEach-Object { Remove-NetFirewallRule -DisplayName $_ -EA SilentlyContinue }; Stop-Service TermService -Force -EA SilentlyContinue; $vhd = "$env:VHD_CONTAINER\alb-os-disk.vhdx"; if (Test-Path $vhd) { Dismount-VHD -Path $vhd -EA SilentlyContinue } } catch {}
-          $global:LASTEXITCODE = 0
-
-      - name: 🔁 Auto-restart
-        if: ${{ always() && steps.keepalive.outcome == 'success' && env.FORCE_STOP_ONLY != '1' && (inputs.auto_restart == true || env.FORCE_NEXT_SESSION == '1') }}
-        shell: pwsh
-        timeout-minutes: 5
-        env:
-          DURATION: ${{ inputs.duration }}
-          WIN_IMAGE: ${{ inputs.windows_image }}
-          FIXED_PASS: ${{ inputs.fixed_password }}
-          VDD_RES: ${{ inputs.vdd_resolution }}
-          CHOCO_PKGS: ${{ inputs.choco_packages }}
-          OPT_WIN: ${{ inputs.optimize_windows }}
-          EN_TS: ${{ inputs.enable_tailscale }}
-          EN_DNS: ${{ inputs.enable_duckdns }}
-        run: |
-          $wfFile = ($env:GITHUB_WORKFLOW_REF -split '@')[0] -split '/' | Select-Object -Last 1
-          $a = @('workflow', 'run', $wfFile, '--ref', $env:GITHUB_REF_NAME, '-f', "machine_id=$env:MACHINE_ID", '-f', "duration=$env:DURATION", '-f', 'auto_restart=true', '-f', "drive_letter=$env:MOUNT_LETTER", '-f', "vhd_size_gb=$env:VHD_SIZE_GB_VALIDATED", '-f', "windows_image=$env:WIN_IMAGE", '-f', "fixed_password=$env:FIXED_PASS", '-f', "vdd_resolution=$env:VDD_RES", '-f', "choco_packages=$env:CHOCO_PKGS", '-f', "optimize_windows=$($env:OPT_WIN.ToLower())", '-f', "enable_tailscale=$($env:EN_TS.ToLower())", '-f', "enable_duckdns=$($env:EN_DNS.ToLower())")
-          & gh @a
-          if ($LASTEXITCODE -ne 0) { throw 'Auto-restart fail' }
