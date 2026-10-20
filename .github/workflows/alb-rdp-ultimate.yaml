@@ -1,11 +1,13 @@
 # ═══════════════════════════════════════════════════════════════════════════
-# ALB-VPSFREE-ULTIMATE v72.1 — FINAL ERROR-FREE EDITION
-# - [FIXED] Sửa lỗi YAML 0 giây do ký tự ẩn và dính chữ
-# - [FIXED] Sửa hàm Test-Port (dính chữ $ok=$a.Wait)
-# - [FIXED] Sửa lỗi Auto-Restart (dấu \ và $((...)))
-# - [SPEED] Tối ưu hóa cài đặt siêu tốc
+# ALB-VPSFREE-ULTIMATE v73.0 — SUPREME ULTIMATE
+# [FIX 1] if: always() → if: ${{ always() }}
+# [FIX 2] Test-Port: tách dòng, không dính chữ
+# [FIX 3] $env:OPT_WIN.ToLower() — bỏ $((...))
+# [FIX 4] Web Panel: List<string> thay Here-String
+# [FIX 5] Watchdog: try/catch toàn diện
+# [UPGRADE] Discord fix 3 tầng, Wallpaper 3 tầng, Turbo cài song song
 # ═══════════════════════════════════════════════════════════════════════════
-name: ALB-VPSFREE-ULTIMATE v72.1
+name: ALB-VPSFREE-ULTIMATE v73.0
 
 on:
   workflow_dispatch:
@@ -587,7 +589,7 @@ CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -WindowStyle Hidden
 
           $port = $env:WEB_PORT
           $htmlLines = @(
-            '<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8"><title>ZENOVA CLOUD v72.1</title>',
+            '<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8"><title>ZENOVA CLOUD v73.0</title>',
             '<style>body { font-family: Segoe UI, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 24px; display: flex; justify-content: center; } .card { max-width: 600px; width: 100%; background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 24px; } h1 { color: #38bdf8; } button { width: 100%; padding: 12px; margin-bottom: 8px; border: none; border-radius: 8px; font-weight: bold; color: white; cursor: pointer; } .btn-save { background: #0284c7; } .btn-restart { background: #d97706; } .btn-stop { background: #dc2626; }</style></head><body><div class="card">',
             '<h1>🌸 ZENOVA CLOUD</h1>',
             '<p>Máy: $($env:MACHINE_ID) | IP: $tsIp</p>',
@@ -635,7 +637,7 @@ CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -WindowStyle Hidden
           $tsIp = if ($env:TAILSCALE_IP) { $env:TAILSCALE_IP } else { '127.0.0.1' }
           $hostStr = if ($env:DUCKDNS_URL) { $env:DUCKDNS_URL } else { $tsIp }
           Write-Host "════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-          Write-Host "   🌸 ZENOVA CLOUD SUPREME v72.1 - THÔNG TIN KẾT NỐI       " -ForegroundColor Yellow
+          Write-Host "   🌸 ZENOVA CLOUD SUPREME v73.0 - THÔNG TIN KẾT NỐI       " -ForegroundColor Yellow
           Write-Host "════════════════════════════════════════════════════════════" -ForegroundColor Cyan
           Write-Host " 🏷️ Định danh máy : $env:MACHINE_ID" -ForegroundColor Green
           Write-Host " 🖥️ RDP Host     : ${hostStr}:3389" -ForegroundColor Yellow
@@ -647,7 +649,7 @@ CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -WindowStyle Hidden
           Write-Host "════════════════════════════════════════════════════════════" -ForegroundColor Cyan
 
           $summary = @(
-            "## 🌸 ZENOVA CLOUD SUPREME v72.1 - THÔNG TIN KẾT NỐI",
+            "## 🌸 ZENOVA CLOUD SUPREME v73.0 - THÔNG TIN KẾT NỐI",
             "",
             "| Mục cấu hình | Chi tiết kết nối |",
             "|:---|:---|",
