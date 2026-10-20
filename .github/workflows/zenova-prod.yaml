@@ -700,6 +700,27 @@ jobs:
           Write-Host "";
           Write-Host "🛠️  ĐANG CẤU HÌNH HỆ THỐNG RDP, SUNSHINE & WEB PANEL" -ForegroundColor Yellow;
 
+          # ✅ FIX QUAN TRỌNG: Khôi phục quyền Users trên ổ C — nguyên nhân gốc khiến RDP ngắt sau khi nhập mật khẩu
+          try {
+              Write-Host "│ 🔐 Đang khôi phục quyền Users trên ổ C (RDPidd.dll cần quyền này để RDP không bị ngắt)..." -ForegroundColor Cyan;
+              & icacls "C:\" /grant "Users:(OI)(CI)(RX)" /T /C /Q *> $null;
+              Write-Host "│ ✅ Đã khôi phục quyền Users trên ổ C" -ForegroundColor Green;
+          } catch {
+              Write-Host "│ ⚠️  Không thể khôi phục quyền Users: $($_.Exception.Message)" -ForegroundColor Yellow;
+          }
+
+          # ✅ FIX: Vô hiệu hóa tăng tốc phần cứng RDP — tránh xung đột với màn hình ảo usbmmidd_v2
+          try {
+              $rdpKey = "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp";
+              Set-ItemProperty -Path $rdpKey -Name "EnableHardwareMode" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue;
+              $tsPolicy = "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services";
+              New-Item -Path $tsPolicy -Force | Out-Null;
+              Set-ItemProperty -Path $tsPolicy -Name "UseWDDMGraphicsDisplayDriverForRemoteDesktopConnections" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue;
+              Write-Host "│ ✅ Đã vô hiệu hóa tăng tốc phần cứng RDP (tránh xung đột màn hình ảo)" -ForegroundColor Green;
+          } catch {
+              Write-Host "│ ⚠️  Không thể vô hiệu hóa tăng tốc phần cứng RDP: $($_.Exception.Message)" -ForegroundColor Yellow;
+          }
+
           $stepsList = @(
               @{Name = "Bật Remote Desktop"; Script = {
                   Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0 -Force;
@@ -1325,15 +1346,12 @@ jobs:
           "RDP_PASS_SOURCE=$source" >> "$env:GITHUB_ENV";
 
           # 🔐 BẮT BUỘC NHẬP MẬT KHẨU KHI KẾT NỐI RDP
-          # Policy: "Always prompt for password upon connection"
-          # REG: HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services!fPromptForPassword = 1
           $tsPolicy = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services';
           New-Item -Path "$tsPolicy" -Force | Out-Null;
           Set-ItemProperty -Path "$tsPolicy" -Name 'fPromptForPassword' -Value 1 -Type DWord -Force;
           Write-Host "│ ✅ Đã bật bắt buộc nhập mật khẩu khi kết nối RDP (fPromptForPassword=1)" -ForegroundColor Green;
 
           # Cấu hình AutoAdminLogon để vào thẳng màn hình chính sau khi RDP session được tạo
-          # LƯU Ý: DefaultPassword lưu plaintext — chỉ dùng trong môi trường runner tạm thời
           $winlogon = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon';
           Set-ItemProperty -Path "$winlogon" -Name 'AutoAdminLogon' -Value '1' -Force;
           Set-ItemProperty -Path "$winlogon" -Name 'DefaultUserName' -Value "$user" -Force;
