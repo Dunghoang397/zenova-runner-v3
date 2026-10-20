@@ -113,7 +113,6 @@ jobs:
           "TOTAL_MINUTES=$total" >> "$env:GITHUB_ENV";
           "DISPLAY_TIME=$display" >> "$env:GITHUB_ENV";
 
-          # Dùng thẳng 100% User gốc của hệ thống (runneradmin), không đổi tên
           $user     = "$env:USERNAME";
           $profPath = "$env:USERPROFILE";
           "RDP_USER=$user" >> "$env:GITHUB_ENV";
@@ -287,10 +286,8 @@ jobs:
               'reg export "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" "$regBk\Uninstall-x64.reg" /y *> $null;',
               'reg export "HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall" "$regBk\Uninstall-x86.reg" /y *> $null;',
               'reg export "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "$regBk\System-Env.reg" /y *> $null;',
-              '# Sao lưu MachineGuid & MachineId để các App nhận diện đúng thiết bị cũ',
               'reg export "HKLM\SOFTWARE\Microsoft\Cryptography" "$regBk\Machine-Cryptography.reg" /y *> $null;',
               'reg export "HKLM\SOFTWARE\Microsoft\SQMClient" "$regBk\Machine-SQMClient.reg" /y *> $null;',
-              '# Sao lưu cấu hình & token đăng nhập của các App trong HKCU\Software',
               'New-Item -ItemType Directory -Force -Path "$regBk\AppSoftware" | Out-Null;',
               'Get-ChildItem "HKCU:\Software" -ErrorAction SilentlyContinue | Where-Object {',
               '    $_.PSChildName -notin @("Microsoft", "Classes", "Policies", "RegisteredApplications")',
@@ -301,11 +298,9 @@ jobs:
               '};',
               'reg export "HKCU\Environment" "$regBk\User-Env.reg" /y *> $null;',
               'reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" "$regBk\User-StartupRun.reg" /y *> $null;',
-              '# Sao lưu Độ phân giải, Tỷ lệ Scale (DPI) & Cấu hình màn hình',
               'reg export "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Configuration" "$regBk\Display-Config.reg" /y *> $null;',
               'reg export "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Connectivity" "$regBk\Display-Conn.reg" /y *> $null;',
               'reg export "HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\ScaleFactors" "$regBk\Display-Scale.reg" /y *> $null;',
-              '# Sao lưu Hình nền, Tỷ lệ thu phóng User, Theme, Dark Mode & Âm thanh',
               'reg export "HKCU\Control Panel\Desktop" "$regBk\User-Desktop.reg" /y *> $null;',
               'reg export "HKCU\Control Panel\Desktop\WindowMetrics" "$regBk\User-WindowMetrics.reg" /y *> $null;',
               'reg export "HKCU\Control Panel\Personalization" "$regBk\User-Personalization.reg" /y *> $null;',
@@ -314,7 +309,6 @@ jobs:
               'reg export "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "$regBk\User-Explorer.reg" /y *> $null;',
               'reg export "HKCU\Software\Microsoft\Multimedia\Audio" "$regBk\User-Audio.reg" /y *> $null;',
               'reg export "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio" "$regBk\System-MMDevices-Audio.reg" /y *> $null;',
-              '# Đảm bảo xóa bỏ thư mục Drivers-Backup cũ (tránh kẹt pnputil khi khôi phục)',
               '$drvBk = [System.IO.Path]::Combine("$osDir", "Drivers-Backup");',
               'if (Test-Path "$drvBk") { Remove-Item -Path "$drvBk" -Recurse -Force -ErrorAction SilentlyContinue; }',
               'if (("$u") -and ("$profSrc") -and (Test-Path "$profSrc")) {',
@@ -498,7 +492,6 @@ jobs:
         run: |
           $dl = "$env:MOUNT_LETTER";
 
-          # 1. Tắt App-Bound Encryption cho các trình duyệt Chromium để Cookie không bị hủy khi đổi máy ảo
           @(
               'HKLM:\SOFTWARE\Policies\Google\Chrome',
               'HKLM:\SOFTWARE\Policies\Microsoft\Edge',
@@ -509,9 +502,7 @@ jobs:
               Set-ItemProperty -Path "$_" -Name 'ApplicationBoundEncryptionEnabled' -Value 0 -Type DWord -Force;
           };
 
-          # 2. Cố định tên máy (ComputerName / Hostname) để Zalo, Steam, Telegram, Discord không báo thiết bị lạ
           $fixedHost = 'AISTV-CLOUD-PC';
-          # ✅ FIX: Key ComputerName không tồn tại trên một số bản Server → New-Item trước
           New-Item -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName' -Force | Out-Null;
           Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName' -Name 'ComputerName' -Value "$fixedHost" -Force -ErrorAction SilentlyContinue;
           New-Item -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName' -Force | Out-Null;
@@ -525,8 +516,6 @@ jobs:
           }
           New-Item -ItemType Directory -Force -Path "$dlDir" | Out-Null;
 
-          # ✅ FIX: gh release download fail ở lần chạy đầu sẽ làm step fail do pwsh exit $LASTEXITCODE.
-          # Reset LASTEXITCODE = 0 để không làm sập job khi chưa có manifest.
           gh release download "$env:RELEASE_TAG" --repo "$env:GH_REPO" --pattern 'drive-manifest.json' --dir "$dlDir" 2>$null;
           if (($LASTEXITCODE) -ne 0) {
               Write-Host "ℹ️ Chưa có manifest (phiên khởi tạo đầu tiên) — bỏ qua tải." -ForegroundColor Cyan;
@@ -579,7 +568,6 @@ jobs:
           $global:LASTEXITCODE = 0;
           New-Item -ItemType Directory -Force -Path "$env:SHARED_DATA_DIR" | Out-Null;
 
-          # Xóa thư mục Drivers-Backup từ bản lưu cũ để không làm nặng ổ và không treo pnputil
           $drvBk = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'Drivers-Backup');
           if (Test-Path "$drvBk") {
               Remove-Item -Path "$drvBk" -Recurse -Force -ErrorAction SilentlyContinue;
@@ -611,7 +599,6 @@ jobs:
               }
           }
           if (Test-Path "$oldProf") {
-              # Xóa sạch thư mục DPAPI Protect/Credentials của SID cũ nếu còn sót lại từ các bản lưu trước
               @(
                   "$oldProf\AppData\Roaming\Microsoft\Protect",
                   "$oldProf\AppData\Roaming\Microsoft\Crypto",
@@ -936,7 +923,6 @@ jobs:
           Write-Host "";
           Write-Host "🔊  2. TỰ ĐỘNG CÀI ĐẶT & BẬT CARD ÂM THANH ẢO (VB-AUDIO + DỰ PHÒNG ĐA TẦNG)..." -ForegroundColor Yellow;
           try {
-              # Bước 2.1: Bật toàn bộ dịch vụ âm thanh gốc của Windows Server
               @('MMCSS', 'AudioEndpointBuilder', 'Audiosrv') | ForEach-Object {
                   Set-Service -Name "$_" -StartupType Automatic -ErrorAction SilentlyContinue;
                   Start-Service -Name "$_" -ErrorAction SilentlyContinue;
@@ -957,7 +943,6 @@ jobs:
                   Expand-Archive -Path "$vbZip" -DestinationPath "$vbCacheDir" -Force;
               }
 
-              # Nạp chứng chỉ số từ cả file .cer lẫn chữ ký Authenticode trong file .cat/.sys/.exe để Windows không chặn Driver
               Get-ChildItem -Path "$vbCacheDir" -Include '*.cer','*.cat','*.sys','*.exe' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
                   if ($_.Extension -eq '.cer') {
                       Import-Certificate -FilePath ($_.FullName) -CertStoreLocation 'Cert:\LocalMachine\Root' *>$null;
@@ -977,7 +962,6 @@ jobs:
                   }
               };
 
-              # ✅ Helper: lấy thiết bị audio (Class 'MEDIA' hoặc 'AudioEndpoint') — Get-PnpDevice không nhận mảng cho -Class
               $getAudioDevices = {
                   Get-PnpDevice -ErrorAction SilentlyContinue | Where-Object {
                       ($_.Class -in @('MEDIA','AudioEndpoint')) -and
@@ -986,7 +970,6 @@ jobs:
                   }
               };
 
-              # Tầng 1: Nạp INF + Ép tạo thiết bị phần cứng ảo VBAudioVACWDM bằng deviceinstaller64 + VBCABLE_Setup_x64
               $vbInf = Get-ChildItem -Path "$vbCacheDir" -Filter '*64*.inf' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1;
               if (-not ($vbInf)) {
                   $vbInf = Get-ChildItem -Path "$vbCacheDir" -Filter '*.inf' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1;
@@ -1014,11 +997,9 @@ jobs:
                   Remove-Job -Job ($vbJob) -Force -ErrorAction SilentlyContinue;
               }
 
-              # Tầng 2 (Dự phòng): Nếu chưa lên thiết bị âm thanh, tự động cài vb-cable qua Chocolatey
               $audioDev = & $getAudioDevices;
               if (-not ($audioDev)) {
                   Write-Host "│ 🔄 Chuyển sang Tầng 2: Cài đặt gói vb-cable tự động qua Chocolatey..." -ForegroundColor Cyan;
-                  # ✅ FIX: Start-Job không kế thừa PATH, phải dùng full path choco
                   $chocoVbJob = Start-Job -ScriptBlock {
                       param($choco)
                       if (Test-Path $choco) { & $choco install vb-cable -y --no-progress --limit-output --ignore-checksums }
@@ -1032,7 +1013,6 @@ jobs:
                   Remove-Job -Job ($chocoVbJob) -Force -ErrorAction SilentlyContinue;
               }
 
-              # Tầng 3 (Dự phòng): Tìm & cài thêm Virtual Audio Cable (VAC) nếu vẫn chưa có thiết bị MEDIA
               $audioDev = & $getAudioDevices;
               if (-not ($audioDev)) {
                   Write-Host "│ 🔄 Chuyển sang Tầng 3: Cài đặt Virtual Audio Cable dự phòng..." -ForegroundColor Cyan;
@@ -1048,7 +1028,6 @@ jobs:
                   Remove-Job -Job ($vacJob) -Force -ErrorAction SilentlyContinue;
               }
 
-              # Quét lại thiết bị PnP, bật toàn bộ thiết bị âm thanh và khởi động lại Audiosrv
               pnputil /scan-devices *> $null;
               Get-PnpDevice -ErrorAction SilentlyContinue | Where-Object { ($_.Class -in @('MEDIA','AudioEndpoint')) -and ($_.Status -ne 'OK') } | ForEach-Object {
                   Enable-PnpDevice -InstanceId ($_.InstanceId) -Confirm:($false) -ErrorAction SilentlyContinue *> $null;
@@ -1092,7 +1071,6 @@ jobs:
               & sc.exe delete sunshinesvc *> $null;
 
               Write-Host "│ 📦 Đang cài đặt Sunshine qua Chocolatey (khống chế tối đa 90s chống treo)..." -ForegroundColor Cyan;
-              # ✅ FIX: Start-Job không kế thừa PATH, phải dùng full path choco
               $installJob = Start-Job -ScriptBlock {
                   param($choco)
                   if (Test-Path $choco) { & $choco install sunshine -y --no-progress --limit-output --ignore-checksums }
@@ -1118,7 +1096,6 @@ jobs:
               Stop-Process -Name 'sunshine' -Force -ErrorAction SilentlyContinue;
               Start-Sleep -Seconds 2;
 
-              # ✅ FIX: đảm bảo thư mục persist tồn tại trước khi thao tác
               if (-not ($sunPersistCfg)) { $sunPersistCfg = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'Sunshine-Config'); }
               New-Item -ItemType Directory -Force -Path "$sunPersistCfg" | Out-Null;
 
@@ -1310,7 +1287,6 @@ jobs:
               }
           } catch {}
 
-          # ✅ FIX: wmic đã bị xóa trên Windows Server 2025 → dùng Set-LocalUser + CIM cho PasswordExpires
           $securePass = ConvertTo-SecureString "$matKhau" -AsPlainText -Force;
           try {
               Set-LocalUser -Name "$user" -Password ($securePass) -PasswordNeverExpires ($true) -ErrorAction Stop;
@@ -1318,7 +1294,6 @@ jobs:
               & net user "$user" "$matKhau" /active:yes /expires:never *> $null;
           }
 
-          # Đảm bảo mật khẩu không hết hạn qua CIM (thay thế wmic)
           try {
               $acct = Get-CimInstance -ClassName Win32_UserAccount -Filter "Name='$user' AND LocalAccount=True" -ErrorAction Stop;
               if ($acct) {
@@ -1333,7 +1308,6 @@ jobs:
           Add-LocalGroupMember -Group 'Remote Desktop Users' -Member "$user" -ErrorAction SilentlyContinue;
           Enable-LocalUser -Name "$user" -ErrorAction SilentlyContinue;
 
-          # Đảm bảo quyền ALL APPLICATION PACKAGES (S-1-15-2-1) và đăng ký lại Windows Settings
           try {
               Set-Service -Name 'AppXSvc' -StartupType Automatic -ErrorAction SilentlyContinue;
               Start-Service -Name 'AppXSvc' -ErrorAction SilentlyContinue;
@@ -1350,11 +1324,22 @@ jobs:
           "RDP_PASS=$matKhau" >> "$env:GITHUB_ENV";
           "RDP_PASS_SOURCE=$source" >> "$env:GITHUB_ENV";
 
+          # 🔐 BẮT BUỘC NHẬP MẬT KHẨU KHI KẾT NỐI RDP
+          # Policy: "Always prompt for password upon connection"
+          # REG: HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services!fPromptForPassword = 1
+          $tsPolicy = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services';
+          New-Item -Path "$tsPolicy" -Force | Out-Null;
+          Set-ItemProperty -Path "$tsPolicy" -Name 'fPromptForPassword' -Value 1 -Type DWord -Force;
+          Write-Host "│ ✅ Đã bật bắt buộc nhập mật khẩu khi kết nối RDP (fPromptForPassword=1)" -ForegroundColor Green;
+
+          # Cấu hình AutoAdminLogon để vào thẳng màn hình chính sau khi RDP session được tạo
+          # LƯU Ý: DefaultPassword lưu plaintext — chỉ dùng trong môi trường runner tạm thời
           $winlogon = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon';
           Set-ItemProperty -Path "$winlogon" -Name 'AutoAdminLogon' -Value '1' -Force;
           Set-ItemProperty -Path "$winlogon" -Name 'DefaultUserName' -Value "$user" -Force;
           Set-ItemProperty -Path "$winlogon" -Name 'DefaultPassword' -Value "$matKhau" -Force;
           Set-ItemProperty -Path "$winlogon" -Name 'DefaultDomainName' -Value "$env:COMPUTERNAME" -Force;
+          Write-Host "│ ✅ Đã bật AutoAdminLogon (vào thẳng màn hình chính sau khi nhập đúng mật khẩu RDP)" -ForegroundColor Green;
 
           # 🔑 Tái mã hóa khóa DPAPI (Local State) theo SID & Mật khẩu của máy mới để giữ phiên đăng nhập App/Trình duyệt
           try {
@@ -1653,12 +1638,10 @@ jobs:
           if (Test-Path "$installerPath") {
               Write-Host "│ 📦 Tìm thấy bộ cài: $installerPath. Đang tiến hành cài đặt lại..." -ForegroundColor Cyan;
 
-              # Tắt các tiến trình/service StarDesk cũ (nếu đang khóa file từ bản khôi phục) trước khi chạy bộ cài
               Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue;
               Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue;
               Start-Sleep -Seconds 2;
 
-              # Chạy bộ cài ở chế độ Silent (/S) với cơ chế chống treo tối đa 60 giây
               $sdInstallJob = Start-Job -ScriptBlock {
                   param($exe)
                   Start-Process -FilePath "$exe" -ArgumentList '/S' -Wait;
@@ -1672,7 +1655,6 @@ jobs:
               }
               Remove-Job -Job ($sdInstallJob) -Force -ErrorAction SilentlyContinue;
 
-              # Nếu file chạy hoặc service chưa được đăng ký bởi cờ /S, kích hoạt trực tiếp bộ cài không tham số (timeout 45s)
               if ((-not (Test-Path "$appExe")) -and (-not (Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue))) {
                   Write-Host "│ 🔄 Chạy trực tiếp bộ cài $installerPath..." -ForegroundColor Cyan;
                   $proc = Start-Process -FilePath "$installerPath" -PassThru -ErrorAction SilentlyContinue;
@@ -1691,17 +1673,14 @@ jobs:
               Write-Host "│ ⚠️  Không tìm thấy file cài đặt tại $installerPath (sẽ thử mở trực tiếp nếu đã có sẵn)" -ForegroundColor Yellow;
           }
 
-          # Đảm bảo tất cả Service của StarDesk được bật
           Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue | ForEach-Object {
               Set-Service -Name ($_.Name) -StartupType Automatic -ErrorAction SilentlyContinue;
               Start-Service -Name ($_.Name) -ErrorAction SilentlyContinue;
               Write-Host "│ ✅ Đã bật dịch vụ $($_.Name)" -ForegroundColor Green;
           };
 
-          # Mở ứng dụng C:\Program Files\StarDesk\StarDesk.exe trên phiên Console của máy
           if (Test-Path "$appExe") {
               try {
-                  # ✅ FIX: /ST 00:00 không bao giờ trigger → dùng /SC ONLOGON để tự chạy khi user đăng nhập
                   & schtasks.exe /Create /TN "AISTV-Launch-StarDesk" /TR "`"$appExe`"" /SC ONLOGON /RU "$user" /RL HIGHEST /IT /F *> $null;
                   & schtasks.exe /Run /TN "AISTV-Launch-StarDesk" *> $null;
                   Start-Sleep -Seconds 3;
@@ -1752,8 +1731,10 @@ jobs:
           Write-Host "│ 👤  Profile gốc   : $env:PROFILE_PATH (<-> $($env:PROFILE_ROOT)\$env:RDP_USER)" -ForegroundColor Green;
           Write-Host "│ ⏰  Thời lượng    : $env:DISPLAY_TIME ($($start.ToString('HH:mm:ss')) -> $($end.ToString('HH:mm:ss')))" -ForegroundColor White;
           Write-Host "├──────────────────────────────────────────────────────────┤" -ForegroundColor Cyan;
+          Write-Host "│ 🔑 RDP BẮT BUỘC NHẬP MẬT KHẨU: Bạn sẽ được hỏi mật khẩu mỗi lần kết nối." -ForegroundColor Yellow;
+          Write-Host "│    Sau khi nhập đúng, hệ thống tự động đăng nhập vào màn hình chính." -ForegroundColor Yellow;
+          Write-Host "├──────────────────────────────────────────────────────────┤" -ForegroundColor Cyan;
           Write-Host "│ 💡 Mở Moonlight -> Add PC: $env:TAILSCALE_IP -> Nhập PIN tại Sunshine Web!" -ForegroundColor Yellow;
-          Write-Host "│ 💡 Ghép nối Moonlight & dữ liệu StarDesk được lưu sẵn vào ổ $($env:MOUNT_LETTER):\!" -ForegroundColor Yellow;
           Write-Host "└──────────────────────────────────────────────────────────┘" -ForegroundColor Cyan;
           exit 0;
 
@@ -1775,6 +1756,7 @@ jobs:
           Write-Host "";
           Write-Host "🔄 BẮT ĐẦU DUY TRÌ PHIÊN LÀM VIỆC..." -ForegroundColor Yellow;
           Write-Host "🔗 Kết nối RDP     : $env:TAILSCALE_IP:3389 (User:$u)" -ForegroundColor Cyan;
+          Write-Host "🔑 RDP sẽ HỎI MẬT KHẨU mỗi lần kết nối (fPromptForPassword=1)" -ForegroundColor Yellow;
           Write-Host "☀️ Sunshine Web UI : https://$($env:TAILSCALE_IP):$($env:SUNSHINE_WEB_PORT)/" -ForegroundColor Yellow;
           Write-Host "🎛️ Web Quản Lý     : http://$($env:TAILSCALE_IP):$($env:WEB_PORT)/" -ForegroundColor Yellow;
           Write-Host "🕐 Kết thúc dự kiến: $($endLocal.ToString('HH:mm:ss'))" -ForegroundColor Green;
@@ -1853,7 +1835,6 @@ jobs:
                   Start-Service -Name TermService -ErrorAction SilentlyContinue;
               }
 
-              # Tự động giữ dịch vụ Windows Audio luôn bật
               $audSvc = Get-Service -Name Audiosrv -ErrorAction SilentlyContinue;
               if (($audSvc) -and (($audSvc.Status) -ne 'Running')) {
                   Start-Service -Name AudioEndpointBuilder -ErrorAction SilentlyContinue;
@@ -1867,7 +1848,6 @@ jobs:
                   }
               }
 
-              # Tự động giữ StarDesk luôn bật trong suốt phiên làm việc
               if ((Test-Path "$sdExe") -and (-not (Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue))) {
                   Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue | Start-Service -ErrorAction SilentlyContinue;
                   & schtasks.exe /Run /TN "AISTV-Launch-StarDesk" *> $null;
@@ -1900,11 +1880,9 @@ jobs:
         run: |
           Write-Host "🛑 Đang tắt Sunshine & Kill toàn bộ tiến trình StarDesk cuối phiên..." -ForegroundColor Yellow;
 
-          # Tắt Sunshine
           Stop-Service -Name 'SunshineService', 'sunshinesvc' -Force -ErrorAction SilentlyContinue;
           Stop-Process -Name 'sunshine' -Force -ErrorAction SilentlyContinue;
 
-          # Tắt & Kill toàn bộ StarDesk (cả App, Tiến trình con & Service)
           & schtasks.exe /Delete /TN "AISTV-Launch-StarDesk" /F *> $null;
           Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue | ForEach-Object {
               $null = $_.CloseMainWindow();
@@ -1984,7 +1962,6 @@ jobs:
           DDNS: ${{ inputs.enable_duckdns }}
         run: |
           $wf      = [System.IO.Path]::GetFileName(("$env:GITHUB_WORKFLOW_REF" -split '@')[0]);
-          # ✅ FIX: fallback về 'true' khi input rỗng, tránh gh workflow run fail
           $optStr  = if ([string]::IsNullOrWhiteSpace("$env:OPT")) { 'true' } else { ("$env:OPT").ToLower() };
           $ddnsStr = if ([string]::IsNullOrWhiteSpace("$env:DDNS")) { 'true' } else { ("$env:DDNS").ToLower() };
 
