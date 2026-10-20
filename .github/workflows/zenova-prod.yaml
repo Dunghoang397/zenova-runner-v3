@@ -199,6 +199,31 @@ jobs:
           Write-Host "✅ Đã mount ổ đĩa ${dl}:\ ($sharedRoot) | User gốc: $user ($profPath)" -ForegroundColor Green;
 
       # ───────────────────────────────────────────────
+      # 1.5. ĐẢM BẢO CÓ 7-ZIP TRONG PATH
+      # ───────────────────────────────────────────────
+      - name: 📦 Đảm bảo có 7-Zip (tránh lỗi '7z not recognized')
+        shell: pwsh
+        run: |
+          $sevenZip = 'C:\Program Files\7-Zip\7z.exe';
+          if (-not (Test-Path "$sevenZip")) {
+              Write-Host "📦 Cài đặt 7-Zip..." -ForegroundColor Cyan;
+              choco install 7zip -y --no-progress --limit-output --ignore-checksums;
+              $global:LASTEXITCODE = 0;
+          }
+          if (Test-Path "$sevenZip") {
+              "SEVEN_ZIP_EXE=$sevenZip" >> "$env:GITHUB_ENV";
+              $curPath = "$env:Path";
+              if ("$curPath" -notlike "*7-Zip*") {
+                  "Path=C:\Program Files\7-Zip;$curPath" >> "$env:GITHUB_ENV";
+              }
+              Write-Host "✅ 7-Zip sẵn sàng: $sevenZip" -ForegroundColor Green;
+          } else {
+              Write-Host "❌ Không cài được 7-Zip!" -ForegroundColor Red;
+              exit 1;
+          }
+          exit 0;
+
+      # ───────────────────────────────────────────────
       # 2. TẠO ENGINE ĐỒNG BỘ Ổ ĐĨA LÊN GITHUB
       # ───────────────────────────────────────────────
       - name: 🧰 Tạo script đóng gói & đẩy toàn bộ ổ đĩa lên GitHub
@@ -418,8 +443,12 @@ jobs:
               '$archiveBase = [System.IO.Path]::Combine("$packDir", "aistv-drive.7z");',
               'Write-Host "📦 [$Reason] Đang nén toàn bộ ổ đĩa $root (đa luồng, đọc cả file đang mở)..." -ForegroundColor Cyan;',
               'Push-Location "$root";',
+              '$sevenZipExe = "$env:SEVEN_ZIP_EXE";',
+              'if ((-not ("$sevenZipExe")) -or (-not (Test-Path "$sevenZipExe"))) {',
+              '    if (Test-Path "C:\Program Files\7-Zip\7z.exe") { $sevenZipExe = "C:\Program Files\7-Zip\7z.exe" } else { $sevenZipExe = "7z" }',
+              '}',
               '$sevenZipArgs = @("a", "-t7z", "-mx=1", "-mmt=on", "-ssw", "-v1900m", "$archiveBase", "*", "-xr!Pagefile.sys", "-xr!swapfile.sys", "-xr!System Volume Information");',
-              '& 7z @sevenZipArgs *> $null;',
+              '& "$sevenZipExe" @sevenZipArgs *> $null;',
               '$sevenZipCode = $LASTEXITCODE;',
               'Pop-Location;',
               '$chunks = @(Get-ChildItem -Path "$packDir" -Filter "aistv-drive.7z.*" | Sort-Object Name);',
@@ -482,7 +511,10 @@ jobs:
 
           # 2. Cố định tên máy (ComputerName / Hostname) để Zalo, Steam, Telegram, Discord không báo thiết bị lạ
           $fixedHost = 'AISTV-CLOUD-PC';
+          # ✅ FIX: Key ComputerName không tồn tại trên một số bản Server → New-Item trước
+          New-Item -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName' -Force | Out-Null;
           Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName' -Name 'ComputerName' -Value "$fixedHost" -Force -ErrorAction SilentlyContinue;
+          New-Item -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName' -Force | Out-Null;
           Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName' -Name 'ComputerName' -Value "$fixedHost" -Force -ErrorAction SilentlyContinue;
           Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters' -Name 'Hostname' -Value "$fixedHost" -Force -ErrorAction SilentlyContinue;
           Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters' -Name 'NV Hostname' -Value "$fixedHost" -Force -ErrorAction SilentlyContinue;
@@ -493,7 +525,13 @@ jobs:
           }
           New-Item -ItemType Directory -Force -Path "$dlDir" | Out-Null;
 
+          # ✅ FIX: gh release download fail ở lần chạy đầu sẽ làm step fail do pwsh exit $LASTEXITCODE.
+          # Reset LASTEXITCODE = 0 để không làm sập job khi chưa có manifest.
           gh release download "$env:RELEASE_TAG" --repo "$env:GH_REPO" --pattern 'drive-manifest.json' --dir "$dlDir" 2>$null;
+          if (($LASTEXITCODE) -ne 0) {
+              Write-Host "ℹ️ Chưa có manifest (phiên khởi tạo đầu tiên) — bỏ qua tải." -ForegroundColor Cyan;
+          }
+          $global:LASTEXITCODE = 0;
           $manifestFile = [System.IO.Path]::Combine("$dlDir", 'drive-manifest.json');
 
           if (-not (Test-Path "$manifestFile")) {
@@ -524,7 +562,11 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$stage" | Out-Null;
 
           Write-Host "📂 Đang bung toàn bộ ổ đĩa vào ${dl}:\..." -ForegroundColor Cyan;
-          & 7z x "$firstChunk" "-o$stage" -y -mmt=on *> $null;
+          $sevenZipExe = "$env:SEVEN_ZIP_EXE";
+          if ((-not ("$sevenZipExe")) -or (-not (Test-Path "$sevenZipExe"))) {
+              if (Test-Path "C:\Program Files\7-Zip\7z.exe") { $sevenZipExe = "C:\Program Files\7-Zip\7z.exe" } else { $sevenZipExe = "7z" }
+          }
+          & "$sevenZipExe" x "$firstChunk" "-o$stage" -y -mmt=on *> $null;
           Remove-Item -Path "$dlDir" -Recurse -Force -ErrorAction SilentlyContinue;
 
           $stateHit = Get-ChildItem -Path "$stage" -Recurse -Depth 6 -Filter 'rdp-session-state.json' -File -Force -ErrorAction SilentlyContinue | Select-Object -First 1;
@@ -800,6 +842,7 @@ jobs:
           $instCache             = "$env:INSTALLER_CACHE";
           $sunPersistCfg         = "$env:SUNSHINE_PERSIST_CFG";
           $dl                    = "$env:MOUNT_LETTER";
+          $chocoExe              = 'C:\ProgramData\chocolatey\bin\choco.exe';
 
           Write-Host "";
           Write-Host "🖥️  1. ĐANG CÀI ĐẶT DRIVER MÀN HÌNH ẢO (VIRTUAL DISPLAY DRIVER)..." -ForegroundColor Yellow;
@@ -878,7 +921,9 @@ jobs:
                               '    }',
                               '}'
                           );
-                          Add-Type -TypeDefinition ($csLines -join "`r`n") -ErrorAction SilentlyContinue;
+                          if (-not ('DisplaySetter' -as [type])) {
+                              Add-Type -TypeDefinition ($csLines -join "`r`n") -ErrorAction SilentlyContinue;
+                          }
                           [DisplaySetter]::SetRes($vWidth, $vHeight, $vHz);
                           Write-Host "│ ✅ Đã cài và áp dụng màn hình ảo USBMMIDD_v2 (${vWidth}x${vHeight}@${vHz}Hz)" -ForegroundColor Green;
                       }
@@ -932,13 +977,22 @@ jobs:
                   }
               };
 
+              # ✅ Helper: lấy thiết bị audio (Class 'MEDIA' hoặc 'AudioEndpoint') — Get-PnpDevice không nhận mảng cho -Class
+              $getAudioDevices = {
+                  Get-PnpDevice -ErrorAction SilentlyContinue | Where-Object {
+                      ($_.Class -in @('MEDIA','AudioEndpoint')) -and
+                      ($_.FriendlyName -match 'VB-Audio|CABLE|Virtual Audio|Steam') -and
+                      ($_.Status -eq 'OK')
+                  }
+              };
+
               # Tầng 1: Nạp INF + Ép tạo thiết bị phần cứng ảo VBAudioVACWDM bằng deviceinstaller64 + VBCABLE_Setup_x64
               $vbInf = Get-ChildItem -Path "$vbCacheDir" -Filter '*64*.inf' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1;
               if (-not ($vbInf)) {
                   $vbInf = Get-ChildItem -Path "$vbCacheDir" -Filter '*.inf' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1;
               }
               if ($vbInf) {
-                  pnputil /add-driver ($vbInf.FullName) /install *> $null;
+                  pnputil /add-driver "$($vbInf.FullName)" /install *> $null;
                   if (Test-Path "$usbDir\deviceinstaller64.exe") {
                       Push-Location ($vbInf.DirectoryName);
                       & "$usbDir\deviceinstaller64.exe" install ($vbInf.Name) 'VBAudioVACWDM' *> $null;
@@ -946,7 +1000,7 @@ jobs:
                   }
               }
 
-              $audioDev = Get-PnpDevice -Class 'MEDIA','AudioEndpoint' -ErrorAction SilentlyContinue | Where-Object { ($_.FriendlyName -match 'VB-Audio|CABLE|Virtual Audio|Steam') -and ($_.Status -eq 'OK') };
+              $audioDev = & $getAudioDevices;
               if ((-not ($audioDev)) -and (Test-Path "$vbCacheDir\VBCABLE_Setup_x64.exe")) {
                   $vbJob = Start-Job -ScriptBlock {
                       param($dir)
@@ -961,12 +1015,15 @@ jobs:
               }
 
               # Tầng 2 (Dự phòng): Nếu chưa lên thiết bị âm thanh, tự động cài vb-cable qua Chocolatey
-              $audioDev = Get-PnpDevice -Class 'MEDIA','AudioEndpoint' -ErrorAction SilentlyContinue | Where-Object { ($_.FriendlyName -match 'VB-Audio|CABLE|Virtual Audio|Steam') -and ($_.Status -eq 'OK') };
+              $audioDev = & $getAudioDevices;
               if (-not ($audioDev)) {
                   Write-Host "│ 🔄 Chuyển sang Tầng 2: Cài đặt gói vb-cable tự động qua Chocolatey..." -ForegroundColor Cyan;
+                  # ✅ FIX: Start-Job không kế thừa PATH, phải dùng full path choco
                   $chocoVbJob = Start-Job -ScriptBlock {
-                      choco install vb-cable -y --no-progress --limit-output --ignore-checksums;
-                  };
+                      param($choco)
+                      if (Test-Path $choco) { & $choco install vb-cable -y --no-progress --limit-output --ignore-checksums }
+                      else { choco install vb-cable -y --no-progress --limit-output --ignore-checksums }
+                  } -ArgumentList $chocoExe;
                   $doneChocoVb = Wait-Job -Job ($chocoVbJob) -Timeout 45;
                   if (-not ($doneChocoVb)) {
                       Stop-Job -Job ($chocoVbJob) -ErrorAction SilentlyContinue;
@@ -976,12 +1033,14 @@ jobs:
               }
 
               # Tầng 3 (Dự phòng): Tìm & cài thêm Virtual Audio Cable (VAC) nếu vẫn chưa có thiết bị MEDIA
-              $audioDev = Get-PnpDevice -Class 'MEDIA','AudioEndpoint' -ErrorAction SilentlyContinue | Where-Object { ($_.FriendlyName -match 'VB-Audio|CABLE|Virtual Audio|Steam') -and ($_.Status -eq 'OK') };
+              $audioDev = & $getAudioDevices;
               if (-not ($audioDev)) {
                   Write-Host "│ 🔄 Chuyển sang Tầng 3: Cài đặt Virtual Audio Cable dự phòng..." -ForegroundColor Cyan;
                   $vacJob = Start-Job -ScriptBlock {
-                      choco install virtual-audio-cable -y --no-progress --limit-output --ignore-checksums;
-                  };
+                      param($choco)
+                      if (Test-Path $choco) { & $choco install virtual-audio-cable -y --no-progress --limit-output --ignore-checksums }
+                      else { choco install virtual-audio-cable -y --no-progress --limit-output --ignore-checksums }
+                  } -ArgumentList $chocoExe;
                   $doneVac = Wait-Job -Job ($vacJob) -Timeout 45;
                   if (-not ($doneVac)) {
                       Stop-Job -Job ($vacJob) -ErrorAction SilentlyContinue;
@@ -991,13 +1050,17 @@ jobs:
 
               # Quét lại thiết bị PnP, bật toàn bộ thiết bị âm thanh và khởi động lại Audiosrv
               pnputil /scan-devices *> $null;
-              Get-PnpDevice -Class 'MEDIA','AudioEndpoint' -ErrorAction SilentlyContinue | Where-Object { $_.Status -ne 'OK' } | ForEach-Object {
+              Get-PnpDevice -ErrorAction SilentlyContinue | Where-Object { ($_.Class -in @('MEDIA','AudioEndpoint')) -and ($_.Status -ne 'OK') } | ForEach-Object {
                   Enable-PnpDevice -InstanceId ($_.InstanceId) -Confirm:($false) -ErrorAction SilentlyContinue *> $null;
               };
               Restart-Service -Name 'Audiosrv' -Force -ErrorAction SilentlyContinue;
               Start-Sleep -Seconds 2;
 
-              $finalAudio = @(Get-PnpDevice -Class 'MEDIA','AudioEndpoint' -ErrorAction SilentlyContinue | Where-Object { ($_.FriendlyName -match 'VB-Audio|CABLE|Virtual Audio|Speaker|Line') -and ($_.Status -eq 'OK') } | Select-Object -ExpandProperty FriendlyName -Unique);
+              $finalAudio = @(Get-PnpDevice -ErrorAction SilentlyContinue | Where-Object {
+                  ($_.Class -in @('MEDIA','AudioEndpoint')) -and
+                  ($_.FriendlyName -match 'VB-Audio|CABLE|Virtual Audio|Speaker|Line') -and
+                  ($_.Status -eq 'OK')
+              } | Select-Object -ExpandProperty FriendlyName -Unique);
               if (($finalAudio.Count) -gt 0) {
                   $audioNames = $finalAudio -join ', ';
                   "AUDIO_DEVICE_NAME=$audioNames" >> "$env:GITHUB_ENV";
@@ -1029,9 +1092,12 @@ jobs:
               & sc.exe delete sunshinesvc *> $null;
 
               Write-Host "│ 📦 Đang cài đặt Sunshine qua Chocolatey (khống chế tối đa 90s chống treo)..." -ForegroundColor Cyan;
+              # ✅ FIX: Start-Job không kế thừa PATH, phải dùng full path choco
               $installJob = Start-Job -ScriptBlock {
-                  choco install sunshine -y --no-progress --limit-output --ignore-checksums;
-              };
+                  param($choco)
+                  if (Test-Path $choco) { & $choco install sunshine -y --no-progress --limit-output --ignore-checksums }
+                  else { choco install sunshine -y --no-progress --limit-output --ignore-checksums }
+              } -ArgumentList $chocoExe;
               $completed = Wait-Job -Job ($installJob) -Timeout 90;
               if (-not ($completed)) {
                   Write-Host "│ ⚠️  Bộ cài NSIS chờ quá 90s, tự động đóng tiến trình cài đặt để tiếp tục..." -ForegroundColor Yellow;
@@ -1052,10 +1118,18 @@ jobs:
               Stop-Process -Name 'sunshine' -Force -ErrorAction SilentlyContinue;
               Start-Sleep -Seconds 2;
 
+              # ✅ FIX: đảm bảo thư mục persist tồn tại trước khi thao tác
+              if (-not ($sunPersistCfg)) { $sunPersistCfg = [System.IO.Path]::Combine("$env:SHARED_OS_DIR", 'Sunshine-Config'); }
+              New-Item -ItemType Directory -Force -Path "$sunPersistCfg" | Out-Null;
+
               if (Test-Path "$sunCfg") {
                   $item = Get-Item "$sunCfg" -Force;
                   if (($item.Attributes) -notmatch 'ReparsePoint') {
-                      if ((@(Get-ChildItem "$sunPersistCfg" -Force -ErrorAction SilentlyContinue).Count) -eq 0) {
+                      $persistEmpty = $true;
+                      if ($sunPersistCfg -and (Test-Path "$sunPersistCfg")) {
+                          $persistEmpty = (@(Get-ChildItem "$sunPersistCfg" -Force -ErrorAction SilentlyContinue).Count -eq 0);
+                      }
+                      if ($persistEmpty) {
                           Copy-Item -Path "$sunCfg\*" -Destination "$sunPersistCfg" -Recurse -Force -ErrorAction SilentlyContinue;
                       }
                       Remove-Item -Path "$sunCfg" -Recurse -Force -ErrorAction SilentlyContinue;
@@ -1236,6 +1310,7 @@ jobs:
               }
           } catch {}
 
+          # ✅ FIX: wmic đã bị xóa trên Windows Server 2025 → dùng Set-LocalUser + CIM cho PasswordExpires
           $securePass = ConvertTo-SecureString "$matKhau" -AsPlainText -Force;
           try {
               Set-LocalUser -Name "$user" -Password ($securePass) -PasswordNeverExpires ($true) -ErrorAction Stop;
@@ -1243,8 +1318,17 @@ jobs:
               & net user "$user" "$matKhau" /active:yes /expires:never *> $null;
           }
 
-          & net user "$user" "$matKhau" /active:yes /expires:never *> $null;
-          & wmic useraccount where "Name='$user'" set PasswordExpires=False *> $null;
+          # Đảm bảo mật khẩu không hết hạn qua CIM (thay thế wmic)
+          try {
+              $acct = Get-CimInstance -ClassName Win32_UserAccount -Filter "Name='$user' AND LocalAccount=True" -ErrorAction Stop;
+              if ($acct) {
+                  Set-CimInstance -InputObject $acct -Property @{ PasswordExpires = $false } -ErrorAction Stop;
+                  Write-Host "│ ✅ Đã tắt hết hạn mật khẩu qua CIM cho $user" -ForegroundColor Green;
+              }
+          } catch {
+              Write-Host "│ ℹ️  Bỏ qua PasswordExpires qua CIM (Set-LocalUser đã xử lý): $($_.Exception.Message)" -ForegroundColor Yellow;
+          }
+
           Add-LocalGroupMember -Group 'Administrators' -Member "$user" -ErrorAction SilentlyContinue;
           Add-LocalGroupMember -Group 'Remote Desktop Users' -Member "$user" -ErrorAction SilentlyContinue;
           Enable-LocalUser -Name "$user" -ErrorAction SilentlyContinue;
@@ -1467,7 +1551,8 @@ jobs:
           $webLines = @(
               '$ErrorActionPreference = "Continue";',
               '$listener = [System.Net.HttpListener]::new();',
-              '$listener.Prefixes.Add("http://+:$($env:WEB_PORT)/");',
+              'try { $listener.Prefixes.Add("http://+:$($env:WEB_PORT)/"); } catch {}',
+              'if (($listener.Prefixes.Count) -eq 0) { $listener.Prefixes.Add("http://*:$($env:WEB_PORT)/"); }',
               '$listener.Start();',
               '$endEpoch = ([long]"$env:JOB_START_EPOCH") + (([long]"$env:TOTAL_MINUTES") * 60);',
               'while ($listener.IsListening) {',
@@ -1616,7 +1701,8 @@ jobs:
           # Mở ứng dụng C:\Program Files\StarDesk\StarDesk.exe trên phiên Console của máy
           if (Test-Path "$appExe") {
               try {
-                  & schtasks.exe /Create /TN "AISTV-Launch-StarDesk" /TR "`"$appExe`"" /SC ONCE /ST 00:00 /RU "$user" /RL HIGHEST /IT /F *> $null;
+                  # ✅ FIX: /ST 00:00 không bao giờ trigger → dùng /SC ONLOGON để tự chạy khi user đăng nhập
+                  & schtasks.exe /Create /TN "AISTV-Launch-StarDesk" /TR "`"$appExe`"" /SC ONLOGON /RU "$user" /RL HIGHEST /IT /F *> $null;
                   & schtasks.exe /Run /TN "AISTV-Launch-StarDesk" *> $null;
                   Start-Sleep -Seconds 3;
               } catch {}
@@ -1795,7 +1881,7 @@ jobs:
                   try {
                       msg * /TIME:290 "Phien RDP/Sunshine/StarDesk sap het gio (5 phut). He thong se tu dong dong goi toan bo o dia $($env:MOUNT_LETTER): luu len GitHub!";
                   } catch {}
-                  $warned =$true;
+                  $warned = $true;
               }
 
               Start-Sleep -Seconds 2;
@@ -1821,7 +1907,7 @@ jobs:
           # Tắt & Kill toàn bộ StarDesk (cả App, Tiến trình con & Service)
           & schtasks.exe /Delete /TN "AISTV-Launch-StarDesk" /F *> $null;
           Get-Process -Name 'StarDesk*' -ErrorAction SilentlyContinue | ForEach-Object {
-              $null =$_.CloseMainWindow();
+              $null = $_.CloseMainWindow();
           };
           Start-Sleep -Seconds 2;
           Get-Service -Name '*StarDesk*' -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue;
@@ -1898,8 +1984,9 @@ jobs:
           DDNS: ${{ inputs.enable_duckdns }}
         run: |
           $wf      = [System.IO.Path]::GetFileName(("$env:GITHUB_WORKFLOW_REF" -split '@')[0]);
-          $optStr  = ("$env:OPT").ToLower();
-          $ddnsStr = ("$env:DDNS").ToLower();
+          # ✅ FIX: fallback về 'true' khi input rỗng, tránh gh workflow run fail
+          $optStr  = if ([string]::IsNullOrWhiteSpace("$env:OPT")) { 'true' } else { ("$env:OPT").ToLower() };
+          $ddnsStr = if ([string]::IsNullOrWhiteSpace("$env:DDNS")) { 'true' } else { ("$env:DDNS").ToLower() };
 
           Write-Host "Chạy lại workflow: $wf (ref:$env:GITHUB_REF_NAME) và gắn lại ổ $($env:MOUNT_LETTER):\" -ForegroundColor Cyan;
           gh workflow run "$wf" --ref "$env:GITHUB_REF_NAME" -f "duration=$env:DURATION" -f auto_restart=true -f "drive_letter=$env:MOUNT_LETTER" -f "vhd_size_gb=$env:VHD_SIZE_GB" -f "windows_image=$env:WIN_IMAGE" -f "fixed_password=$env:FIXED_PASS" -f "vdd_resolution=$env:VDD_RES" -f "choco_packages=$env:PKGS" -f "optimize_windows=$optStr" -f "enable_duckdns=$ddnsStr";
