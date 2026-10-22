@@ -6,9 +6,9 @@
   "windowsImage": "windows-2025",
   "osBuild": "26100",
   "driveLetter": "X",
-  "tailscaleIp": "100.101.220.28",
+  "tailscaleIp": "100.94.212.83",
   "durationMinutes": 300,
-  "startUtc": "2026-10-21T19:51:11.8368135Z",
-  "runId": "39654416612",
-  "lastUpdatedUtc": "2026-10-21T23:37:58.0246680Z"
+  "startUtc": "2026-10-22T00:35:36.0739992Z",
+  "runId": "39694752828",
+  "lastUpdatedUtc": "2026-10-22T04:39:12.4240616Z"
 }
