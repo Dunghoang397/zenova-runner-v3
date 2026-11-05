@@ -397,16 +397,16 @@ jobs:
           netsh advfirewall firewall set rule group="remote desktop" new enable=Yes *> $null;
 
       # =====================================================================
-      # 5. CÀI ĐẶT TAILSCALE & LIÊN KẾT KEY TỪ REPO SECRET
+      # 5. CÀI ĐẶT TAILSCALE & LIÊN KẾT KEY TỪ REPO SECRET (SIÊU TỐC)
       # =====================================================================
       - name: 🌐 Cài Đặt Tailscale & Lấy IP Riêng P2P
         shell: pwsh
         run: |
           $tsMsi = "$env:TEMP\tailscale.msi";
-          & curl.exe -L -s --retry 3 "https://pkgs.tailscale.com/stable/tailscale-setup-latest.msi" -o "$tsMsi";
+          & curl.exe -L -s --retry 2 "https://pkgs.tailscale.com/stable/tailscale-setup-latest.msi" -o "$tsMsi";
           if (Test-Path "$tsMsi") {
               Start-Process msiexec.exe -ArgumentList "/i `"$tsMsi`" /qn /norestart" -Wait;
-              Start-Sleep -Seconds 3;
+              Start-Sleep -Seconds 1;
               Start-Service -Name "Tailscale" -ErrorAction SilentlyContinue;
           }
 
@@ -419,7 +419,7 @@ jobs:
                   Write-Host "🔑 Tìm thấy Tailscale Auth Key trong Repo Secrets! Đang liên kết..." -ForegroundColor Green;
                   & "$tsCli" up --authkey="$tsKey" --hostname="zenova-$env:MACHINE_ID" --accept-routes --advertise-exit-node=false --reset *> $null;
                   for ($i = 0; $i -lt 15; $i++) {
-                      Start-Sleep -Seconds 2;
+                      Start-Sleep -Seconds 1;
                       $checkIp = (& "$tsCli" ip -4 2>$null).Trim();
                       if ($checkIp -match '^100\.') {
                           $tsIp = $checkIp;
@@ -438,16 +438,24 @@ jobs:
           }
 
       # =====================================================================
-      # 6. CÀI ĐẶT DRIVER ẢO (120FPS), CARD ÂM THANH ẢO VB-CABLE & SUNSHINE
+      # 6. CÀI ĐẶT DRIVER ẢO (120FPS), CARD ÂM THANH ẢO VB-CABLE & SUNSHINE (TẢI SONG SONG)
       # =====================================================================
       - name: ☀️ Cài Đặt Driver Ảo 120fps, Âm Thanh VB-Cable & Sunshine
         shell: pwsh
         run: |
+          # Tải song song siêu tốc toàn bộ gói màn hình ảo, âm thanh, Sunshine & Cloudflared
+          $dl6 = @(
+              '--url', 'https://www.amyuni.com/downloads/usbmmidd_v2.zip', '-o', 'C:\usbmmidd.zip',
+              '--url', 'https://download.vb-audio.com/Download_EXTERNAL/VBCABLE_Driver_Pack43.zip', '-o', 'C:\vbcable.zip',
+              '--url', 'https://github.com/LizardByte/Sunshine/releases/download/v2026.914.233613/Sunshine-Windows-AMD64-installer.msi', '-o', 'C:\Sunshine-installer.msi',
+              '--url', 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe', '-o', 'C:\cloudflared.exe'
+          );
+          & curl.exe -L -s --retry 2 -Z @dl6;
+
           # Cài đặt màn hình ảo 120fps
           try {
-              & curl.exe -L -s --retry 2 "https://www.amyuni.com/downloads/usbmmidd_v2.zip" -o "C:\usbmmidd.zip";
               if (Test-Path "C:\usbmmidd.zip") {
-                  Expand-Archive -Path "C:\usbmmidd.zip" -DestinationPath "C:\usbmmidd" -Force;
+                  Expand-Archive -Path "C:\usbmmidd.zip" -DestinationPath "C:\usbmmidd" -Force -ErrorAction SilentlyContinue;
                   & "C:\usbmmidd\deviceinstaller64.exe" install "C:\usbmmidd\usbmmidd.inf" usbmmidd *> $null;
                   & "C:\usbmmidd\deviceinstaller64.exe" enableidd 1 *> $null;
               }
@@ -455,49 +463,44 @@ jobs:
 
           # Cài đặt Driver âm thanh ảo VB-Audio Cable
           try {
-              & curl.exe -L -s --retry 2 "https://download.vb-audio.com/Download_EXTERNAL/VBCABLE_Driver_Pack43.zip" -o "C:\vbcable.zip";
               if (Test-Path "C:\vbcable.zip") {
-                  Expand-Archive -Path "C:\vbcable.zip" -DestinationPath "C:\vbcable" -Force;
-                  Start-Process -FilePath "C:\vbcable\VBCABLE_Setup_x64.exe" -ArgumentList "-i -h" -Wait -WindowStyle Hidden;
+                  Expand-Archive -Path "C:\vbcable.zip" -DestinationPath "C:\vbcable" -Force -ErrorAction SilentlyContinue;
+                  Start-Process -FilePath "C:\vbcable\VBCABLE_Setup_x64.exe" -ArgumentList "-i -h" -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue;
                   Start-Service -Name "Audiosrv" -ErrorAction SilentlyContinue;
               }
           } catch {}
 
           # Cài đặt Sunshine Game Streaming
-          $ssMsi = "C:\Sunshine-installer.msi";
-          & curl.exe -L -s --retry 3 "https://github.com/LizardByte/Sunshine/releases/download/v2026.914.233613/Sunshine-Windows-AMD64-installer.msi" -o "$ssMsi";
-          if (Test-Path "$ssMsi") {
-              Start-Process msiexec.exe -ArgumentList "/i `"$ssMsi`" /qn /norestart" -Wait;
-          }
-          $ssExe = "C:\Program Files\Sunshine\sunshine.exe";
-          if (Test-Path "$ssExe") {
-              & "$ssExe" --creds zenova Zenova@2026 *> $null;
-              Start-Process -FilePath "$ssExe" -WindowStyle Hidden -ErrorAction SilentlyContinue;
-          }
+          try {
+              if (Test-Path "C:\Sunshine-installer.msi") {
+                  Start-Process msiexec.exe -ArgumentList "/i `"C:\Sunshine-installer.msi`" /qn /norestart" -Wait -ErrorAction SilentlyContinue;
+              }
+              $ssExe = "C:\Program Files\Sunshine\sunshine.exe";
+              if (Test-Path "$ssExe") {
+                  & "$ssExe" --creds zenova Zenova@2026 *> $null;
+                  Start-Process -FilePath "$ssExe" -WindowStyle Hidden -ErrorAction SilentlyContinue;
+              }
+          } catch {}
 
           # Khởi động Cloudflare Tunnel cho Sunshine với --no-tls-verify (Tránh 502)
           $cfExe = 'C:\cloudflared.exe';
-          if (-not (Test-Path "$cfExe")) {
-              & curl.exe -L -s --retry 3 "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -o "$cfExe";
-          }
           if (Test-Path "$cfExe") {
               Start-Process -FilePath "$cfExe" -ArgumentList "tunnel --url https://127.0.0.1:47990 --no-tls-verify --logfile C:\cloudflared-sunshine.log" -WindowStyle Hidden;
-              Start-Sleep -Seconds 5;
-              for ($i = 0; $i -lt 10; $i++) {
+              for ($i = 0; $i -lt 15; $i++) {
+                  Start-Sleep -Milliseconds 500;
                   if (Test-Path "C:\cloudflared-sunshine.log") {
-                      $c = Get-Content "C:\cloudflared-sunshine.log" -Raw;
+                      $c = Get-Content "C:\cloudflared-sunshine.log" -Raw -ErrorAction SilentlyContinue;
                       if ($c -match '(https://[a-zA-Z0-9-]+\.trycloudflare\.com)') {
                           Set-Content -Path "C:\zenova-sunshine-url.txt" -Value $matches[1] -Encoding UTF8 -Force;
                           Add-Content -Path $env:GITHUB_ENV -Value "SUNSHINE_URL=$($matches[1])";
                           break;
                       }
                   }
-                  Start-Sleep -Seconds 2;
               }
           }
 
       # =====================================================================
-      # 7. CÀI ĐẶT TRỌN BỘ APP (FIX DISCORD, ROBLOX, EVKEY, MINECRAFT, SPOTIFY, STARDESK)
+      # 7. CÀI ĐẶT TRỌN BỘ APP (TẢI SONG SONG - CỰC NHANH - KHÔNG CHẶN)
       # =====================================================================
       - name: 🎮 Cài Đặt Toàn Bộ Ứng Dụng & Sắp Xếp Giao Diện Desktop Chuẩn Đẹp
         shell: pwsh
@@ -506,36 +509,61 @@ jobs:
           $global:LASTEXITCODE = 0;
           New-Item -ItemType Directory -Force -Path 'C:\Apps', 'C:\Apps\Bloxstrap', 'C:\Apps\EVKey', 'C:\Apps\Minecraft' | Out-Null;
 
-          # 1. FIX LỖI DISCORD FATAL JAVASCRIPT: Dừng updater và cài đặt độc lập
+          # Tải song song toàn bộ 8 ứng dụng bằng curl -Z (tối đa băng thông mạng)
+          Write-Host "⚡ Đang tải toàn bộ ứng dụng song song siêu tốc..." -ForegroundColor Cyan;
+          $dl7 = @(
+              '--url', 'https://github.com/ddvdat-glitch/abcd/releases/download/app/StarDesk_1.5.3.exe', '-o', 'C:\Apps\StarDesk_Setup.exe',
+              '--url', 'https://aka.ms/vs/17/release/vc_redist.x64.exe', '-o', 'C:\vcredist_x64.exe',
+              '--url', 'https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe', '-o', 'C:\dotnet8.exe',
+              '--url', 'https://github.com/bloxstraplabs/bloxstrap/releases/download/v2.7.0/Bloxstrap-v2.7.0.exe', '-o', 'C:\Apps\Bloxstrap\Bloxstrap.exe',
+              '--url', 'https://github.com/lamquangminh/EVKey/releases/download/Release/EVKey.zip', '-o', 'C:\evkey.zip',
+              '--url', 'https://github.com/HMCL-dev/HMCL/releases/download/v3.16.4/HMCL-3.16.4.exe', '-o', 'C:\Apps\Minecraft\HMCL-FixLag.exe',
+              '--url', 'https://download.scdn.co/SpotifySetup.exe', '-o', 'C:\Apps\SpotifySetup.exe',
+              '--url', 'https://discord.com/api/download?platform=win', '-o', 'C:\Apps\DiscordSetup.exe'
+          );
+          & curl.exe -L -s --retry 2 -Z @dl7;
+
+          # 1. CÀI STARDESK TRUNG 1.5.3 NGAY LẬP TỨC (ƯU TIÊN SỐ 1 CHO KẾT NỐI)
           try {
-              Get-Process -Name "Discord", "Update" -ErrorAction SilentlyContinue | Stop-Process -Force;
-              $discordSetup = "C:\Apps\DiscordSetup.exe";
-              & curl.exe -L -s --retry 3 "https://discord.com/api/download?platform=win" -o "$discordSetup";
-              if (Test-Path "$discordSetup") {
-                  Start-Process -FilePath "$discordSetup" -ArgumentList "/s" -Wait -ErrorAction SilentlyContinue;
-                  Start-Sleep -Seconds 5;
-                  Get-Process -Name "Discord", "Update" -ErrorAction SilentlyContinue | Stop-Process -Force;
+              $sdDir = "C:\Program Files (x86)\StarDesk";
+              New-Item -ItemType Directory -Force -Path $sdDir | Out-Null;
+              $sdExe = "$sdDir\StarDesk.exe";
+              if (Test-Path "C:\Apps\StarDesk_Setup.exe") {
+                  Copy-Item -Path "C:\Apps\StarDesk_Setup.exe" -Destination "$sdExe" -Force;
+              } else {
+                  & curl.exe -L -s --retry 2 "https://raw.githubusercontent.com/Chilledit/file/main/StarDesk_1.5.3.exe" -o "$sdExe";
+              }
+              $pin = "$env:INPUT_PIN_CODE";
+              if (-not $pin) { $pin = "Zenova2026"; }
+              "[General]`r`nPassword=$pin`r`nAutoStart=1`r`n" | Out-File -FilePath "$sdDir\config.ini" -Encoding ascii -Force;
+              if (Test-Path "$sdExe") {
+                  Start-Process -FilePath "$sdExe" -ArgumentList "/silent" -WindowStyle Hidden -ErrorAction SilentlyContinue;
+              }
+              $sdId = "";
+              for ($i = 0; $i -lt 12; $i++) {
+                  Start-Sleep -Milliseconds 500;
+                  if (Test-Path "$sdDir\config.ini") {
+                      $c = Get-Content "$sdDir\config.ini" -Raw -ErrorAction SilentlyContinue;
+                      if ($c -match 'ID\s*=\s*(\d+)') { $sdId = $matches[1]; break; }
+                  }
+              }
+              if (-not $sdId) { $sdId = "231141232"; }
+              Set-Content -Path "C:\zenova-sd-id.txt" -Value $sdId -Encoding utf8 -Force;
+              Add-Content -Path $env:GITHUB_ENV -Value "STARDESK_ID=$sdId";
+          } catch {}
+
+          # 2. CÀI EVKEY BỘ GÕ TIẾNG VIỆT
+          try {
+              if ((Test-Path "C:\evkey.zip") -and ((Get-Item "C:\evkey.zip").Length -gt 50000)) {
+                  Expand-Archive -Path "C:\evkey.zip" -DestinationPath "C:\Apps\EVKey" -Force -ErrorAction SilentlyContinue;
+                  if (Test-Path "C:\Apps\EVKey\EVKey64.exe") {
+                      Start-Process -FilePath "C:\Apps\EVKey\EVKey64.exe" -WindowStyle Hidden -ErrorAction SilentlyContinue;
+                  }
               }
           } catch {}
 
-          # 2. FIX LỖI ROBLOX / BLOXSTRAP: Cài .NET 8 Desktop Runtime & VC++ Redistributable
+          # 3. CẤU HÌNH BLOXSTRAP FIX LAG (120 FPS, DIRECT3D11)
           try {
-              $net8Exe = "C:\dotnet8.exe";
-              & curl.exe -L -s --retry 3 "https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe" -o "$net8Exe";
-              if (Test-Path "$net8Exe") {
-                  Start-Process -FilePath "$net8Exe" -ArgumentList "/install /quiet /norestart" -Wait -ErrorAction SilentlyContinue;
-              }
-              $vcExe = "C:\vcredist_x64.exe";
-              & curl.exe -L -s --retry 3 "https://aka.ms/vs/17/release/vc_redist.x64.exe" -o "$vcExe";
-              if (Test-Path "$vcExe") {
-                  Start-Process -FilePath "$vcExe" -ArgumentList "/install /quiet /norestart" -Wait -ErrorAction SilentlyContinue;
-              }
-          } catch {}
-
-          # Cài Bloxstrap v2.7.0 Fix Lag (120 FPS, Direct3D11)
-          try {
-              $bloxExe = "C:\Apps\Bloxstrap\Bloxstrap.exe";
-              & curl.exe -L -s --retry 3 "https://github.com/bloxstraplabs/bloxstrap/releases/download/v2.7.0/Bloxstrap-v2.7.0.exe" -o "$bloxExe";
               $bloxCfgDir = "C:\Users\zenova\AppData\Local\Bloxstrap\Modifications\ClientSettings";
               New-Item -ItemType Directory -Force -Path $bloxCfgDir | Out-Null;
               $fastFlags = @{
@@ -548,65 +576,12 @@ jobs:
               Set-Content -Path "$bloxCfgDir\ClientAppSettings.json" -Value $fastFlags -Encoding UTF8 -Force;
           } catch {}
 
-          # 3. CÀI EVKEY BỘ GÕ TIẾNG VIỆT (FIX LỖI WINDOWSBASE.DLL)
-          try {
-              $evkZip = "C:\evkey.zip";
-              & curl.exe -L -s --retry 3 "https://github.com/lamquangminh/EVKey/releases/download/Release/EVKey.zip" -o "$evkZip";
-              if ((Test-Path "$evkZip") -and ((Get-Item "$evkZip").Length -gt 50000)) {
-                  Expand-Archive -Path "$evkZip" -DestinationPath "C:\Apps\EVKey" -Force -ErrorAction SilentlyContinue;
-                  if (Test-Path "C:\Apps\EVKey\EVKey64.exe") {
-                      Start-Process -FilePath "C:\Apps\EVKey\EVKey64.exe" -WindowStyle Hidden -ErrorAction SilentlyContinue;
-                  }
-              }
-          } catch {}
-
-          # 4. CÀI MINECRAFT HMCL FIX LAG (RELEASE CHUẨN)
-          try {
-              $hmclExe = "C:\Apps\Minecraft\HMCL-FixLag.exe";
-              & curl.exe -L -s --retry 3 "https://github.com/HMCL-dev/HMCL/releases/download/v3.16.4/HMCL-3.16.4.exe" -o "$hmclExe";
-          } catch {}
-
-          # 5. CÀI SPOTIFY
-          try {
-              $spotExe = "C:\Apps\SpotifySetup.exe";
-              & curl.exe -L -s --retry 3 "https://download.scdn.co/SpotifySetup.exe" -o "$spotExe";
-              if (Test-Path "$spotExe") {
-                  Start-Process -FilePath "$spotExe" -ArgumentList "/silent" -Wait -ErrorAction SilentlyContinue;
-              }
-          } catch {}
-
-          # 6. CÀI STARDESK TRUNG 1.5.3 (LINK TẢI CHÍNH THỨC + BACKUP)
-          try {
-              $sdDir = "C:\Program Files (x86)\StarDesk";
-              New-Item -ItemType Directory -Force -Path $sdDir | Out-Null;
-              $sdExe = "$sdDir\StarDesk.exe";
-              & curl.exe -L -s --retry 3 "https://github.com/ddvdat-glitch/abcd/releases/download/app/StarDesk_1.5.3.exe" -o "$sdExe";
-              if (-not (Test-Path "$sdExe") -or ((Get-Item "$sdExe").Length -lt 500000)) {
-                  & curl.exe -L -s --retry 2 "https://raw.githubusercontent.com/Chilledit/file/main/StarDesk_1.5.3.exe" -o "$sdExe";
-              }
-              $pin = "$env:INPUT_PIN_CODE";
-              if (-not $pin) { $pin = "Zenova2026"; }
-              "[General]`r`nPassword=$pin`r`nAutoStart=1`r`n" | Out-File -FilePath "$sdDir\config.ini" -Encoding ascii -Force;
-              if (Test-Path "$sdExe") {
-                  Start-Process -FilePath "$sdExe" -ArgumentList "/silent" -WindowStyle Hidden -ErrorAction SilentlyContinue;
-              }
-              Start-Sleep -Seconds 5;
-              $sdId = "";
-              for ($i = 0; $i -lt 10; $i++) {
-                  if (Test-Path "$sdDir\config.ini") {
-                      $c = Get-Content "$sdDir\config.ini" -Raw;
-                      if ($c -match 'ID\s*=\s*(\d+)') { $sdId = $matches[1]; break; }
-                  }
-                  Start-Sleep -Seconds 2;
-              }
-              if (-not $sdId) { $sdId = "231141232"; }
-              Set-Content -Path "C:\zenova-sd-id.txt" -Value $sdId -Encoding utf8 -Force;
-              Add-Content -Path $env:GITHUB_ENV -Value "STARDESK_ID=$sdId";
-          } catch {}
-
-          # 7. SẮP XẾP ICON DESKTOP CHUẨN ĐẸP
+          # 4. SẮP XẾP ICON DESKTOP CHUẨN ĐẸP
           try {
               $ws = New-Object -ComObject WScript.Shell;
+              $sdExePath = "C:\Program Files (x86)\StarDesk\StarDesk.exe";
+              $bloxExePath = "C:\Apps\Bloxstrap\Bloxstrap.exe";
+              $hmclExePath = "C:\Apps\Minecraft\HMCL-FixLag.exe";
               foreach ($u in @('zenova', 'runneradmin', 'Public')) {
                   $d = "C:\Users\$u\Desktop";
                   if (Test-Path $d) {
@@ -614,14 +589,14 @@ jobs:
                       $lnkApps.TargetPath = "C:\Apps";
                       $lnkApps.Save();
 
-                      if (Test-Path "$sdExe") {
+                      if (Test-Path "$sdExePath") {
                           $lnkSD = $ws.CreateShortcut("$d\StarDesk Trung.lnk");
-                          $lnkSD.TargetPath = "$sdExe";
+                          $lnkSD.TargetPath = "$sdExePath";
                           $lnkSD.Save();
                       }
-                      if (Test-Path "$bloxExe") {
+                      if (Test-Path "$bloxExePath") {
                           $lnkRb = $ws.CreateShortcut("$d\Roblox (Bloxstrap Fix Lag).lnk");
-                          $lnkRb.TargetPath = "$bloxExe";
+                          $lnkRb.TargetPath = "$bloxExePath";
                           $lnkRb.Save();
                       }
                       if (Test-Path "C:\Apps\EVKey\EVKey64.exe") {
@@ -629,12 +604,33 @@ jobs:
                           $lnkEvk.TargetPath = "C:\Apps\EVKey\EVKey64.exe";
                           $lnkEvk.Save();
                       }
-                      if (Test-Path "$hmclExe") {
+                      if (Test-Path "$hmclExePath") {
                           $lnkMc = $ws.CreateShortcut("$d\Minecraft (Fix Lag).lnk");
-                          $lnkMc.TargetPath = "$hmclExe";
+                          $lnkMc.TargetPath = "$hmclExePath";
                           $lnkMc.Save();
                       }
                   }
+              }
+          } catch {}
+
+          # 5. KHỞI CHẠY CÀI ĐẶT CÁC RUNTIME & APP ĐỒNG THỜI (SONG SONG KHÔNG CHỜ)
+          try {
+              $procs = @();
+              if (Test-Path "C:\vcredist_x64.exe") {
+                  $procs += Start-Process -FilePath "C:\vcredist_x64.exe" -ArgumentList "/install /quiet /norestart" -PassThru -ErrorAction SilentlyContinue;
+              }
+              if (Test-Path "C:\dotnet8.exe") {
+                  $procs += Start-Process -FilePath "C:\dotnet8.exe" -ArgumentList "/install /quiet /norestart" -PassThru -ErrorAction SilentlyContinue;
+              }
+              if (Test-Path "C:\Apps\SpotifySetup.exe") {
+                  $procs += Start-Process -FilePath "C:\Apps\SpotifySetup.exe" -ArgumentList "/silent" -PassThru -ErrorAction SilentlyContinue;
+              }
+              if (Test-Path "C:\Apps\DiscordSetup.exe") {
+                  Get-Process -Name "Discord", "Update" -ErrorAction SilentlyContinue | Stop-Process -Force;
+                  $procs += Start-Process -FilePath "C:\Apps\DiscordSetup.exe" -ArgumentList "/s" -PassThru -ErrorAction SilentlyContinue;
+              }
+              if ($procs.Count -gt 0) {
+                  $null = Wait-Process -InputObject $procs -Timeout 45 -ErrorAction SilentlyContinue;
               }
           } catch {}
           $global:LASTEXITCODE = 0;
@@ -656,28 +652,28 @@ jobs:
           if (-not $pyExe) { $pyExe = 'python'; }
           Start-Process -FilePath $pyExe -ArgumentList "`"$pyServerPath`"", "8080" -WindowStyle Hidden -ErrorAction SilentlyContinue;
 
-          # Đợi server 8080 phản hồi 200 OK trước khi mở Cloudflare Tunnel
-          for ($i = 0; $i -lt 15; $i++) {
+          # Đợi server 8080 phản hồi 200 OK trước khi mở Cloudflare Tunnel (kiểm tra nhanh mỗi 300ms)
+          for ($i = 0; $i -lt 20; $i++) {
               try {
-                  $res = Invoke-WebRequest -Uri "http://127.0.0.1:8080" -UseBasicParsing -TimeoutSec 2;
+                  $res = Invoke-WebRequest -Uri "http://127.0.0.1:8080" -UseBasicParsing -TimeoutSec 1;
                   if ($res.StatusCode -eq 200) { break; }
               } catch {}
-              Start-Sleep -Seconds 1;
+              Start-Sleep -Milliseconds 300;
           }
 
           $cfExe = 'C:\cloudflared.exe';
           if (Test-Path "$cfExe") {
               Start-Process -FilePath "$cfExe" -ArgumentList "tunnel --url http://127.0.0.1:8080 --logfile C:\cloudflared-web.log" -WindowStyle Hidden;
-              for ($i = 0; $i -lt 12; $i++) {
+              for ($i = 0; $i -lt 15; $i++) {
+                  Start-Sleep -Milliseconds 500;
                   if (Test-Path "C:\cloudflared-web.log") {
-                      $c = Get-Content "C:\cloudflared-web.log" -Raw;
+                      $c = Get-Content "C:\cloudflared-web.log" -Raw -ErrorAction SilentlyContinue;
                       if ($c -match '(https://[a-zA-Z0-9-]+\.trycloudflare\.com)') {
                           Set-Content -Path "C:\zenova-web-url.txt" -Value $matches[1] -Encoding UTF8 -Force;
                           Add-Content -Path $env:GITHUB_ENV -Value "WEB_URL=$($matches[1])";
                           break;
                       }
                   }
-                  Start-Sleep -Seconds 2;
               }
           }
 
@@ -816,7 +812,7 @@ jobs:
           echo "runner:$FIXED_PASSWORD" | sudo chpasswd
 
           sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq xfce4 xfce4-terminal xrdp pulseaudio curl wget >/dev/null 2>&1
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends xfce4 xfce4-terminal xrdp pulseaudio curl wget >/dev/null 2>&1
           echo "xfce4-session" > ~/.xsession
           sudo systemctl restart xrdp
 
@@ -836,8 +832,15 @@ jobs:
           chmod +x /tmp/cloudflared
           /tmp/cloudflared tunnel --url http://127.0.0.1:8080 --logfile /tmp/cf-web.log >/dev/null 2>&1 &
 
-          sleep 5
-          WEB_URL=$(grep -o 'https://[a-zA-Z0-9-]*\.trycloudflare\.com' /tmp/cf-web.log | head -n 1 || echo "http://127.0.0.1:8080")
+          WEB_URL=""
+          for i in {1..15}; do
+              if [ -f /tmp/cf-web.log ]; then
+                  WEB_URL=$(grep -o 'https://[a-zA-Z0-9-]*\.trycloudflare\.com' /tmp/cf-web.log | head -n 1 || echo "")
+                  if [ -n "$WEB_URL" ]; then break; fi
+              fi
+              sleep 1
+          done
+          if [ -z "$WEB_URL" ]; then WEB_URL="http://127.0.0.1:8080"; fi
           PUB_IP=$(curl -s ifconfig.me || echo "127.0.0.1")
 
           echo "======================================================================"
