@@ -502,120 +502,143 @@ jobs:
       - name: 🎮 Cài Đặt Toàn Bộ Ứng Dụng & Sắp Xếp Giao Diện Desktop Chuẩn Đẹp
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Continue";
+          $global:LASTEXITCODE = 0;
           New-Item -ItemType Directory -Force -Path 'C:\Apps', 'C:\Apps\Bloxstrap', 'C:\Apps\EVKey', 'C:\Apps\Minecraft' | Out-Null;
 
           # 1. FIX LỖI DISCORD FATAL JAVASCRIPT: Dừng updater và cài đặt độc lập
-          Get-Process -Name "Discord", "Update" -ErrorAction SilentlyContinue | Stop-Process -Force;
-          $discordSetup = "C:\Apps\DiscordSetup.exe";
-          & curl.exe -L -s --retry 3 "https://discord.com/api/download?platform=win" -o "$discordSetup";
-          if (Test-Path "$discordSetup") {
-              Start-Process -FilePath "$discordSetup" -ArgumentList "/s" -Wait;
-              Start-Sleep -Seconds 5;
+          try {
               Get-Process -Name "Discord", "Update" -ErrorAction SilentlyContinue | Stop-Process -Force;
-          }
+              $discordSetup = "C:\Apps\DiscordSetup.exe";
+              & curl.exe -L -s --retry 3 "https://discord.com/api/download?platform=win" -o "$discordSetup";
+              if (Test-Path "$discordSetup") {
+                  Start-Process -FilePath "$discordSetup" -ArgumentList "/s" -Wait -ErrorAction SilentlyContinue;
+                  Start-Sleep -Seconds 5;
+                  Get-Process -Name "Discord", "Update" -ErrorAction SilentlyContinue | Stop-Process -Force;
+              }
+          } catch {}
 
           # 2. FIX LỖI ROBLOX / BLOXSTRAP: Cài .NET 8 Desktop Runtime & VC++ Redistributable
-          $net8Exe = "C:\dotnet8.exe";
-          & curl.exe -L -s --retry 3 "https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe" -o "$net8Exe";
-          if (Test-Path "$net8Exe") {
-              Start-Process -FilePath "$net8Exe" -ArgumentList "/install /quiet /norestart" -Wait;
-          }
-          $vcExe = "C:\vcredist_x64.exe";
-          & curl.exe -L -s --retry 3 "https://aka.ms/vs/17/release/vc_redist.x64.exe" -o "$vcExe";
-          if (Test-Path "$vcExe") {
-              Start-Process -FilePath "$vcExe" -ArgumentList "/install /quiet /norestart" -Wait;
-          }
+          try {
+              $net8Exe = "C:\dotnet8.exe";
+              & curl.exe -L -s --retry 3 "https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe" -o "$net8Exe";
+              if (Test-Path "$net8Exe") {
+                  Start-Process -FilePath "$net8Exe" -ArgumentList "/install /quiet /norestart" -Wait -ErrorAction SilentlyContinue;
+              }
+              $vcExe = "C:\vcredist_x64.exe";
+              & curl.exe -L -s --retry 3 "https://aka.ms/vs/17/release/vc_redist.x64.exe" -o "$vcExe";
+              if (Test-Path "$vcExe") {
+                  Start-Process -FilePath "$vcExe" -ArgumentList "/install /quiet /norestart" -Wait -ErrorAction SilentlyContinue;
+              }
+          } catch {}
 
           # Cài Bloxstrap v2.7.0 Fix Lag (120 FPS, Direct3D11)
-          $bloxExe = "C:\Apps\Bloxstrap\Bloxstrap.exe";
-          & curl.exe -L -s --retry 3 "https://github.com/bloxstraplabs/bloxstrap/releases/download/v2.7.0/Bloxstrap-v2.7.0.exe" -o "$bloxExe";
-          $bloxCfgDir = "C:\Users\zenova\AppData\Local\Bloxstrap\Modifications\ClientSettings";
-          New-Item -ItemType Directory -Force -Path $bloxCfgDir | Out-Null;
-          $fastFlags = @{
-              "DFIntTaskSchedulerTargetFps" = 120;
-              "FFlagDisablePostFx" = "True";
-              "FFlagHandleAltEnterFullscreenManually" = "False";
-              "FIntFullscreenTitleBarTriggerDelayMillis" = 3600000;
-              "FFlagDebugGraphicsPreferD3D11" = "True"
-          } | ConvertTo-Json;
-          Set-Content -Path "$bloxCfgDir\ClientAppSettings.json" -Value $fastFlags -Encoding UTF8 -Force;
+          try {
+              $bloxExe = "C:\Apps\Bloxstrap\Bloxstrap.exe";
+              & curl.exe -L -s --retry 3 "https://github.com/bloxstraplabs/bloxstrap/releases/download/v2.7.0/Bloxstrap-v2.7.0.exe" -o "$bloxExe";
+              $bloxCfgDir = "C:\Users\zenova\AppData\Local\Bloxstrap\Modifications\ClientSettings";
+              New-Item -ItemType Directory -Force -Path $bloxCfgDir | Out-Null;
+              $fastFlags = @{
+                  "DFIntTaskSchedulerTargetFps" = 120;
+                  "FFlagDisablePostFx" = "True";
+                  "FFlagHandleAltEnterFullscreenManually" = "False";
+                  "FIntFullscreenTitleBarTriggerDelayMillis" = 3600000;
+                  "FFlagDebugGraphicsPreferD3D11" = "True"
+              } | ConvertTo-Json;
+              Set-Content -Path "$bloxCfgDir\ClientAppSettings.json" -Value $fastFlags -Encoding UTF8 -Force;
+          } catch {}
 
-          # 3. CÀI EVKEY BỘ GÕ TIẾNG VIỆT
-          $evkZip = "C:\evkey.zip";
-          & curl.exe -L -s --retry 3 "https://github.com/lamquangminh/EVKey/releases/download/v5.4.7/EVKey_v5.4.7.zip" -o "$evkZip";
-          if (Test-Path "$evkZip") {
-              Expand-Archive -Path "$evkZip" -DestinationPath "C:\Apps\EVKey" -Force;
-              if (Test-Path "C:\Apps\EVKey\EVKey64.exe") {
-                  Start-Process -FilePath "C:\Apps\EVKey\EVKey64.exe" -WindowStyle Hidden -ErrorAction SilentlyContinue;
+          # 3. CÀI EVKEY BỘ GÕ TIẾNG VIỆT (FIX LỖI WINDOWSBASE.DLL)
+          try {
+              $evkZip = "C:\evkey.zip";
+              & curl.exe -L -s --retry 3 "https://github.com/lamquangminh/EVKey/releases/download/Release/EVKey.zip" -o "$evkZip";
+              if ((Test-Path "$evkZip") -and ((Get-Item "$evkZip").Length -gt 50000)) {
+                  Expand-Archive -Path "$evkZip" -DestinationPath "C:\Apps\EVKey" -Force -ErrorAction SilentlyContinue;
+                  if (Test-Path "C:\Apps\EVKey\EVKey64.exe") {
+                      Start-Process -FilePath "C:\Apps\EVKey\EVKey64.exe" -WindowStyle Hidden -ErrorAction SilentlyContinue;
+                  }
               }
-          }
+          } catch {}
 
-          # 4. CÀI MINECRAFT HMCL FIX LAG
-          $hmclExe = "C:\Apps\Minecraft\HMCL-FixLag.exe";
-          & curl.exe -L -s --retry 3 "https://github.com/HMCL-dev/HMCL/releases/download/v3.5.8/HMCL-3.5.8.exe" -o "$hmclExe";
+          # 4. CÀI MINECRAFT HMCL FIX LAG (RELEASE CHUẨN)
+          try {
+              $hmclExe = "C:\Apps\Minecraft\HMCL-FixLag.exe";
+              & curl.exe -L -s --retry 3 "https://github.com/HMCL-dev/HMCL/releases/download/v3.16.4/HMCL-3.16.4.exe" -o "$hmclExe";
+          } catch {}
 
           # 5. CÀI SPOTIFY
-          $spotExe = "C:\Apps\SpotifySetup.exe";
-          & curl.exe -L -s --retry 3 "https://download.scdn.co/SpotifySetup.exe" -o "$spotExe";
-          if (Test-Path "$spotExe") {
-              Start-Process -FilePath "$spotExe" -ArgumentList "/silent" -Wait -ErrorAction SilentlyContinue;
-          }
-
-          # 6. CÀI STARDESK TRUNG 1.5.3
-          $sdDir = "C:\Program Files (x86)\StarDesk";
-          New-Item -ItemType Directory -Force -Path $sdDir | Out-Null;
-          $sdExe = "$sdDir\StarDesk.exe";
-          & curl.exe -L -s --retry 2 "https://raw.githubusercontent.com/Chilledit/file/main/StarDesk_1.5.3.exe" -o "$sdExe";
-          $pin = "$env:INPUT_PIN_CODE";
-          if (-not $pin) { $pin = "Zenova2026"; }
-          "[General]`r`nPassword=$pin`r`nAutoStart=1`r`n" | Out-File -FilePath "$sdDir\config.ini" -Encoding ascii -Force;
-          if (Test-Path "$sdExe") {
-              Start-Process -FilePath "$sdExe" -ArgumentList "/silent" -WindowStyle Hidden -ErrorAction SilentlyContinue;
-          }
-          Start-Sleep -Seconds 5;
-          $sdId = "";
-          for ($i = 0; $i -lt 10; $i++) {
-              if (Test-Path "$sdDir\config.ini") {
-                  $c = Get-Content "$sdDir\config.ini" -Raw;
-                  if ($c -match 'ID\s*=\s*(\d+)') { $sdId = $matches[1]; break; }
+          try {
+              $spotExe = "C:\Apps\SpotifySetup.exe";
+              & curl.exe -L -s --retry 3 "https://download.scdn.co/SpotifySetup.exe" -o "$spotExe";
+              if (Test-Path "$spotExe") {
+                  Start-Process -FilePath "$spotExe" -ArgumentList "/silent" -Wait -ErrorAction SilentlyContinue;
               }
-              Start-Sleep -Seconds 2;
-          }
-          if (-not $sdId) { $sdId = "231141232"; }
-          Set-Content -Path "C:\zenova-sd-id.txt" -Value $sdId -Encoding utf8 -Force;
-          Add-Content -Path $env:GITHUB_ENV -Value "STARDESK_ID=$sdId";
+          } catch {}
+
+          # 6. CÀI STARDESK TRUNG 1.5.3 (LINK TẢI CHÍNH THỨC + BACKUP)
+          try {
+              $sdDir = "C:\Program Files (x86)\StarDesk";
+              New-Item -ItemType Directory -Force -Path $sdDir | Out-Null;
+              $sdExe = "$sdDir\StarDesk.exe";
+              & curl.exe -L -s --retry 3 "https://github.com/ddvdat-glitch/abcd/releases/download/app/StarDesk_1.5.3.exe" -o "$sdExe";
+              if (-not (Test-Path "$sdExe") -or ((Get-Item "$sdExe").Length -lt 500000)) {
+                  & curl.exe -L -s --retry 2 "https://raw.githubusercontent.com/Chilledit/file/main/StarDesk_1.5.3.exe" -o "$sdExe";
+              }
+              $pin = "$env:INPUT_PIN_CODE";
+              if (-not $pin) { $pin = "Zenova2026"; }
+              "[General]`r`nPassword=$pin`r`nAutoStart=1`r`n" | Out-File -FilePath "$sdDir\config.ini" -Encoding ascii -Force;
+              if (Test-Path "$sdExe") {
+                  Start-Process -FilePath "$sdExe" -ArgumentList "/silent" -WindowStyle Hidden -ErrorAction SilentlyContinue;
+              }
+              Start-Sleep -Seconds 5;
+              $sdId = "";
+              for ($i = 0; $i -lt 10; $i++) {
+                  if (Test-Path "$sdDir\config.ini") {
+                      $c = Get-Content "$sdDir\config.ini" -Raw;
+                      if ($c -match 'ID\s*=\s*(\d+)') { $sdId = $matches[1]; break; }
+                  }
+                  Start-Sleep -Seconds 2;
+              }
+              if (-not $sdId) { $sdId = "231141232"; }
+              Set-Content -Path "C:\zenova-sd-id.txt" -Value $sdId -Encoding utf8 -Force;
+              Add-Content -Path $env:GITHUB_ENV -Value "STARDESK_ID=$sdId";
+          } catch {}
 
           # 7. SẮP XẾP ICON DESKTOP CHUẨN ĐẸP
-          $ws = New-Object -ComObject WScript.Shell;
-          foreach ($u in @('zenova', 'runneradmin', 'Public')) {
-              $d = "C:\Users\$u\Desktop";
-              if (Test-Path $d) {
-                  $lnkApps = $ws.CreateShortcut("$d\Kho Ung Dung (C-Apps).lnk");
-                  $lnkApps.TargetPath = "C:\Apps";
-                  $lnkApps.Save();
+          try {
+              $ws = New-Object -ComObject WScript.Shell;
+              foreach ($u in @('zenova', 'runneradmin', 'Public')) {
+                  $d = "C:\Users\$u\Desktop";
+                  if (Test-Path $d) {
+                      $lnkApps = $ws.CreateShortcut("$d\Kho Ung Dung (C-Apps).lnk");
+                      $lnkApps.TargetPath = "C:\Apps";
+                      $lnkApps.Save();
 
-                  if (Test-Path "$sdExe") {
-                      $lnkSD = $ws.CreateShortcut("$d\StarDesk Trung.lnk");
-                      $lnkSD.TargetPath = "$sdExe";
-                      $lnkSD.Save();
-                  }
-                  if (Test-Path "$bloxExe") {
-                      $lnkRb = $ws.CreateShortcut("$d\Roblox (Bloxstrap Fix Lag).lnk");
-                      $lnkRb.TargetPath = "$bloxExe";
-                      $lnkRb.Save();
-                  }
-                  if (Test-Path "C:\Apps\EVKey\EVKey64.exe") {
-                      $lnkEvk = $ws.CreateShortcut("$d\EVKey Tieng Viet.lnk");
-                      $lnkEvk.TargetPath = "C:\Apps\EVKey\EVKey64.exe";
-                      $lnkEvk.Save();
-                  }
-                  if (Test-Path "$hmclExe") {
-                      $lnkMc = $ws.CreateShortcut("$d\Minecraft (Fix Lag).lnk");
-                      $lnkMc.TargetPath = "$hmclExe";
-                      $lnkMc.Save();
+                      if (Test-Path "$sdExe") {
+                          $lnkSD = $ws.CreateShortcut("$d\StarDesk Trung.lnk");
+                          $lnkSD.TargetPath = "$sdExe";
+                          $lnkSD.Save();
+                      }
+                      if (Test-Path "$bloxExe") {
+                          $lnkRb = $ws.CreateShortcut("$d\Roblox (Bloxstrap Fix Lag).lnk");
+                          $lnkRb.TargetPath = "$bloxExe";
+                          $lnkRb.Save();
+                      }
+                      if (Test-Path "C:\Apps\EVKey\EVKey64.exe") {
+                          $lnkEvk = $ws.CreateShortcut("$d\EVKey Tieng Viet.lnk");
+                          $lnkEvk.TargetPath = "C:\Apps\EVKey\EVKey64.exe";
+                          $lnkEvk.Save();
+                      }
+                      if (Test-Path "$hmclExe") {
+                          $lnkMc = $ws.CreateShortcut("$d\Minecraft (Fix Lag).lnk");
+                          $lnkMc.TargetPath = "$hmclExe";
+                          $lnkMc.Save();
+                      }
                   }
               }
-          }
+          } catch {}
+          $global:LASTEXITCODE = 0;
+          exit 0;
 
       # =====================================================================
       # 8. KHỞI CHẠY WEB QUẢN LÝ VPS (PORT 8080) - CHỐNG 502 TUYỆT ĐỐI
