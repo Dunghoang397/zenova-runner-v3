@@ -144,13 +144,14 @@ jobs:
       ENABLE_DUCKDNS: ${{ github.event.inputs.enable_duckdns || 'true' }}
       INPUT_PIN_CODE: ${{ github.event.inputs.pin_code || 'Zenova2026' }}
       STARDESK_ID_INPUT: ${{ github.event.inputs.stardesk_id_trung || '' }}
-      TAILSCALE_AUTH_KEY: ${{ github.event.inputs.tailscale_authkey || secrets.TAILSCALE_AUTHKEY || secrets.TAILSCALE_KEY || secrets.TS_AUTHKEY || secrets.TAILSCALE_AUTH_KEY || secrets.TAILSCALE || secrets.TS_KEY || secrets.TAILSCALE_TOKEN }}
+      # ✅ FIX Tailscale: thêm nhiều alias secret + fallback cuối
+      TAILSCALE_AUTH_KEY: ${{ github.event.inputs.tailscale_authkey || secrets.TAILSCALE_AUTHKEY || secrets.TAILSCALE_AUTH_KEY || secrets.TAILSCALE_KEY || secrets.TS_AUTHKEY || secrets.TS_AUTH_KEY || secrets.TSKEY || secrets.TAILSCALE || secrets.TS_KEY || secrets.TAILSCALE_TOKEN || secrets.TAILSCALE_SECRET }}
       NGROK_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN || secrets.NGROK_TOKEN }}
       CHOCO_PACKAGES: ${{ github.event.inputs.choco_packages || '' }}
 
     steps:
       # ─────────────────────────────────────────────────────────────
-      # 1. DỰNG Ổ ĐĨA RIÊNG & CHUẨN BỊ THÔNG SỐ (HỖ TRỢ TỚI 100TB DYNAMIC)
+      # 1. DỰNG Ổ ĐĨA RIÊNG & CHUẨN BỊ THÔNG SỐ
       # ─────────────────────────────────────────────────────────────
       - name: 🧱 Dựng ổ đĩa riêng & Chuẩn bị thông số
         shell: pwsh
@@ -162,7 +163,6 @@ jobs:
           $nowEpoch = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds();
           "JOB_START_EPOCH=$nowEpoch" >> "$env:GITHUB_ENV";
 
-          # Chuẩn hóa Machine ID
           $cleanId = (("$env:MACHINE_ID").Trim().ToLower() -replace '[^a-z0-9\-]', '-') -replace '\-+', '-' -replace '^\-|\-$', '';
           if ([string]::IsNullOrWhiteSpace("$cleanId")) { $cleanId = 'zenova-1'; }
           $relTag      = "zenova-storage-$cleanId";
@@ -174,7 +174,6 @@ jobs:
           "STATE_BRANCH=$stateBranch" >> "$env:GITHUB_ENV";
           "ROOT_RELEASE_TAG=$rootRelTag" >> "$env:GITHUB_ENV";
 
-          # Parse thời lượng (Hỗ trợ tối đa 24h, tự động chuyển tiếp an toàn)
           $total = 1440;
           $display = '24 giờ (Tối đa)';
           switch ("$env:INPUT_DURATION") {
@@ -189,23 +188,19 @@ jobs:
           "TOTAL_MINUTES=$total" >> "$env:GITHUB_ENV";
           "DISPLAY_TIME=$display" >> "$env:GITHUB_ENV";
 
-          # Cấu hình User mặc định
           $user     = "zenova";
           $profPath = "C:\Users\zenova";
           "RDP_USER=$user" >> "$env:GITHUB_ENV";
           "PROFILE_PATH=$profPath" >> "$env:GITHUB_ENV";
 
-          # Ký tự ổ đĩa ảo
           $dl = (("$env:DRIVE_LETTER").Trim() -replace '[^A-Za-z]', '').ToUpper();
           if ((-not ("$dl")) -or ("$dl" -in @('C', 'D'))) { $dl = 'X'; }
           "MOUNT_LETTER=$dl" >> "$env:GITHUB_ENV";
 
-          # Khởi tạo VHDX ảo hoặc DOS Device (Hỗ trợ dung lượng tới 100TB, co giãn động)
           $vhdContainer = 'C:\ZENOVA-VHD-HOST';
           New-Item -ItemType Directory -Force -Path "$vhdContainer" -ErrorAction SilentlyContinue | Out-Null;
           $vhdFile = [System.IO.Path]::Combine("$vhdContainer", 'zenova-os.vhdx');
 
-          # Tính toán dung lượng theo GB / TB
           $rawSize = ("$env:VHD_SIZE_GB").Trim().ToUpper();
           $sizeBytes = 100GB;
           if ($rawSize -match '^(\d+)\s*TB$') {
@@ -375,7 +370,6 @@ jobs:
           $global:LASTEXITCODE   = 0;
           $dl = "$env:MOUNT_LETTER";
 
-          # Tắt mã hóa App-Bound của Chromium
           @(
               'HKLM:\SOFTWARE\Policies\Google\Chrome',
               'HKLM:\SOFTWARE\Policies\Microsoft\Edge',
@@ -386,7 +380,6 @@ jobs:
               Set-ItemProperty -Path "$_" -Name 'ApplicationBoundEncryptionEnabled' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue;
           };
 
-          # Cố định Hostname
           $suffix = (("$env:MACHINE_ID").ToUpper() -replace '[^A-Z0-9]', '');
           if ($suffix.Length -gt 8) { $suffix = $suffix.Substring(0, 8); }
           $fixedHost = if ($suffix) { "ZENOVA-$suffix" } else { 'ZENOVA-VPS' };
@@ -455,7 +448,7 @@ jobs:
           exit 0;
 
       # ─────────────────────────────────────────────────────────────
-      # 5. TẠO USER ZENOVA & TỐI ƯU TỐI THƯỢNG (FIX CPU 100% & FIX LAG TOÀN DIỆN)
+      # 5. TẠO USER ZENOVA & TỐI ƯU TỐI THƯỢNG
       # ─────────────────────────────────────────────────────────────
       - name: ⚙️ Tạo User Zenova & Tối ưu tối thượng (Fix CPU 100% & Fix Lag)
         shell: pwsh
@@ -466,7 +459,6 @@ jobs:
           $global:LASTEXITCODE   = 0;
           Write-Host "⚙️ ĐANG THIẾT LẬP USER ZENOVA, RUNNERADMIN & TỐI ƯU TOÀN DIỆN..." -ForegroundColor Yellow;
 
-          # Tắt chính sách mật khẩu phức tạp
           try {
               $secCfg = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'secpol.cfg');
               $secDb  = [System.IO.Path]::Combine("$env:RUNNER_TEMP", 'secpol.sdb');
@@ -482,7 +474,6 @@ jobs:
           $pass = if ($env:FIXED_PASS) { $env:FIXED_PASS } else { "Zenova@2026" };
           "FIXED_PASSWORD=$pass" >> "$env:GITHUB_ENV";
 
-          # Tạo User zenova (Tương thích 100% Windows Server 2022 & Server 2025)
           $secPass = ConvertTo-SecureString "$pass" -AsPlainText -Force;
           try {
               $existingUser = Get-LocalUser -Name $user -ErrorAction SilentlyContinue;
@@ -510,27 +501,20 @@ jobs:
               Add-LocalGroupMember -Group "Remote Desktop Users" -Member "runneradmin" -ErrorAction SilentlyContinue;
           } catch {}
 
-          # Cấu hình AutoAdminLogon
           $winlogon = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon';
           Set-ItemProperty -Path $winlogon -Name 'AutoAdminLogon' -Value '1' -Force -ErrorAction SilentlyContinue;
           Set-ItemProperty -Path $winlogon -Name 'DefaultUserName' -Value $user -Force -ErrorAction SilentlyContinue;
           Set-ItemProperty -Path $winlogon -Name 'DefaultPassword' -Value $pass -Force -ErrorAction SilentlyContinue;
 
-          # ─────────────────────────────────────────────────────────────
-          # 🚀 TỐI ƯU TỐI THƯỢNG: FIX CPU 100%, FIX LAG & GIẢM MS
-          # ─────────────────────────────────────────────────────────────
           Write-Host "🚀 Đang tối ưu CPU, tắt PowerThrottling, tối ưu TCP/IP giảm ping..." -ForegroundColor Cyan;
 
-          # 1. Tắt PowerThrottling
           $ptPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling';
           New-Item -Path $ptPath -Force -ErrorAction SilentlyContinue | Out-Null;
           Set-ItemProperty -Path $ptPath -Name 'PowerThrottlingOff' -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue;
 
-          # 2. Tắt CPU Core Parking & Tối ưu lập lịch CPU
           Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Power' -Name 'CsEnabled' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue;
           Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl' -Name 'Win32PrioritySeparation' -Value 0x26 -Type DWord -Force -ErrorAction SilentlyContinue;
 
-          # 3. Kích hoạt Power Scheme High Performance
           powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61 2>$null | Out-Null;
           powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 2>$null | Out-Null;
           powercfg /change standby-timeout-ac 0 2>$null;
@@ -538,32 +522,21 @@ jobs:
           powercfg /change disk-timeout-ac 0 2>$null;
           powercfg /hibernate off 2>$null;
 
-          # 4. Tắt Windows Defender Realtime Monitoring (Tiết kiệm CPU)
           try {
               Set-MpPreference -DisableRealtimeMonitoring $true -DisableBehaviorMonitoring $true -DisableIOAVProtection $true -DisableScriptScanning $true -ErrorAction SilentlyContinue;
           } catch {}
 
-          # 5. Tắt toàn bộ dịch vụ ngầm gây lag & CPU 100%
           $servicesToKill = @(
-              'WSearch',
-              'SysMain',
-              'wuauserv',
-              'UsoSvc',
-              'DiagTrack',
-              'dmwappushservice',
-              'WerSvc',
-              'PcaSvc',
-              'DPS'
+              'WSearch', 'SysMain', 'wuauserv', 'UsoSvc', 'DiagTrack',
+              'dmwappushservice', 'WerSvc', 'PcaSvc', 'DPS'
           );
           foreach ($svc in $servicesToKill) {
               Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue;
               Set-Service -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue;
           }
 
-          # 6. Múi giờ Việt Nam
           tzutil /s 'SE Asia Standard Time' 2>$null;
 
-          # 7. Tối ưu TCP/IP Stack & Giảm Latency / Ping
           try {
               netsh int tcp set global autotuninglevel=normal 2>$null | Out-Null;
               netsh int tcp set global congestionprovider=bbr 2>$null | Out-Null;
@@ -572,7 +545,6 @@ jobs:
               netsh int tcp set global ecncapability=enabled 2>$null | Out-Null;
           } catch {}
 
-          # 8. Bật Remote Desktop & Tắt hoàn toàn Firewall
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0 -Force -ErrorAction SilentlyContinue;
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name 'UserAuthentication' -Value 0 -Force -ErrorAction SilentlyContinue;
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name 'SecurityLayer' -Value 0 -Force -ErrorAction SilentlyContinue;
@@ -580,7 +552,6 @@ jobs:
           Start-Service -Name TermService -ErrorAction SilentlyContinue;
           netsh advfirewall set allprofiles state off 2>&1 | Out-Null;
 
-          # 9. Tắt hoàn toàn Server Manager & Shutdown Event Tracker
           Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Server\ServerManager' -Name 'DoNotOpenAtLogon' -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue;
           Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\ServerManager' -Name 'DoNotOpenServerManagerAtLogon' -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue;
           $relKey = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Reliability';
@@ -588,7 +559,6 @@ jobs:
           Set-ItemProperty -Path $relKey -Name 'ShutdownReasonOn' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue;
           Set-ItemProperty -Path $relKey -Name 'ShutdownReasonUI' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue;
 
-          # 10. Bật DirectPlay cho Games
           try {
               Enable-WindowsOptionalFeature -Online -FeatureName DirectPlay -All -NoRestart -ErrorAction SilentlyContinue | Out-Null;
           } catch {}
@@ -598,7 +568,7 @@ jobs:
           exit 0;
 
       # ─────────────────────────────────────────────────────────────
-      # 6. CẤU HÌNH IP MÁY, TAILSCALE VPN (FIX TRIỆT ĐỂ), NGROK RDP & PUBLIC IP
+      # 6. CẤU HÌNH IP MÁY, TAILSCALE VPN (FIX TRIỆT ĐỂ), NGROK RDP
       # ─────────────────────────────────────────────────────────────
       - name: 🌐 Cấu hình IP Máy, Tailscale VPN, Ngrok RDP & Public IP
         shell: pwsh
@@ -619,53 +589,84 @@ jobs:
           Set-Content -Path "C:\machine-ip.txt" -Value "$pubIp" -Force;
           Write-Host "│ 🌐 IP Outbound Công Khai của máy: $pubIp" -ForegroundColor Green;
 
-          # 2. Kết nối Tailscale VPN (Fix triệt để lỗi không nhận key hoặc chưa có IP)
-          $rawKey = "$env:TAILSCALE_AUTH_KEY";
-          $tsKey  = if ($rawKey) { $rawKey.Trim().Trim('"').Trim("'") } else { "" };
-          $tsIp   = "";
+          # 2. Kết nối Tailscale VPN (FIX TRIỆT ĐỂ)
+          $rawKey = "$env:TAILSCALE_AUTH_KEY"
+          # ✅ FIX: Trim đúng cách — bỏ \r\n, khoảng trắng, dấu nháy ở cả 2 đầu
+          $tsKey = if ($rawKey) {
+              $rawKey.Trim().Trim("`r").Trim("`n").Trim('"').Trim("'").Trim()
+          } else { "" }
 
-          if ($tsKey -and $tsKey -ne '') {
-              Write-Host "│ 🔑 Tìm thấy Tailscale Auth Key! Đang cài đặt và kết nối mạng P2P..." -ForegroundColor Cyan;
+          # ✅ DEBUG: in độ dài + 12 ký tự đầu để biết key có được đọc không
+          if ($tsKey.Length -gt 0) {
+              Write-Host "│ 🔑 DEBUG: Key length=$($tsKey.Length), prefix=$($tsKey.Substring(0, [Math]::Min(12, $tsKey.Length)))..." -ForegroundColor DarkGray
+          } else {
+              Write-Host "│ ⚠️ DEBUG: Key RỖNG sau khi trim! Kiểm tra tên secret có đúng TAILSCALE_AUTHKEY không." -ForegroundColor DarkYellow
+          }
+
+          $tsIp = ""
+
+          # ✅ FIX: dùng [string]::IsNullOrWhiteSpace thay vì so sánh với '' (2 dấu nháy đơn)
+          if (-not [string]::IsNullOrWhiteSpace($tsKey)) {
+              if ($tsKey -notmatch '^tskey-') {
+                  Write-Host "│ ⚠️ CẢNH BÁO: Key không bắt đầu bằng 'tskey-' — có thể sai định dạng!" -ForegroundColor Yellow
+              }
+              Write-Host "│ 🔑 Tìm thấy Tailscale Auth Key! Đang cài đặt và kết nối mạng P2P..." -ForegroundColor Cyan
               try {
-                  $msi = "$env:TEMP\tailscale.msi";
-                  & curl.exe -L --retry 2 --connect-timeout 15 'https://pkgs.tailscale.com/stable/tailscale-setup-latest.msi' -o "$msi" 2>$null;
-                  if (Test-Path "$msi") {
-                      Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart" -Wait;
-                      
-                      # Đợi dịch vụ Tailscale IPN khởi động hoàn toàn
-                      for ($s = 0; $s -lt 15; $s++) {
-                          $svc = Get-Service -Name "Tailscale*" -ErrorAction SilentlyContinue;
+                  $msi = "$env:TEMP\tailscale.msi"
+                  & curl.exe -L --retry 3 --connect-timeout 20 'https://pkgs.tailscale.com/stable/tailscale-setup-latest.msi' -o "$msi" 2>$null;
+                  if (-not (Test-Path "$msi")) {
+                      Write-Host "│ ❌ Không tải được file MSI Tailscale!" -ForegroundColor Red
+                  } else {
+                      $msiSize = (Get-Item "$msi").Length
+                      Write-Host "│ ℹ️ Đã tải MSI ($([Math]::Round($msiSize/1MB,2)) MB). Đang cài..." -ForegroundColor Gray
+                      Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart" -Wait
+
+                      # Đợi service Tailscale khởi động
+                      for ($s = 0; $s -lt 20; $s++) {
+                          $svc = Get-Service -Name "Tailscale*" -ErrorAction SilentlyContinue
                           if ($svc) {
                               if ($svc.Status -ne 'Running') {
-                                  Start-Service -Name $svc.Name -ErrorAction SilentlyContinue;
-                              } else {
-                                  break;
-                              }
+                                  Start-Service -Name $svc.Name -ErrorAction SilentlyContinue
+                              } else { break }
                           }
-                          Start-Sleep -Seconds 1;
+                          Start-Sleep -Seconds 1
                       }
-                      Start-Sleep -Seconds 2;
+                      Start-Sleep -Seconds 2
 
-                      $tsCli = 'C:\Program Files\Tailscale\tailscale.exe';
+                      $tsCli = 'C:\Program Files\Tailscale\tailscale.exe'
                       if (Test-Path "$tsCli") {
-                          $cleanHost = ("zenova-" + ($env:MACHINE_ID -replace '[^a-zA-Z0-9\-]', '-').ToLower()).Trim('-');
-                          $upRes = & "$tsCli" up --authkey="$tsKey" --hostname="$cleanHost" --accept-routes --advertise-exit-node=false --unattended=true --reset 2>&1;
-                          Write-Host "│ ℹ️ Tailscale status: $upRes" -ForegroundColor Cyan;
+                          $cleanHost = ("zenova-" + ($env:MACHINE_ID -replace '[^a-zA-Z0-9\-]', '-').ToLower()).Trim('-')
+                          # ✅ Dùng --auth-key (chính thức) thay vì --authkey
+                          $upRes = & "$tsCli" up --auth-key="$tsKey" --hostname="$cleanHost" --accept-routes --advertise-exit-node=false --unattended=true --reset 2>&1
+                          Write-Host "│ ℹ️ Tailscale up output:" -ForegroundColor DarkGray
+                          $upRes | ForEach-Object { Write-Host "│    $_" -ForegroundColor DarkGray }
 
-                          # Vòng lặp chờ IP Tailscale 100.x.x.x
-                          for ($i = 0; $i -lt 25; $i++) {
-                              Start-Sleep -Seconds 1;
-                              $checkIp = (& "$tsCli" ip -4 2>$null).Trim();
+                          # Đợi IP Tailscale 100.x.x.x (tối đa 30s)
+                          for ($i = 0; $i -lt 30; $i++) {
+                              Start-Sleep -Seconds 1
+                              $checkIp = (& "$tsCli" ip -4 2>$null) | Select-Object -First 1
+                              if ($checkIp) { $checkIp = $checkIp.Trim() }
                               if ($checkIp -match '^100\.') {
-                                  $tsIp = $checkIp;
-                                  break;
+                                  $tsIp = $checkIp
+                                  break
                               }
                           }
+
+                          # Nếu chưa có IP, in status để debug
+                          if (-not $tsIp) {
+                              Write-Host "│ ⚠️ Chưa có IP sau 30s, kiểm tra status..." -ForegroundColor Yellow
+                              $st = & "$tsCli" status 2>&1
+                              $st | ForEach-Object { Write-Host "│    $_" -ForegroundColor DarkGray }
+                          }
+                      } else {
+                          Write-Host "│ ❌ Không tìm thấy tailscale.exe sau khi cài!" -ForegroundColor Red
                       }
                   }
-              } catch {}
+              } catch {
+                  Write-Host "│ ❌ Lỗi Tailscale: $_" -ForegroundColor Red
+              }
           } else {
-              Write-Host "│ ⚠️ Không tìm thấy Key Tailscale trong Input hay Repo Secrets." -ForegroundColor Yellow;
+              Write-Host "│ ⚠️ Không tìm thấy Key Tailscale trong Input hay Repo Secrets." -ForegroundColor Yellow
           }
 
           if ($tsIp) {
@@ -713,7 +714,7 @@ jobs:
           exit 0;
 
       # ─────────────────────────────────────────────────────────────
-      # 7. CÀI DRIVER MÀN HÌNH ẢO (VDD), ÂM THANH ẢO & SUNSHINE (TẢI SONG SONG SIÊU TỐC)
+      # 7. CÀI DRIVER MÀN HÌNH ẢO (VDD), ÂM THANH ẢO & SUNSHINE
       # ─────────────────────────────────────────────────────────────
       - name: 🖥️🔊☀️ Cài Driver Màn Hình Ảo (VDD), Âm Thanh Ảo & Sunshine
         shell: pwsh
@@ -722,7 +723,6 @@ jobs:
           $global:LASTEXITCODE   = 0;
           Write-Host "🖥️ Cài đặt Driver Ảo & Sunshine Streaming (Tốc Độ Siêu Tốc)..." -ForegroundColor Cyan;
 
-          # Tải song song siêu tốc toàn bộ gói màn hình ảo, âm thanh, Sunshine & Cloudflared
           $dl7 = @(
               '--url', 'https://www.amyuni.com/downloads/usbmmidd_v2.zip', '-o', "$env:TEMP\usbmmidd_v2.zip",
               '--url', 'https://download.vb-audio.com/Download_EXTERNAL/VBCABLE_Driver_Pack43.zip', '-o', "$env:TEMP\VBCable.zip",
@@ -730,7 +730,6 @@ jobs:
           );
           & curl.exe -L -s --retry 2 -Z @dl7;
 
-          # 1. Màn hình ảo USBMMIDD v2
           try {
               $zip = "$env:TEMP\usbmmidd_v2.zip";
               if (Test-Path "$zip") {
@@ -747,7 +746,6 @@ jobs:
               }
           } catch {}
 
-          # 2. Card âm thanh ảo VB-Cable
           try {
               @('MMCSS', 'AudioEndpointBuilder', 'Audiosrv') | ForEach-Object {
                   Set-Service -Name $_ -StartupType Automatic -ErrorAction SilentlyContinue;
@@ -771,7 +769,6 @@ jobs:
               Write-Host "│ ✅ Card âm thanh ảo sẵn sàng không bao giờ hiện popup!" -ForegroundColor Green;
           } catch {}
 
-          # 3. Sunshine Streaming Server
           try {
               $sunMsi = "$env:TEMP\Sunshine.msi";
               if (Test-Path "$sunMsi") {
@@ -787,7 +784,6 @@ jobs:
               Write-Host "│ ✅ Sunshine Streaming Server sẵn sàng tại cổng 47990!" -ForegroundColor Green;
           } catch {}
 
-          # 4. Cấu hình độ phân giải 1920x1080 (Full HD)
           try {
               if (Get-Command Set-DisplayResolution -ErrorAction SilentlyContinue) {
                   Set-DisplayResolution -Width 1920 -Height 1080 -Force -ErrorAction SilentlyContinue;
@@ -802,7 +798,7 @@ jobs:
           exit 0;
 
       # ─────────────────────────────────────────────────────────────
-      # 8. CÀI ĐẶT TRỌN BỘ APP (TẢI SONG SONG SIÊU TỐC & FIX TRIỆT ĐỂ ROBLOX, .NET 8, VC++, DISCORD)
+      # 8. CÀI ĐẶT TRỌN BỘ APP
       # ─────────────────────────────────────────────────────────────
       - name: 📦 Tải trọn bộ App & Hình Nền (Discord, Spotify, Bandicam, EVKey, Roblox, Minecraft)
         shell: pwsh
@@ -813,7 +809,6 @@ jobs:
           $appsFolder = "$($env:MOUNT_LETTER):\Apps";
           New-Item -ItemType Directory -Force -Path "$appsFolder", 'C:\Apps', 'C:\Bloxstrap', 'C:\EVKey', 'C:\PrismLauncher' -ErrorAction SilentlyContinue | Out-Null;
 
-          # TẢI ĐỒNG LOẠT TOÀN BỘ APP BẰNG CURL -Z (GIẢM THỜI GIAN TỪ 4 PHÚT XUỐNG 20 GIÂY)
           Write-Host "⚡ Đang tải song song toàn bộ ứng dụng cùng một lúc (Maximum Bandwidth)..." -ForegroundColor Cyan;
           $wpFile       = "C:\Windows\Web\Wallpaper\Zenova.png";
           $sdInstaller  = 'C:\StarDesk_1.5.3.exe';
@@ -844,9 +839,6 @@ jobs:
           );
           & curl.exe -L -s --retry 2 -Z @parallelDownloads;
 
-          # ─────────────────────────────────────────────────────────────
-          # 1. HÌNH NỀN ZENOVA CLOUD AURORA LAKE
-          # ─────────────────────────────────────────────────────────────
           if (Test-Path "$wpFile") {
               try {
                   $winWp = "C:\Windows\Web\Wallpaper\Windows\img0.jpg";
@@ -875,25 +867,18 @@ jobs:
               Write-Host "│ ✅ Đã áp dụng hình nền Zenova Cloud Aurora Lake!" -ForegroundColor Green;
           }
 
-          # ─────────────────────────────────────────────────────────────
-          # 2. CÀI ĐẶT RUNTIME CHO ROBLOX (.NET 8 & VC++ REDIST)
-          # ─────────────────────────────────────────────────────────────
-          Write-Host "│ 🛠️ Cài đặt .NET 8 Runtime & VC++ Redistributable (Fix triệt để Bloxstrap Roblox)..." -ForegroundColor Cyan;
+          Write-Host "│ 🛠️ Cài đặt .NET 8 Runtime & VC++ Redistributable..." -ForegroundColor Cyan;
           try {
               if (Test-Path "$vcExe") { Start-Process -FilePath "$vcExe" -ArgumentList "/install /quiet /norestart" -Wait -ErrorAction SilentlyContinue; }
               if (Test-Path "$net8Exe") { Start-Process -FilePath "$net8Exe" -ArgumentList "/install /quiet /norestart" -Wait -ErrorAction SilentlyContinue; }
           } catch {}
 
-          # ─────────────────────────────────────────────────────────────
-          # 3. CÀI ĐẶT STARDESK TRUNG (1.5.3) & NETEASE GAMEVIEWER (4.43.1)
-          # ─────────────────────────────────────────────────────────────
           Write-Host "│ 🌟 Cài đặt StarDesk Trung & NetEase GameViewer..." -ForegroundColor Cyan;
           $pin = "$env:INPUT_PIN_CODE";
           if (-not $pin) { $pin = "Zenova2026"; }
           $cleanPin = ($pin -replace '[^A-Za-z0-9]', '');
           if (($cleanPin.Length -lt 8) -or ($cleanPin.Length -gt 16)) { $cleanPin = 'Zenova2026'; }
 
-          # Cài GameViewer
           if (Test-Path "$gvInstaller") {
               Start-Process -FilePath "$gvInstaller" -ArgumentList '/S' -Wait -ErrorAction SilentlyContinue;
               Get-Service -Name '*GameViewer*' -ErrorAction SilentlyContinue | Set-Service -StartupType Automatic;
@@ -904,7 +889,6 @@ jobs:
               if (Test-Path "$gvApp") { Start-Process "$gvApp" -WorkingDirectory 'C:\Program Files\Netease\GameViewer\bin' -ErrorAction SilentlyContinue; }
           }
 
-          # Cài StarDesk Trung
           if (Test-Path "$sdInstaller") {
               $sdDirs = @("C:\Program Files (x86)\StarDesk", "C:\Program Files\StarDesk");
               foreach ($sdd in $sdDirs) {
@@ -915,7 +899,6 @@ jobs:
               }
               Start-Process -FilePath "$sdInstaller" -ArgumentList '/S' -Wait -ErrorAction SilentlyContinue;
 
-              # Ghi mã PIN vào tất cả config của StarDesk
               $cfgData = "[General]`r`nPassword=$cleanPin`r`nAutoStart=1`r`n";
               foreach ($dir in @("C:\Program Files (x86)\StarDesk", "C:\Program Files\StarDesk", "C:\ProgramData\StarDesk", "C:\Users\zenova\AppData\Roaming\StarDesk", "C:\Users\runneradmin\AppData\Roaming\StarDesk")) {
                   New-Item -ItemType Directory -Force -Path $dir -ErrorAction SilentlyContinue | Out-Null;
@@ -929,9 +912,6 @@ jobs:
               if ($sdApp) { Start-Process -FilePath "$sdApp" -ErrorAction SilentlyContinue; }
           }
 
-          # ─────────────────────────────────────────────────────────────
-          # 4. CÀI ĐẶT EVKEY (TIẾNG VIỆT)
-          # ─────────────────────────────────────────────────────────────
           if ((Test-Path "$evZip") -and ((Get-Item "$evZip").Length -gt 50000)) {
               try {
                   $evDir = 'C:\EVKey';
@@ -945,12 +925,8 @@ jobs:
               } catch {}
           }
 
-          # ─────────────────────────────────────────────────────────────
-          # 5. CÀI ĐẶT DISCORD, SPOTIFY, BANDICAM ĐỒNG THỜI
-          # ─────────────────────────────────────────────────────────────
           Write-Host "│ 📦 Khởi chạy cài đặt Discord, Spotify, Bandicam đồng thời..." -ForegroundColor Cyan;
           try {
-              # Discord x64
               Stop-Process -Name Discord, Update -Force -ErrorAction SilentlyContinue;
               if (Test-Path "$dcInstaller") {
                   Start-Process -FilePath "$dcInstaller" -ArgumentList "-s" -Wait -ErrorAction SilentlyContinue;
@@ -960,14 +936,10 @@ jobs:
                   New-Item -ItemType Directory -Force -Path $dcSettingsDir -ErrorAction SilentlyContinue | Out-Null;
                   Set-Content -Path "$dcSettingsDir\settings.json" -Value '{"DCA_DISABLE_HARDWARE_ACCELERATION":true,"OPEN_ON_STARTUP":false,"MINIMIZE_TO_TRAY":false}' -Force -ErrorAction SilentlyContinue;
               }
-              # Spotify & Bandicam
               if (Test-Path "$spInstaller") { Start-Process -FilePath "$spInstaller" -ArgumentList '/silent' -ErrorAction SilentlyContinue; }
               if (Test-Path "$bdInstaller") { Start-Process -FilePath "$bdInstaller" -ArgumentList '/S' -ErrorAction SilentlyContinue; }
           } catch {}
 
-          # ─────────────────────────────────────────────────────────────
-          # 6. CÀI ĐẶT BLOXSTRAP ROBLOX (CẤU HÌNH FIX LAG DIRECT3D 11 & 120 FPS)
-          # ─────────────────────────────────────────────────────────────
           try {
               $bloxCfgDir = "C:\Users\zenova\AppData\Local\Bloxstrap\Modifications\ClientSettings";
               New-Item -ItemType Directory -Force -Path $bloxCfgDir -ErrorAction SilentlyContinue | Out-Null;
@@ -982,9 +954,6 @@ jobs:
               Write-Host "│ ✅ Bloxstrap Roblox đã cấu hình tối ưu 120 FPS Direct3D 11!" -ForegroundColor Green;
           } catch {}
 
-          # ─────────────────────────────────────────────────────────────
-          # 7. CÀI ĐẶT MINECRAFT LAUNCHER
-          # ─────────────────────────────────────────────────────────────
           if (Test-Path "$mcZip") {
               try {
                   $mcDir = 'C:\PrismLauncher';
@@ -1002,7 +971,7 @@ jobs:
           exit 0;
 
       # ─────────────────────────────────────────────────────────────
-      # 9. CẤU HÌNH PIN STARDESK TRUNG & LẤY DEVICE ID THỰC TẾ
+      # 9. CẤU HÌNH PIN STARDESK TRUNG & LẤY DEVICE ID
       # ─────────────────────────────────────────────────────────────
       - name: 🔑 Cấu hình PIN StarDesk Trung & Lấy Device ID
         shell: pwsh
@@ -1018,7 +987,6 @@ jobs:
           $cleanPin = ($sdPin -replace '[^A-Za-z0-9]', '');
           if (($cleanPin.Length -lt 8) -or ($cleanPin.Length -gt 16)) { $cleanPin = 'Zenova2026'; }
 
-          # 1. Thử lấy ID qua GameViewer uuyc-cli nếu có
           if (Test-Path "$gvCli") {
               for ($i = 0; $i -lt 15; $i++) {
                   $echo = & "$gvCli" echo 2>$null;
@@ -1039,7 +1007,6 @@ jobs:
               }
           }
 
-          # 2. Quét ID thực tế từ các file config.ini của StarDesk Trung
           if ([string]::IsNullOrWhiteSpace("$sdId") -or ($sdId -match 'chưa|đang|Đang')) {
               $cfgList = @(
                   "C:\Program Files (x86)\StarDesk\config.ini",
@@ -1087,7 +1054,7 @@ jobs:
           exit 0;
 
       # ─────────────────────────────────────────────────────────────
-      # 10. TẠO CÁC PHÍM TẮT TIỆN ÍCH TRÊN DESKTOP (NGẮT VPS CÓ XÁC NHẬN, MINECRAFT, WEB)
+      # 10. TẠO CÁC PHÍM TẮT TIỆN ÍCH TRÊN DESKTOP
       # ─────────────────────────────────────────────────────────────
       - name: 🖥️ Tạo các phím tắt tiện ích trên Desktop
         shell: pwsh
@@ -1096,7 +1063,6 @@ jobs:
           $global:LASTEXITCODE   = 0;
           Write-Host "🖥️ Đang tạo các tiện ích Desktop và phím tắt ngắt VPS..." -ForegroundColor Cyan;
 
-          # 1. Script NGAT-RDP-GIU-MAN-HINH-SUNSHINE.bat
           $ngatRdpLines = @(
               "@echo off",
               "echo ============================================================",
@@ -1110,7 +1076,6 @@ jobs:
           $ngatRdpPath = "C:\NGAT-RDP-GIU-MAN-HINH-SUNSHINE.bat";
           Set-Content -Path $ngatRdpPath -Value ($ngatRdpLines -join "`r`n") -Encoding ASCII;
 
-          # 2. Script NGAT-VPS.bat có xác nhận (Chống bấm nhầm tự tắt máy)
           $ngatVpsLines = @(
               "@echo off",
               "color 0C",
@@ -1136,7 +1101,6 @@ jobs:
           $ngatVpsPath = "C:\NGAT-VPS.bat";
           Set-Content -Path $ngatVpsPath -Value ($ngatVpsLines -join "`r`n") -Encoding ASCII;
 
-          # 3. Script LUU-DU-LIEU-NGAY.bat
           $luuLines = @(
               "@echo off",
               "echo ============================================================",
@@ -1149,7 +1113,6 @@ jobs:
           $luuPath = "C:\LUU-DU-LIEU-NGAY.bat";
           Set-Content -Path $luuPath -Value ($luuLines -join "`r`n") -Encoding ASCII;
 
-          # 4. Sắp xếp Desktop cực gọn, đẹp mắt
           try {
               $pubDesktop = "C:\Users\Public\Desktop";
               New-Item -ItemType Directory -Force -Path $pubDesktop -ErrorAction SilentlyContinue | Out-Null;
@@ -1164,13 +1127,8 @@ jobs:
                   Remove-Item -Path "$pubDesktop\$_" -Force -ErrorAction SilentlyContinue;
               };
 
-              # 1. Web Quản Lý VPS (Port 8080)
               Set-Content -Path "$pubDesktop\🌐 Web Quản Lý VPS.url" -Value "[InternetShortcut]`r`nURL=http://127.0.0.1:8080/`r`nIconIndex=0" -Encoding ASCII -Force;
-
-              # 2. Sunshine Streaming
               Set-Content -Path "$pubDesktop\☀️ Sunshine Streaming.url" -Value "[InternetShortcut]`r`nURL=https://localhost:47990/`r`nIconIndex=0" -Encoding ASCII -Force;
-
-              # 3. Phím tắt Ngắt VPS khẩn cấp
               Copy-Item -Path $ngatVpsPath -Destination "$pubDesktop\🛑 Ngắt VPS Khẩn Cấp.bat" -Force -ErrorAction SilentlyContinue;
 
               $bloxExe = "C:\Bloxstrap\Bloxstrap.exe";
@@ -1184,12 +1142,10 @@ jobs:
 
               $ws = New-Object -ComObject WScript.Shell;
 
-              # 4. Ổ đĩa riêng
               $lnkDrv = $ws.CreateShortcut("$pubDesktop\📁 Ổ Đĩa Riêng.lnk");
               $lnkDrv.TargetPath = "$($env:MOUNT_LETTER):\";
               $lnkDrv.Save();
 
-              # 5. Roblox (Bloxstrap)
               if (Test-Path "$bloxExe") {
                   $lnkBlox = $ws.CreateShortcut("$pubDesktop\🎮 Roblox (Bloxstrap Fix Lag).lnk");
                   $lnkBlox.TargetPath = $bloxExe;
@@ -1197,7 +1153,6 @@ jobs:
                   $lnkBlox.Save();
               }
 
-              # 6. Minecraft Launcher (Fix Lag)
               if ($mcExe) {
                   $lnkMc = $ws.CreateShortcut("$pubDesktop\🎮 Minecraft (Fix Lag).lnk");
                   $lnkMc.TargetPath = $mcExe;
@@ -1205,7 +1160,6 @@ jobs:
                   $lnkMc.Save();
               }
 
-              # 7. EVKey Tiếng Việt
               if ($evExe) {
                   $lnkEv = $ws.CreateShortcut("$pubDesktop\⌨️ EVKey Tiếng Việt.lnk");
                   $lnkEv.TargetPath = $evExe;
@@ -1213,7 +1167,6 @@ jobs:
                   $lnkEv.Save();
               }
 
-              # 8. Discord
               if ($dcExe) {
                   $lnkDc = $ws.CreateShortcut("$pubDesktop\💬 Discord.lnk");
                   $lnkDc.TargetPath = $dcExe;
@@ -1222,7 +1175,6 @@ jobs:
                   $lnkDc.Save();
               }
 
-              # 9. StarDesk Trung / GameViewer
               $remoteClientExe = if ($sdExe) { $sdExe } else { $gvExe };
               if ($remoteClientExe) {
                   $lnkGv = $ws.CreateShortcut("$pubDesktop\🌟 StarDesk Trung (0ms Delay).lnk");
@@ -1230,14 +1182,12 @@ jobs:
                   $lnkGv.Save();
               }
 
-              # 10. Spotify
               if ($spExe) {
                   $lnkSp = $ws.CreateShortcut("$pubDesktop\🎵 Spotify.lnk");
                   $lnkSp.TargetPath = $spExe;
                   $lnkSp.Save();
               }
 
-              # 11. Bandicam
               if (Test-Path "$bdExe") {
                   $lnkBc = $ws.CreateShortcut("$pubDesktop\📹 Bandicam.lnk");
                   $lnkBc.TargetPath = $bdExe;
@@ -1252,7 +1202,7 @@ jobs:
           exit 0;
 
       # ─────────────────────────────────────────────────────────────
-      # 11. KHỞI CHẠY WEB QUẢN LÝ VPS (PYTHON THREADING HTTP - CHỐNG 502 BAD GATEWAY)
+      # 11. KHỞI CHẠY WEB QUẢN LÝ VPS (PYTHON THREADING HTTP)
       # ─────────────────────────────────────────────────────────────
       - name: 🌐 Khởi chạy Web Quản Lý VPS (Python Multi-Threaded Port 8080)
         shell: pwsh
@@ -1264,14 +1214,13 @@ jobs:
           New-Item -ItemType Directory -Force -Path $webDir -ErrorAction SilentlyContinue | Out-Null;
           $pyServerPath = [System.IO.Path]::Combine($webDir, 'server.py');
 
-          $pyB64 = 'aW1wb3J0IGh0dHAuc2VydmVyLCBzb2NrZXRzZXJ2ZXIsIGpzb24sIG9zLCBzeXMsIHVybGxpYi5wYXJzZQoKUE9SVCA9IGludChzeXMuYXJndlsxXSkgaWYgbGVuKHN5cy5hcmd2KSA+IDEgZWxzZSA4MDgwClNJR19GSUxFID0gc3lzLmFyZ3ZbMl0gaWYgbGVuKHN5cy5hcmd2KSA+IDIgZWxzZSByIkM6XFpFTk9WQS1WSEQtSE9TVFxjb250cm9sLXNpZ25hbC50eHQiCgpIVE1MX1RFTVBMQVRFID0gIiIiPCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9InZpIj4KPGhlYWQ+CjxtZXRhIGNoYXJzZXQ9InV0Zi04Ij4KPHRpdGxlPlplbm92YSBWUFMgQ29udHJvbCBQYW5lbDwvdGl0bGU+CjxtZXRhIG5hbWU9InZpZXdwb3J0IiBjb250ZW50PSJ3aWR0aD1kZXZpY2Utd2lkdGgsIGluaXRpYWwtc2NhbGU9MSI+CjxzdHlsZT4KYm9keSB7IGJhY2tncm91bmQ6ICMwOTBkMTY7IGNvbG9yOiAjZjNmNGY2OyBmb250LWZhbWlseTogc3lzdGVtLXVpLCAtYXBwbGUtc3lzdGVtLCBzYW5zLXNlcmlmOyBtYXJnaW46IDA7IHBhZGRpbmc6IDIwcHg7IGRpc3BsYXk6IGZsZXg7IGp1c3RpZnktY29udGVudDogY2VudGVyOyB9Ci5jYXJkIHsgd2lkdGg6IDEwMCU7IG1heC13aWR0aDogODUwcHg7IGJhY2tncm91bmQ6ICMxMTE4Mjc7IGJvcmRlcjogMXB4IHNvbGlkICMxZjI5Mzc7IGJvcmRlci1yYWRpdXM6IDE2cHg7IHBhZGRpbmc6IDI0cHg7IGJveC1zaGFkb3c6IDAgMjBweCAyNXB4IC01cHggcmdiYSgwLDAsMCwwLjUpOyB9Ci5oZWFkZXIgeyBkaXNwbGF5OiBmbGV4OyBqdXN0aWZ5LWNvbnRlbnQ6IHNwYWNlLWJldHdlZW47IGFsaWduLWl0ZW1zOiBjZW50ZXI7IGJvcmRlci1ib3R0b206IDFweCBzb2xpZCAjMWYyOTM3OyBwYWRkaW5nLWJvdHRvbTogMTZweDsgbWFyZ2luLWJvdHRvbTogMjBweDsgfQouYmFkZ2UgeyBiYWNrZ3JvdW5kOiAjMDY1ZjQ2OyBjb2xvcjogIzM0ZDM5OTsgcGFkZGluZzogNnB4IDE0cHg7IGJvcmRlci1yYWRpdXM6IDk5OTlweDsgZm9udC13ZWlnaHQ6IDcwMDsgZm9udC1zaXplOiAxMnB4OyB9Ci5ncmlkIHsgZGlzcGxheTogZ3JpZDsgZ3JpZC10ZW1wbGF0ZS1jb2x1bW5zOiByZXBlYXQoYXV0by1maXQsIG1pbm1heCgyNTBweCwgMWZyKSk7IGdhcDogMTZweDsgbWFyZ2luLWJvdHRvbTogMjRweDsgfQouYm94IHsgYmFja2dyb3VuZDogIzFmMjkzNzsgYm9yZGVyOiAxcHggc29saWQgIzM3NDE1MTsgYm9yZGVyLXJhZGl1czogMTJweDsgcGFkZGluZzogMTZweDsgcG9zaXRpb246IHJlbGF0aXZlOyB9Ci5ib3ggaDMgeyBtYXJnaW4tdG9wOiAwOyBmb250LXNpemU6IDE2cHg7IGNvbG9yOiAjMzhiZGY4OyBkaXNwbGF5OiBmbGV4OyBhbGlnbi1pdGVtczogY2VudGVyOyBnYXA6IDhweDsgfQouY29kZSB7IGJhY2tncm91bmQ6ICMxMTE4Mjc7IHBhZGRpbmc6IDZweCAxMHB4OyBib3JkZXItcmFkaXVzOiA2cHg7IGZvbnQtZmFtaWx5OiBtb25vc3BhY2U7IGZvbnQtc2l6ZTogMTRweDsgY29sb3I6ICNmYWNjMTU7IGZvbnQtd2VpZ2h0OiBib2xkOyBkaXNwbGF5OiBpbmxpbmUtYmxvY2s7IG1hcmdpbi10b3A6IDRweDsgd29yZC1icmVhazogYnJlYWstYWxsOyB9Ci5idG4tZ3JvdXAgeyBkaXNwbGF5OiBncmlkOyBncmlkLXRlbXBsYXRlLWNvbHVtbnM6IHJlcGVhdChhdXRvLWZpdCwgbWlubWF4KDE4MHB4LCAxZnIpKTsgZ2FwOiAxMnB4OyB9CmJ1dHRvbiB7IHBhZGRpbmc6IDE0cHg7IGJvcmRlcjogbm9uZTsgYm9yZGVyLXJhZGl1czogMTBweDsgZm9udC13ZWlnaHQ6IDcwMDsgZm9udC1zaXplOiAxNHB4OyBjdXJzb3I6IHBvaW50ZXI7IGRpc3BsYXk6IGZsZXg7IGFsaWduLWl0ZW1zOiBjZW50ZXI7IGp1c3RpZnktY29udGVudDogY2VudGVyOyBnYXA6IDhweDsgY29sb3I6ICNmZmY7IHRyYW5zaXRpb246IDAuMnM7IH0KLmJ0bi1zYXZlIHsgYmFja2dyb3VuZDogIzAyODRjNzsgfSAuYnRuLXNhdmU6aG92ZXIgeyBiYWNrZ3JvdW5kOiAjMDM2OWExOyB9Ci5idG4tcnN0IHsgYmFja2dyb3VuZDogI2Q5NzcwNjsgfSAuYnRuLXJzdDpob3ZlciB7IGJhY2tncm91bmQ6ICNiNDUzMDk7IH0KLmJ0bi1zdG9wIHsgYmFja2dyb3VuZDogI2RjMjYyNjsgfSAuYnRuLXN0b3A6aG92ZXIgeyBiYWNrZ3JvdW5kOiAjYjkxYzFjOyB9CmEgeyBjb2xvcjogIzM4YmRmODsgdGV4dC1kZWNvcmF0aW9uOiBub25lOyB9CmE6aG92ZXIgeyB0ZXh0LWRlY29yYXRpb246IHVuZGVybGluZTsgfQo8L3N0eWxlPgo8L2hlYWQ+Cjxib2R5Pgo8ZGl2IGNsYXNzPSJjYXJkIj4KPGRpdiBjbGFzcz0iaGVhZGVyIj4KPGRpdj48aDIgc3R5bGU9Im1hcmdpbjowO2ZvbnQtc2l6ZToyMnB4Ij7wn5qAIFpFTk9WQSBVTFRJTUFURSBWUFM8L2gyPjxwIHN0eWxlPSJtYXJnaW46NHB4IDAgMDtjb2xvcjojOWNhM2FmO2ZvbnQtc2l6ZToxM3B4Ij5Nw6F5OiA8Yj5fX0RJU1BfTkFNRV9fIChfX01BQ0hfSURfXyk8L2I+IHwgSVAgT3V0Ym91bmQ6IDxiPl9fUFVCX0lQX188L2I+PC9wPjwvZGl2Pgo8c3BhbiBjbGFzcz0iYmFkZ2UiPuKXjyBPTkxJTkUgJiDEkEFORyBDSOG6oFk8L3NwYW4+CjwvZGl2Pgo8ZGl2IGNsYXNzPSJncmlkIj4KPGRpdiBjbGFzcz0iYm94IiBzdHlsZT0iYm9yZGVyLWxlZnQ6NHB4IHNvbGlkICNmNTllMGIiPgo8aDM+8J+MnyAxLiBTdGFyRGVzayBUcnVuZyAvIEdhbWVWaWV3ZXI8L2gzPgo8cCBzdHlsZT0ibWFyZ2luOjZweCAwO2ZvbnQtc2l6ZToxM3B4O2NvbG9yOiNkMWQ1ZGIiPkvhur90IG7hu5FpIFAyUCA2MC0xMjBmcHMga2jDtG5nIGRlbGF5OjwvcD4KSUQ6IDxzcGFuIGNsYXNzPSJjb2RlIj5fX1NEX0lEX188L3NwYW4+PGJyPgpQSU46IDxzcGFuIGNsYXNzPSJjb2RlIj5fX1NEX1BJTl9fPC9zcGFuPgo8L2Rpdj4KPGRpdiBjbGFzcz0iYm94IiBzdHlsZT0iYm9yZGVyLWxlZnQ6NHB4IHNvbGlkICMzYjgyZjYiPgo8aDM+8J+Wpe+4jyAyLiBSZW1vdGUgRGVza3RvcCAoUkRQKSAmIFRhaWxzY2FsZTwvaDM+CjxwIHN0eWxlPSJtYXJnaW46NnB4IDA7Zm9udC1zaXplOjEzcHg7Y29sb3I6I2QxZDVkYiI+xJDhu4thIGNo4buJIFJEUDogPHNwYW4gY2xhc3M9ImNvZGUiPl9fUkRQX0FERFJfXzwvc3Bhbj48L3A+ClVzZXI6IDxzcGFuIGNsYXNzPSJjb2RlIj56ZW5vdmEgKGhv4bq3YyBydW5uZXJhZG1pbik8L3NwYW4+PGJyPgpQYXNzOiA8c3BhbiBjbGFzcz0iY29kZSI+X19QV0RfXzwvc3Bhbj4KPC9kaXY+CjxkaXYgY2xhc3M9ImJveCIgc3R5bGU9ImJvcmRlci1sZWZ0OjRweCBzb2xpZCAjMTBiOTgxIj4KPGgzPuKYgO+4jyAzLiBTdW5zaGluZSAmIE1vb25saWdodCBTdHJlYW08L2gzPgo8cCBzdHlsZT0ibWFyZ2luOjZweCAwO2ZvbnQtc2l6ZToxM3B4O2NvbG9yOiNkMWQ1ZGIiPlN1bnNoaW5lIFdlYiBVSTo8L3A+Cl9fU1VOX0xJTktfXzxicj4KVXNlcjogPHNwYW4gY2xhc3M9ImNvZGUiPnplbm92YTwvc3Bhbj4gfCBQYXNzOiA8c3BhbiBjbGFzcz0iY29kZSI+X19QV0RfXzwvc3Bhbj4KPC9kaXY+CjwvZGl2PgpfX1dFQl9CQU5ORVJfXwo8ZGl2IGNsYXNzPSJidG4tZ3JvdXAiPgo8YnV0dG9uIGNsYXNzPSJidG4tc2F2ZSIgb25jbGljaz0ic2VuZENtZCgnU0FWRV9OT1cnKSI+8J+SviBMxq9VIEThu64gTEnhu4ZVIE5HQVk8L2J1dHRvbj4KPGJ1dHRvbiBjbGFzcz0iYnRuLXJzdCIgb25jbGljaz0ic2VuZENtZCgnUkVTVEFSVF9TRVNTSU9OJykiPvCflIEgUkVTRVQgUEhJw4pOIE3hu5pJPC9idXR0b24+CjxidXR0b24gY2xhc3M9ImJ0bi1zdG9wIiBvbmNsaWNrPSJzZW5kQ21kKCdTVE9QX1NFU1NJT04nKSI+8J+bkSBOR+G6rlQgVlBTPC9idXR0b24+CjwvZGl2Pgo8L2Rpdj4KPHNjcmlwdD4KYXN5bmMgZnVuY3Rpb24gc2VuZENtZChjKSB7CiAgICB2YXIgbXNnID0gKGMgPT09ICdTVE9QX1NFU1NJT04nKSA/ICdD4bqiTkggQsOBTzogQuG6oW4gY8OzIENI4bquQyBDSOG6rk4gbXXhu5FuIFThuq5UIFZQUyBraMO0bmc/JyA6ICgnWMOhYyBuaOG6rW4gdGjhu7FjIGhp4buHbiBs4buHbmg6ICcgKyBjICsgJz8nKTsKICAgIGlmIChjb25maXJtKG1zZykpIHsKICAgICAgICB0cnkgewogICAgICAgICAgICB2YXIgciA9IGF3YWl0IGZldGNoKCcvYXBpL2NtZCcsIHsKICAgICAgICAgICAgICAgIG1ldGhvZDogJ1BPU1QnLAogICAgICAgICAgICAgICAgaGVhZGVyczogeyAnQ29udGVudC1UeXBlJzogJ2FwcGxpY2F0aW9uL2pzb24nIH0sCiAgICAgICAgICAgICAgICBib2R5OiBKU09OLnN0cmluZ2lmeSh7IGNtZDogYyB9KQogICAgICAgICAgICB9KTsKICAgICAgICAgICAgdmFyIGQgPSBhd2FpdCByLmpzb24oKTsKICAgICAgICAgICAgYWxlcnQoZC5tZXNzYWdlKTsKICAgICAgICB9IGNhdGNoKGUpIHsKICAgICAgICAgICAgYWxlcnQoJ0zhu5dpIGvhur90IG7hu5FpOiAnICsgZSk7CiAgICAgICAgfQogICAgfQp9CnNldFRpbWVvdXQoZnVuY3Rpb24oKSB7IGxvY2F0aW9uLnJlbG9hZCgpOyB9LCAxNTAwMCk7Cjwvc2NyaXB0Pgo8L2JvZHk+CjwvaHRtbD4KIiIiCgpjbGFzcyBaZW5vdmFIYW5kbGVyKGh0dHAuc2VydmVyLkJhc2VIVFRQUmVxdWVzdEhhbmRsZXIpOgogICAgZGVmIGxvZ19tZXNzYWdlKHNlbGYsIGZvcm1hdCwgKmFyZ3MpOgogICAgICAgIHBhc3MKCiAgICBkZWYgc2VuZF9jb3JzKHNlbGYpOgogICAgICAgIHNlbGYuc2VuZF9oZWFkZXIoJ0FjY2Vzcy1Db250cm9sLUFsbG93LU9yaWdpbicsICcqJykKICAgICAgICBzZWxmLnNlbmRfaGVhZGVyKCdBY2Nlc3MtQ29udHJvbC1BbGxvdy1NZXRob2RzJywgJ0dFVCwgUE9TVCwgT1BUSU9OUycpCiAgICAgICAgc2VsZi5zZW5kX2hlYWRlcignQWNjZXNzLUNvbnRyb2wtQWxsb3ctSGVhZGVycycsICdDb250ZW50LVR5cGUnKQoKICAgIGRlZiBkb19PUFRJT05TKHNlbGYpOgogICAgICAgIHNlbGYuc2VuZF9yZXNwb25zZSgyMDApCiAgICAgICAgc2VsZi5zZW5kX2NvcnMoKQogICAgICAgIHNlbGYuZW5kX2hlYWRlcnMoKQoKICAgIGRlZiBkb19QT1NUKHNlbGYpOgogICAgICAgIGNtZCA9ICIiCiAgICAgICAgcGF0aCA9IHNlbGYucGF0aC5sb3dlcigpCiAgICAgICAgaWYgcGF0aCA9PSAiL3N0b3AiOgogICAgICAgICAgICBjbWQgPSAiU1RPUF9TRVNTSU9OIgogICAgICAgIGVsaWYgcGF0aCA9PSAiL3Jlc3RhcnQiOgogICAgICAgICAgICBjbWQgPSAiUkVTVEFSVF9TRVNTSU9OIgogICAgICAgIGVsaWYgcGF0aCA9PSAiL3NhdmUiOgogICAgICAgICAgICBjbWQgPSAiU0FWRV9OT1ciCiAgICAgICAgZWxzZToKICAgICAgICAgICAgbGVuZ3RoID0gaW50KHNlbGYuaGVhZGVycy5nZXQoJ2NvbnRlbnQtbGVuZ3RoJywgMCkpCiAgICAgICAgICAgIGJvZHkgPSBzZWxmLnJmaWxlLnJlYWQobGVuZ3RoKS5kZWNvZGUoJ3V0Zi04JywgZXJyb3JzPSdpZ25vcmUnKQogICAgICAgICAgICB0cnk6CiAgICAgICAgICAgICAgICBkYXRhID0ganNvbi5sb2Fkcyhib2R5KQogICAgICAgICAgICAgICAgY21kID0gZGF0YS5nZXQoJ2NtZCcsIGJvZHkpCiAgICAgICAgICAgIGV4Y2VwdDoKICAgICAgICAgICAgICAgIGNtZCA9IGJvZHkKCiAgICAgICAgaWYgY21kIGFuZCBTSUdfRklMRToKICAgICAgICAgICAgdHJ5OgogICAgICAgICAgICAgICAgb3MubWFrZWRpcnMob3MucGF0aC5kaXJuYW1lKFNJR19GSUxFKSwgZXhpc3Rfb2s9VHJ1ZSkKICAgICAgICAgICAgICAgIHdpdGggb3BlbihTSUdfRklMRSwgJ3cnLCBlbmNvZGluZz0ndXRmLTgnKSBhcyBmOgogICAgICAgICAgICAgICAgICAgIGYud3JpdGUoY21kLnN0cmlwKCkpCiAgICAgICAgICAgIGV4Y2VwdCBFeGNlcHRpb246CiAgICAgICAgICAgICAgICBwYXNzCgogICAgICAgIHJlc3AgPSBqc29uLmR1bXBzKHsib2siOiBUcnVlLCAibWVzc2FnZSI6ICLEkMOjIG5o4bqtbiBs4buHbmg6ICIgKyBzdHIoY21kLnN0cmlwKCkpfSkuZW5jb2RlKCd1dGYtOCcpCiAgICAgICAgc2VsZi5zZW5kX3Jlc3BvbnNlKDIwMCkKICAgICAgICBzZWxmLnNlbmRfY29ycygpCiAgICAgICAgc2VsZi5zZW5kX2hlYWRlcignQ29udGVudC1UeXBlJywgJ2FwcGxpY2F0aW9uL2pzb247IGNoYXJzZXQ9dXRmLTgnKQogICAgICAgIHNlbGYuc2VuZF9oZWFkZXIoJ0NvbnRlbnQtTGVuZ3RoJywgc3RyKGxlbihyZXNwKSkpCiAgICAgICAgc2VsZi5lbmRfaGVhZGVycygpCiAgICAgICAgc2VsZi53ZmlsZS53cml0ZShyZXNwKQoKICAgIGRlZiBkb19HRVQoc2VsZik6CiAgICAgICAgaWYgc2VsZi5wYXRoLnN0YXJ0c3dpdGgoJy9hcGkvY21kJyk6CiAgICAgICAgICAgIHF1ZXJ5ID0gdXJsbGliLnBhcnNlLnVybHBhcnNlKHNlbGYucGF0aCkucXVlcnkKICAgICAgICAgICAgcGFyYW1zID0gdXJsbGliLnBhcnNlLnBhcnNlX3FzKHF1ZXJ5KQogICAgICAgICAgICBjbWQgPSBwYXJhbXMuZ2V0KCdjbWQnLCBbJyddKVswXQogICAgICAgICAgICBpZiBjbWQgYW5kIFNJR19GSUxFOgogICAgICAgICAgICAgICAgdHJ5OgogICAgICAgICAgICAgICAgICAgIG9zLm1ha2VkaXJzKG9zLnBhdGguZGlybmFtZShTSUdfRklMRSksIGV4aXN0X29rPVRydWUpCiAgICAgICAgICAgICAgICAgICAgd2l0aCBvcGVuKFNJR19GSUxFLCAndycsIGVuY29kaW5nPSd1dGYtOCcpIGFzIGY6CiAgICAgICAgICAgICAgICAgICAgICAgIGYud3JpdGUoY21kLnN0cmlwKCkpCiAgICAgICAgICAgICAgICBleGNlcHQ6CiAgICAgICAgICAgICAgICAgICAgcGFzcwogICAgICAgICAgICByZXNwID0ganNvbi5kdW1wcyh7Im9rIjogVHJ1ZSwgIm1lc3NhZ2UiOiAixJDDoyBn4butaSBs4buHbmg6ICIgKyBzdHIoY21kKX0pLmVuY29kZSgndXRmLTgnKQogICAgICAgICAgICBzZWxmLnNlbmRfcmVzcG9uc2UoMjAwKQogICAgICAgICAgICBzZWxmLnNlbmRfY29ycygpCiAgICAgICAgICAgIHNlbGYuc2VuZF9oZWFkZXIoJ0NvbnRlbnQtVHlwZScsICdhcHBsaWNhdGlvbi9qc29uOyBjaGFyc2V0PXV0Zi04JykKICAgICAgICAgICAgc2VsZi5zZW5kX2hlYWRlcignQ29udGVudC1MZW5ndGgnLCBzdHIobGVuKHJlc3ApKSkKICAgICAgICAgICAgc2VsZi5lbmRfaGVhZGVycygpCiAgICAgICAgICAgIHNlbGYud2ZpbGUud3JpdGUocmVzcCkKICAgICAgICAgICAgcmV0dXJuCgogICAgICAgIGRlZiByZihwKToKICAgICAgICAgICAgdHJ5OgogICAgICAgICAgICAgICAgaWYgb3MucGF0aC5leGlzdHMocCk6CiAgICAgICAgICAgICAgICAgICAgd2l0aCBvcGVuKHAsICdyJywgZW5jb2Rpbmc9J3V0Zi04JywgZXJyb3JzPSdpZ25vcmUnKSBhcyBmOgogICAgICAgICAgICAgICAgICAgICAgICByZXR1cm4gZi5yZWFkKCkuc3RyaXAoKQogICAgICAgICAgICBleGNlcHQ6CiAgICAgICAgICAgICAgICBwYXNzCiAgICAgICAgICAgIHJldHVybiAiIgoKICAgICAgICB0c0lwID0gcmYociJDOlx0YWlsc2NhbGUtaXAudHh0Iikgb3Igb3MuZW52aXJvbi5nZXQoJ1RBSUxTQ0FMRV9JUCcsICcnKQogICAgICAgIHB1YklwID0gcmYociJDOlxtYWNoaW5lLWlwLnR4dCIpIG9yIG9zLmVudmlyb24uZ2V0KCdNQUNISU5FX1BVQkxJQ19JUCcsICfEkGFuZyBj4bqtcCBuaOG6rXQuLi4nKQogICAgICAgIG5ncm9rUmRwID0gcmYociJDOlxyZHAtbmdyb2sudHh0IikKICAgICAgICBzZElkID0gcmYociJDOlxzdGFyZGVzay1pZC50eHQiKSBvciBvcy5lbnZpcm9uLmdldCgnU1RBUkRFU0tfSUQnLCAnxJBhbmcga+G6v3QgbuG7kWkuLi4nKQogICAgICAgIHNkUGluID0gcmYociJDOlxzdGFyZGVzay1waW4udHh0Iikgb3Igb3MuZW52aXJvbi5nZXQoJ1NUQVJERVNLX1BJTicsICdaZW5vdmEyMDI2JykKICAgICAgICBjZldlYiA9IHJmKHIiQzpcY2xvdWRmbGFyZWQtd2ViLXVybC50eHQiKQogICAgICAgIGx0V2ViID0gcmYociJDOlxsb2NhbHR1bm5lbC13ZWItdXJsLnR4dCIpCiAgICAgICAgY2ZTdW4gPSByZihyIkM6XGNsb3VkZmxhcmVkLXN1bnNoaW5lLXVybC50eHQiKQogICAgICAgIG1hY2hJZCA9IG9zLmVudmlyb24uZ2V0KCdNQUNISU5FX0lEJywgJ3plbm92YS0xJykKICAgICAgICBkaXNwTmFtZSA9IG9zLmVudmlyb24uZ2V0KCdESVNQTEFZX05BTUUnLCAnWmVub3ZhIFVsdGltYXRlIE1hY2hpbmUnKQogICAgICAgIHB3ZCA9IG9zLmVudmlyb24uZ2V0KCdGSVhFRF9QQVNTV09SRCcsICdaZW5vdmFAMjAyNicpCgogICAgICAgIGlmIG5ncm9rUmRwOgogICAgICAgICAgICByZHBBZGRyID0gbmdyb2tSZHAKICAgICAgICBlbGlmIHRzSXAgYW5kIHRzSXAgIT0gIjEyNy4wLjAuMSI6CiAgICAgICAgICAgIHJkcEFkZHIgPSB0c0lwICsgIjozMzg5IgogICAgICAgIGVsc2U6CiAgICAgICAgICAgIHJkcEFkZHIgPSBwdWJJcCArICI6MzM4OSIKCiAgICAgICAgaWYgY2ZTdW46CiAgICAgICAgICAgIHN1bkxpbmsgPSAnPGEgaHJlZj0iJyArIGNmU3VuICsgJyIgdGFyZ2V0PSJfYmxhbmsiIHN0eWxlPSJjb2xvcjojMzhiZGY4O2ZvbnQtd2VpZ2h0OmJvbGQiPvCfjJAgTeG7nyBTdW5zaGluZSBXZWIgVUkgKENsb3VkZmxhcmUpPC9hPicKICAgICAgICBlbHNlOgogICAgICAgICAgICBzdW5MaW5rID0gJ0xvY2FsOiBodHRwczovLzEyNy4wLjAuMTo0Nzk5MCcKCiAgICAgICAgcHViV2ViTGluayA9IGNmV2ViIG9yIGx0V2ViCiAgICAgICAgaWYgcHViV2ViTGluazoKICAgICAgICAgICAgd2ViQmFubmVyID0gJzxkaXYgc3R5bGU9ImJhY2tncm91bmQ6IzFlMjkzYjtwYWRkaW5nOjEycHg7Ym9yZGVyLXJhZGl1czo4cHg7bWFyZ2luLWJvdHRvbToyMHB4O2ZvbnQtc2l6ZToxM3B4O2JvcmRlcjoxcHggc29saWQgIzMzNDE1MSI+8J+MkCA8Yj5MaW5rIFB1YmxpYyBXZWIgUXXhuqNuIEzDvTo8L2I+IDxhIGhyZWY9IicgKyBwdWJXZWJMaW5rICsgJyIgdGFyZ2V0PSJfYmxhbmsiIHN0eWxlPSJjb2xvcjojMzhiZGY4O2ZvbnQtd2VpZ2h0OmJvbGQ7dGV4dC1kZWNvcmF0aW9uOnVuZGVybGluZSI+JyArIHB1YldlYkxpbmsgKyAnPC9hPjwvZGl2PicKICAgICAgICBlbHNlOgogICAgICAgICAgICB3ZWJCYW5uZXIgPSAnJwoKICAgICAgICBodG1sID0gSFRNTF9URU1QTEFURQogICAgICAgIGh0bWwgPSBodG1sLnJlcGxhY2UoIl9fRElTUF9OQU1FX18iLCBkaXNwTmFtZSkKICAgICAgICBodG1sID0gaHRtbC5yZXBsYWNlKCJfX01BQ0hfSURfXyIsIG1hY2hJZCkKICAgICAgICBodG1sID0gaHRtbC5yZXBsYWNlKCJfX1BVQl9JUF9fIiwgcHViSXApCiAgICAgICAgaHRtbCA9IGh0bWwucmVwbGFjZSgiX19TRF9JRF9fIiwgc2RJZCkKICAgICAgICBodG1sID0gaHRtbC5yZXBsYWNlKCJfX1NEX1BJTl9fIiwgc2RQaW4pCiAgICAgICAgaHRtbCA9IGh0bWwucmVwbGFjZSgiX19SRFBfQUREUl9fIiwgcmRwQWRkcikKICAgICAgICBodG1sID0gaHRtbC5yZXBsYWNlKCJfX1BXRF9fIiwgcHdkKQogICAgICAgIGh0bWwgPSBodG1sLnJlcGxhY2UoIl9fU1VOX0xJTktfXyIsIHN1bkxpbmspCiAgICAgICAgaHRtbCA9IGh0bWwucmVwbGFjZSgiX19XRUJfQkFOTkVSX18iLCB3ZWJCYW5uZXIpCgogICAgICAgIHJlc3AgPSBodG1sLmVuY29kZSgndXRmLTgnKQogICAgICAgIHNlbGYuc2VuZF9yZXNwb25zZSgyMDApCiAgICAgICAgc2VsZi5zZW5kX2NvcnMoKQogICAgICAgIHNlbGYuc2VuZF9oZWFkZXIoJ0NvbnRlbnQtVHlwZScsICd0ZXh0L2h0bWw7IGNoYXJzZXQ9dXRmLTgnKQogICAgICAgIHNlbGYuc2VuZF9oZWFkZXIoJ0NvbnRlbnQtTGVuZ3RoJywgc3RyKGxlbihyZXNwKSkpCiAgICAgICAgc2VsZi5lbmRfaGVhZGVycygpCiAgICAgICAgc2VsZi53ZmlsZS53cml0ZShyZXNwKQoKY2xhc3MgVGhyZWFkZWRIVFRQU2VydmVyKHNvY2tldHNlcnZlci5UaHJlYWRpbmdNaXhJbiwgaHR0cC5zZXJ2ZXIuSFRUUFNlcnZlcik6CiAgICBkYWVtb25fdGhyZWFkcyA9IFRydWUKICAgIGFsbG93X3JldXNlX2FkZHJlc3MgPSBUcnVlCgppZiBfX25hbWVfXyA9PSAnX19tYWluX18nOgogICAgc2VydmVyID0gVGhyZWFkZWRIVFRQU2VydmVyKCgnMC4wLjAuMCcsIFBPUlQpLCBaZW5vdmFIYW5kbGVyKQogICAgc2VydmVyLnNlcnZlX2ZvcmV2ZXIoKQo=';
+          $pyB64 = 'aW1wb3J0IGh0dHAuc2VydmVyLCBzb2NrZXRzZXJ2ZXIsIGpzb24sIG9zLCBzeXMsIHVybGxpYi5wYXJzZQoKUE9SVCA9IGludChzeXMuYXJndlsxXSkgaWYgbGVuKHN5cy5hcmd2KSA+IDEgZWxzZSA4MDgwClNJR19GSUxFID0gc3lzLmFyZ3ZbMl0gaWYgbGVuKHN5cy5hcmd2KSA+IDIgZWxzZSByIkM6XFpFTk9WQS1WSEQtSE9TVFxjb250cm9sLXNpZ25hbC50eHQiCgpIVE1MX1RFTVBMQVRFID0gIiIiPCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9InZpIj4KPGhlYWQ+CjxtZXRhIGNoYXJzZXQ9InV0Zi04Ij4KPHRpdGxlPlplbm92YSBWUFMgQ29udHJvbCBQYW5lbDwvdGl0bGU+CjxtZXRhIG5hbWU9InZpZXdwb3J0IiBjb250ZW50PSJ3aWR0aD1kZXZpY2Utd2lkdGgsIGluaXRpYWwtc2NhbGU9MSI+CjxzdHlsZT4KYm9keSB7IGJhY2tncm91bmQ6ICMwOTBkMTY7IGNvbG9yOiAjZjNmNGY2OyBmb250LWZhbWlseTogc3lzdGVtLXVpLCAtYXBwbGUtc3lzdGVtLCBzYW5zLXNlcmlmOyBtYXJnaW46IDA7IHBhZGRpbmc6IDIwcHg7IGRpc3BsYXk6IGZsZXg7IGp1c3RpZnktY29udGVudDogY2VudGVyOyB9Ci5jYXJkIHsgd2lkdGg6IDEwMCU7IG1heC13aWR0aDogODUwcHg7IGJhY2tncm91bmQ6ICMxMTE4Mjc7IGJvcmRlcjogMXB4IHNvbGlkICMxZjI5Mzc7IGJvcmRlci1yYWRpdXM6IDE2cHg7IHBhZGRpbmc6IDI0cHg7IGJveC1zaGFkb3c6IDAgMjBweCAyNXB4IC01cHggcmdiYSgwLDAsMCwwLjUpOyB9Ci5oZWFkZXIgeyBkaXNwbGF5OiBmbGV4OyBqdXN0aWZ5LWNvbnRlbnQ6IHNwYWNlLWJldHdlZW47IGFsaWduLWl0ZW1zOiBjZW50ZXI7IGJvcmRlci1ib3R0b206IDFweCBzb2xpZCAjMWYyOTM3OyBwYWRkaW5nLWJvdHRvbTogMTZweDsgbWFyZ2luLWJvdHRvbTogMjBweDsgfQouYmFkZ2UgeyBiYWNrZ3JvdW5kOiAjMDY1ZjQ2OyBjb2xvcjogIzM0ZDM5OTsgcGFkZGluZzogNnB4IDE0cHg7IGJvcmRlci1yYWRpdXM6IDk5OTlweDsgZm9udC13ZWlnaHQ6IDcwMDsgZm9udC1zaXplOiAxMnB4OyB9Ci5ncmlkIHsgZGlzcGxheTogZ3JpZDsgZ3JpZC10ZW1wbGF0ZS1jb2x1bW5zOiByZXBlYXQoYXV0by1maXQsIG1pbm1heCgyNTBweCwgMWZyKSk7IGdhcDogMTZweDsgbWFyZ2luLWJvdHRvbTogMjRweDsgfQouYm94IHsgYmFja2dyb3VuZDogIzFmMjkzNzsgYm9yZGVyOiAxcHggc29saWQgIzM3NDE1MTsgYm9yZGVyLXJhZGl1czogMTJweDsgcGFkZGluZzogMTZweDsgcG9zaXRpb246IHJlbGF0aXZlOyB9Ci5ib3ggaDMgeyBtYXJnaW4tdG9wOiAwOyBmb250LXNpemU6IDE2cHg7IGNvbG9yOiAjMzhiZGY4OyBkaXNwbGF5OiBmbGV4OyBhbGlnbi1pdGVtczogY2VudGVyOyBnYXA6IDhweDsgfQouY29kZSB7IGJhY2tncm91bmQ6ICMxMTE4Mjc7IHBhZGRpbmc6IDZweCAxMHB4OyBib3JkZXItcmFkaXVzOiA2cHg7IGZvbnQtZmFtaWx5OiBtb25vc3BhY2U7IGZvbnQtc2l6ZTogMTRweDsgY29sb3I6ICNmYWNjMTU7IGZvbnQtd2VpZ2h0OiBib2xkOyBkaXNwbGF5OiBpbmxpbmUtYmxvY2s7IG1hcmdpbi10b3A6IDRweDsgd29yZC1icmVhazogYnJlYWstYWxsOyB9Ci5idG4tZ3JvdXAgeyBkaXNwbGF5OiBncmlkOyBncmlkLXRlbXBsYXRlLWNvbHVtbnM6IHJlcGVhdChhdXRvLWZpdCwgbWlubWF4KDE4MHB4LCAxZnIpKTsgZ2FwOiAxMnB4OyB9CmJ1dHRvbiB7IHBhZGRpbmc6IDE0cHg7IGJvcmRlcjogbm9uZTsgYm9yZGVyLXJhZGl1czogMTBweDsgZm9udC13ZWlnaHQ6IDcwMDsgZm9udC1zaXplOiAxNHB4OyBjdXJzb3I6IHBvaW50ZXI7IGRpc3BsYXk6IGZsZXg7IGFsaWduLWl0ZW1zOiBjZW50ZXI7IGp1c3RpZnktY29udGVudDogY2VudGVyOyBnYXA6IDhweDsgY29sb3I6ICNmZmY7IHRyYW5zaXRpb246IDAuMnM7IH0KLmJ0bi1zYXZlIHsgYmFja2dyb3VuZDogIzAyODRjNzsgfSAuYnRuLXNhdmU6aG92ZXIgeyBiYWNrZ3JvdW5kOiAjMDM2OWExOyB9Ci5idG4tcnN0IHsgYmFja2dyb3VuZDogI2Q5NzcwNjsgfSAuYnRuLXJzdDpob3ZlciB7IGJhY2tncm91bmQ6ICNiNDUzMDk7IH0KLmJ0bi1zdG9wIHsgYmFja2dyb3VuZDogI2RjMjYyNjsgfSAuYnRuLXN0b3A6aG92ZXIgeyBiYWNrZ3JvdW5kOiAjYjkxYzFjOyB9CmEgeyBjb2xvcjogIzM4YmRmODsgdGV4dC1kZWNvcmF0aW9uOiBub25lOyB9CmE6aG92ZXIgeyB0ZXh0LWRlY29yYXRpb246IHVuZGVybGluZTsgfQo8L3N0eWxlPgo8L2hlYWQ+Cjxib2R5Pgo8ZGl2IGNsYXNzPSJjYXJkIj4KPGRpdiBjbGFzcz0iaGVhZGVyIj4KPGRpdj48aDIgc3R5bGU9Im1hcmdpbjowO2ZvbnQtc2l6ZToyMnB4Ij7wn5qAIFpFTk9WQSBVTFRJTUFURSBWUFM8L2gyPjxwIHN0eWxlPSJtYXJnaW46NHB4IDAgMDtjb2xvcjojOWNhM2FmO2ZvbnQtc2l6ZToxM3B4Ij5Nw6F5OiA8Yj5fX0RJU1BfTkFNRV9fIChfX01BQ0hfSURfXyk8L2I+IHwgSVAgT3V0Ym91bmQ6IDxiPl9fUFVCX0lQX188L2I+PC9wPjwvZGl2Pgo8c3BhbiBjbGFzcz0iYmFkZ2UiPuKXjyBPTkxJTkUgJiDEkEFORyBDSOG6oFk8L3NwYW4+CjwvZGl2Pgo8ZGl2IGNsYXNzPSJncmlkIj4KPGRpdiBjbGFzcz0iYm94IiBzdHlsZT0iYm9yZGVyLWxlZnQ6NHB4IHNvbGlkICNmNTllMGIiPgo8aDM+8J+MnyAxLiBTdGFyRGVzayBUcnVuZyAvIEdhbWVWaWV3ZXI8L2gzPgo8cCBzdHlsZT0ibWFyZ2luOjZweCAwO2ZvbnQtc2l6ZToxM3B4O2NvbG9yOiNkMWQ1ZGIiPkvhur90IG7hu5FpIFAyUCA2MC0xMjBmcHMga2jDtG5nIGRlbGF5OjwvcD4KSUQ6IDxzcGFuIGNsYXNzPSJjb2RlIj5fX1NEX0lEX188L3NwYW4+PGJyPgpQSU46IDxzcGFuIGNsYXNzPSJjb2RlIj5fX1NEX1BJTl9fPC9zcGFuPgo8L2Rpdj4KPGRpdiBjbGFzcz0iYm94IiBzdHlsZT0iYm9yZGVyLWxlZnQ6NHB4IHNvbGlkICMzYjgyZjYiPgo8aDM+8J+Wpe+4jyAyLiBSZW1vdGUgRGVza3RvcCAoUkRQKSAmIFRhaWxzY2FsZTwvaDM+CjxwIHN0eWxlPSJtYXJnaW46NnB4IDA7Zm9udC1zaXplOjEzcHg7Y29sb3I6I2QxZDVkYiI+xJDhu4thIGNo4buJIFJEUDogPHNwYW4gY2xhc3M9ImNvZGUiPl9fUkRQX0FERFJfXzwvc3Bhbj48L3A+ClVzZXI6IDxzcGFuIGNsYXNzPSJjb2RlIj56ZW5vdmEgKGhv4bq3YyBydW5uZXJhZG1pbik8L3NwYW4+PGJyPgpQYXNzOiA8c3BhbiBjbGFzcz0iY29kZSI+X19QV0RfXzwvc3Bhbj4KPC9kaXY+CjxkaXYgY2xhc3M9ImJveCIgc3R5bGU9ImJvcmRlci1sZWZ0OjRweCBzb2xpZCAjMTBiOTgxIj4KPGgzPuKYgO+4jyAzLiBTdW5zaGluZSAmIE1vb25saWdodCBTdHJlYW08L2gzPgo8cCBzdHlsZT0ibWFyZ2luOjZweCAwO2ZvbnQtc2l6ZToxM3B4O2NvbG9yOiNkMWQ1ZGIiPlN1bnNoaW5lIFdlYiBVSTo8L3A+X19TVU5fTElOS19fPGJyPgpVc2VyOiA8c3BhbiBjbGFzcz0iY29kZSI+emVub3ZhPC9zcGFuPiB8IFBhc3M6IDxzcGFuIGNsYXNzPSJjb2RlIj5fX1BXRF9fPC9zcGFuPgo8L2Rpdj4KPC9kaXY+Cl9fV0VCX0JBTk5FUl9fCjxkaXYgY2xhc3M9ImJ0bi1ncm91cCI+CjxidXR0b24gY2xhc3M9ImJ0bi1zYXZlIiBvbmNsaWNrPSJzZW5kQ21kKCdTQVZFX05PVycpIj7wn5K+IExVxq5VIEThu64gTEnhu4ZVIE5HQVk8L2J1dHRvbj4KPGJ1dHRvbiBjbGFzcz0iYnRuLXJzdCIgb25jbGljaz0ic2VuZENtZCgnUkVTVEFSVF9TRVNTSU9OJykiPvCflIEgUkVTRVQgUEhJw4pOIE3hu5pJPC9idXR0b24+CjxidXR0b24gY2xhc3M9ImJ0bi1zdG9wIiBvbmNsaWNrPSJzZW5kQ21kKCdTVE9QX1NFU1NJT04nKSI+8J+bkSBOR+G6rlQgVlBTPC9idXR0b24+CjwvZGl2Pgo8L2Rpdj4KPHNjcmlwdD4KYXN5bmMgZnVuY3Rpb24gc2VuZENtZChjKSB7CiAgICB2YXIgbXNnID0gKGMgPT09ICdTVE9QX1NFU1NJT04nKSA/ICdD4bqiTkggQsOBTzogQuG6oW4gY8OzIENI4bquQyBDSOG6rk4gbXXhu5FuIFThuq5UIFZQUyBraMO0bmc/JyA6ICgnWMOhYyBuaOG6rW4gdGjhu7FjIGhp4buHbiBs4buHbmg6ICcgKyBjICsgJz8nKTsKICAgIGlmIChjb25maXJtKG1zZykpIHsKICAgICAgICB0cnkgewogICAgICAgICAgICB2YXIgciA9IGF3YWl0IGZldGNoKCcvYXBpL2NtZCcsIHsKICAgICAgICAgICAgICAgIG1ldGhvZDogJ1BPU1QnLAogICAgICAgICAgICAgICAgaGVhZGVyczogeyAnQ29udGVudC1UeXBlJzogJ2FwcGxpY2F0aW9uL2pzb24nIH0sCiAgICAgICAgICAgICAgICBib2R5OiBKU09OLnN0cmluZ2lmeSh7IGNtZDogYyB9KQogICAgICAgICAgICB9KTsKICAgICAgICAgICAgdmFyIGQgPSBhd2FpdCByLmpzb24oKTsKICAgICAgICAgICAgYWxlcnQoZC5tZXNzYWdlKTsKICAgICAgICB9IGNhdGNoKGUpIHsKICAgICAgICAgICAgYWxlcnQoJ0zhu5dpIGvhur90IG7hu5FpOiAnICsgZSk7CiAgICAgICAgfQogICAgfQp9CnNldFRpbWVvdXQoZnVuY3Rpb24oKSB7IGxvY2F0aW9uLnJlbG9hZCgpOyB9LCAxNTAwMCk7Cjwvc2NyaXB0Pgo8L2JvZHk+CjwvaHRtbD4KIiIiCgpjbGFzcyBaZW5vdmFIYW5kbGVyKGh0dHAuc2VydmVyLkJhc2VIVFRQUmVxdWVzdEhhbmRsZXIpOgogICAgZGVmIGxvZ19tZXNzYWdlKHNlbGYsIGZvcm1hdCwgKmFyZ3MpOgogICAgICAgIHBhc3MKCiAgICBkZWYgc2VuZF9jb3JzKHNlbGYpOgogICAgICAgIHNlbGYuc2VuZF9oZWFkZXIoJ0FjY2Vzcy1Db250cm9sLUFsbG93LU9yaWdpbicsICcqJykKICAgICAgICBzZWxmLnNlbmRfaGVhZGVyKCdBY2Nlc3MtQ29udHJvbC1BbGxvdy1NZXRob2RzJywgJ0dFVCwgUE9TVCwgT1BUSU9OUycpCiAgICAgICAgc2VsZi5zZW5kX2hlYWRlcignQWNjZXNzLUNvbnRyb2wtQWxsb3ctSGVhZGVycycsICdDb250ZW50LVR5cGUnKQoKICAgIGRlZiBkb19PUFRJT05TKHNlbGYpOgogICAgICAgIHNlbGYuc2VuZF9yZXNwb25zZSgyMDApCiAgICAgICAgc2VsZi5zZW5kX2NvcnMoKQogICAgICAgIHNlbGYuZW5kX2hlYWRlcnMoKQoKICAgIGRlZiBkb19QT1NUKHNlbGYpOgogICAgICAgIGNtZCA9ICIiCiAgICAgICAgcGF0aCA9IHNlbGYucGF0aC5sb3dlcigpCiAgICAgICAgaWYgcGF0aCA9PSAiL3N0b3AiOgogICAgICAgICAgICBjbWQgPSAiU1RPUF9TRVNTSU9OIgogICAgICAgIGVsaWYgcGF0aCA9PSAiL3Jlc3RhcnQiOgogICAgICAgICAgICBjbWQgPSAiUkVTVEFSVF9TRVNTSU9OIgogICAgICAgIGVsaWYgcGF0aCA9PSAiL3NhdmUiOgogICAgICAgICAgICBjbWQgPSAiU0FWRV9OT1ciCiAgICAgICAgZWxzZToKICAgICAgICAgICAgbGVuZ3RoID0gaW50KHNlbGYuaGVhZGVycy5nZXQoJ2NvbnRlbnQtbGVuZ3RoJywgMCkpCiAgICAgICAgICAgIGJvZHkgPSBzZWxmLnJmaWxlLnJlYWQobGVuZ3RoKS5kZWNvZGUoJ3V0Zi04JywgZXJyb3JzPSdpZ25vcmUnKQogICAgICAgICAgICB0cnk6CiAgICAgICAgICAgICAgICBkYXRhID0ganNvbi5sb2Fkcyhib2R5KQogICAgICAgICAgICAgICAgY21kID0gZGF0YS5nZXQoJ2NtZCcsIGJvZHkpCiAgICAgICAgICAgIGV4Y2VwdDoKICAgICAgICAgICAgICAgIGNtZCA9IGJvZHkKCiAgICAgICAgaWYgY21kIGFuZCBTSUdfRklMRToKICAgICAgICAgICAgdHJ5OgogICAgICAgICAgICAgICAgb3MubWFrZWRpcnMob3MucGF0aC5kaXJuYW1lKFNJR19GSUxFKSwgZXhpc3Rfb2s9VHJ1ZSkKICAgICAgICAgICAgICAgIHdpdGggb3BlbihTSUdfRklMRSwgJ3cnLCBlbmNvZGluZz0ndXRmLTgnKSBhcyBmOgogICAgICAgICAgICAgICAgICAgIGYud3JpdGUoY21kLnN0cmlwKCkpCiAgICAgICAgICAgIGV4Y2VwdCBFeGNlcHRpb246CiAgICAgICAgICAgICAgICBwYXNzCgogICAgICAgIHJlc3AgPSBqc29uLmR1bXBzKHsib2siOiBUcnVlLCAibWVzc2FnZSI6ICLEkMOjIG5o4bqtbiBs4buHbmg6ICIgKyBzdHIoY21kLnN0cmlwKCkpfSkuZW5jb2RlKCd1dGYtOCcpCiAgICAgICAgc2VsZi5zZW5kX3Jlc3BvbnNlKDIwMCkKICAgICAgICBzZWxmLnNlbmRfY29ycygpCiAgICAgICAgc2VsZi5zZW5kX2hlYWRlcignQ29udGVudC1UeXBlJywgJ2FwcGxpY2F0aW9uL2pzb247IGNoYXJzZXQ9dXRmLTgnKQogICAgICAgIHNlbGYuc2VuZF9oZWFkZXIoJ0NvbnRlbnQtTGVuZ3RoJywgc3RyKGxlbihyZXNwKSkpCiAgICAgICAgc2VsZi5lbmRfaGVhZGVycygpCiAgICAgICAgc2VsZi53ZmlsZS53cml0ZShyZXNwKQoKICAgIGRlZiBkb19HRVQoc2VsZik6CiAgICAgICAgaWYgc2VsZi5wYXRoLnN0YXJ0c3dpdGgoJy9hcGkvY21kJyk6CiAgICAgICAgICAgIHF1ZXJ5ID0gdXJsbGliLnBhcnNlLnVybHBhcnNlKHNlbGYucGF0aCkucXVlcnkKICAgICAgICAgICAgcGFyYW1zID0gdXJsbGliLnBhcnNlLnBhcnNlX3FzKHF1ZXJ5KQogICAgICAgICAgICBjbWQgPSBwYXJhbXMuZ2V0KCdjbWQnLCBbJyddKVswXQogICAgICAgICAgICBpZiBjbWQgYW5kIFNJR19GSUxFOgogICAgICAgICAgICAgICAgdHJ5OgogICAgICAgICAgICAgICAgICAgIG9zLm1ha2VkaXJzKG9zLnBhdGguZGlybmFtZShTSUdfRklMRSksIGV4aXN0X29rPVRydWUpCiAgICAgICAgICAgICAgICAgICAgd2l0aCBvcGVuKFNJR19GSUxFLCAndycsIGVuY29kaW5nPSd1dGYtOCcpIGFzIGY6CiAgICAgICAgICAgICAgICAgICAgICAgIGYud3JpdGUoY21kLnN0cmlwKCkpCiAgICAgICAgICAgICAgICBleGNlcHQ6CiAgICAgICAgICAgICAgICAgICAgcGFzcwogICAgICAgICAgICByZXNwID0ganNvbi5kdW1wcyh7Im9rIjogVHJ1ZSwgIm1lc3NhZ2UiOiAixJDDoyBn4butaSBs4buHbmg6ICIgKyBzdHIoY21kKX0pLmVuY29kZSgndXRmLTgnKQogICAgICAgICAgICBzZWxmLnNlbmRfcmVzcG9uc2UoMjAwKQogICAgICAgICAgICBzZWxmLnNlbmRfY29ycygpCiAgICAgICAgICAgIHNlbGYuc2VuZF9oZWFkZXIoJ0NvbnRlbnQtVHlwZScsICdhcHBsaWNhdGlvbi9qc29uOyBjaGFyc2V0PXV0Zi04JykKICAgICAgICAgICAgc2VsZi5zZW5kX2hlYWRlcignQ29udGVudC1MZW5ndGgnLCBzdHIobGVuKHJlc3ApKSkKICAgICAgICAgICAgc2VsZi5lbmRfaGVhZGVycygpCiAgICAgICAgICAgIHNlbGYud2ZpbGUud3JpdGUocmVzcCkKICAgICAgICAgICAgcmV0dXJuCgogICAgICAgIGRlZiByZihwKToKICAgICAgICAgICAgdHJ5OgogICAgICAgICAgICAgICAgaWYgb3MucGF0aC5leGlzdHMocCk6CiAgICAgICAgICAgICAgICAgICAgd2l0aCBvcGVuKHAsICdyJywgZW5jb2Rpbmc9J3V0Zi04JywgZXJyb3JzPSdpZ25vcmUnKSBhcyBmOgogICAgICAgICAgICAgICAgICAgICAgICByZXR1cm4gZi5yZWFkKCkuc3RyaXAoKQogICAgICAgICAgICBleGNlcHQ6CiAgICAgICAgICAgICAgICBwYXNzCiAgICAgICAgICAgIHJldHVybiAiIgoKICAgICAgICB0c0lwID0gcmYociJDOFx0YWlsc2NhbGUtaXAudHh0Iikgb3Igb3MuZW52aXJvbi5nZXQoJ1RBSUxTQ0FMRV9JUCcsICcnKQogICAgICAgIHB1YklwID0gcmYociJDOlxtYWNoaW5lLWlwLnR4dCIpIG9yIG9zLmVudmlyb24uZ2V0KCdNQUNISU5FX1BVQkxJQ19JUCcsICfEkGFuZyBj4bqtcCBuaOG6rXQuLi4nKQogICAgICAgIG5ncm9rUmRwID0gcmYociJDOlxyZHAtbmdyb2sudHh0IikKICAgICAgICBzZElkID0gcmYociJDOlxzdGFyZGVzay1pZC50eHQiKSBvciBvcy5lbnZpcm9uLmdldCgnU1RBUkRFU0tfSUQnLCAnxJBhbmcga+G6v3QgbuG7kWkuLi4nKQogICAgICAgIHNkUGluID0gcmYociJDOlxzdGFyZGVzay1waW4udHh0Iikgb3Igb3MuZW52aXJvbi5nZXQoJ1NUQVJERVNLX1BJTicsICdaZW5vdmEyMDI2JykKICAgICAgICBjZldlYiA9IHJmKHIiQzpcY2xvdWRmbGFyZWQtd2ViLXVybC50eHQiKQogICAgICAgIGx0V2ViID0gcmYociJDOlxsb2NhbHR1bm5lbC13ZWItdXJsLnR4dCIpCiAgICAgICAgY2ZTdW4gPSByZihyIkM6XGNsb3VkZmxhcmVkLXN1bnNoaW5lLXVybC50eHQiKQogICAgICAgIG1hY2hJZCA9IG9zLmVudmlyb24uZ2V0KCdNQUNISU5FX0lEJywgJ3plbm92YS0xJykKICAgICAgICBkaXNwTmFtZSA9IG9zLmVudmlyb24uZ2V0KCdESVNQTEFZX05BTUUnLCAnWmVub3ZhIFVsdGltYXRlIE1hY2hpbmUnKQogICAgICAgIHB3ZCA9IG9zLmVudmlyb24uZ2V0KCdGSVhFRF9QQVNTV09SRCcsICdaZW5vdmFAMjAyNicpCgogICAgICAgIGlmIG5ncm9rUmRwOgogICAgICAgICAgICByZHBBZGRyID0gbmdyb2tSZHAKICAgICAgICBlbGlmIHRzSXAgYW5kIHRzSXAgIT0gIjEyNy4wLjAuMSI6CiAgICAgICAgICAgIHJkcEFkZHIgPSB0c0lwICsgIjozMzg5IgogICAgICAgIGVsc2U6CiAgICAgICAgICAgIHJkcEFkZHIgPSBwdWJJcCArICI6MzM4OSIKCiAgICAgICAgaWYgY2ZTdW46CiAgICAgICAgICAgIHN1bkxpbmsgPSAnPGEgaHJlZj0iJyArIGNmU3VuICsgJyIgdGFyZ2V0PSJfYmxhbmsiIHN0eWxlPSJjb2xvcjojMzhiZGY4O2ZvbnQtd2VpZ2h0OmJvbGQiPvCfjJAgTeG7nyBTdW5zaGluZSBXZWIgVUkgKENsb3VkZmxhcmUpPC9hPicKICAgICAgICBlbHNlOgogICAgICAgICAgICBzdW5MaW5rID0gJ0xvY2FsOiBodHRwczovLzEyNy4wLjAuMTo0Nzk5MCcKCiAgICAgICAgcHViV2ViTGluayA9IGNmV2ViIG9yIGx0V2ViCiAgICAgICAgaWYgcHViV2ViTGluazoKICAgICAgICAgICAgd2ViQmFubmVyID0gJzxkaXYgc3R5bGU9ImJhY2tncm91bmQ6IzFlMjkzYjtwYWRkaW5nOjEycHg7Ym9yZGVyLXJhZGl1czo4cHg7bWFyZ2luLWJvdHRvbToyMHB4O2ZvbnQtc2l6ZToxM3B4O2JvcmRlcjoxcHggc29saWQgIzMzNDE1MSI+8J+MkCA8Yj5MaW5rIFB1YmxpYyBXZWIgUXXhuqNuIEzDvTo8L2I+IDxhIGhyZWY9IicgKyBwdWJXZWJMaW5rICsgJyIgdGFyZ2V0PSJfYmxhbmsiIHN0eWxlPSJjb2xvcjojMzhiZGY4O2ZvbnQtd2VpZ2h0OmJvbGQ7dGV4dC1kZWNvcmF0aW9uOnVuZGVybGluZSI+JyArIHB1YldlYkxpbmsgKyAnPC9hPjwvZGl2PicKICAgICAgICBlbHNlOgogICAgICAgICAgICB3ZWJCYW5uZXIgPSAnJwoKICAgICAgICBodG1sID0gSFRNTF9URU1QTEFURQogICAgICAgIGh0bWwgPSBodG1sLnJlcGxhY2UoIl9fRElTUF9OQU1FX18iLCBkaXNwTmFtZSkKICAgICAgICBodG1sID0gaHRtbC5yZXBsYWNlKCJfX01BQ0hfSURfXyIsIG1hY2hJZCkKICAgICAgICBodG1sID0gaHRtbC5yZXBsYWNlKCJfX1BVQl9JUF9fIiwgcHViSXApCiAgICAgICAgaHRtbCA9IGh0bWwucmVwbGFjZSgiX19TRF9JRF9fIiwgc2RJZCkKICAgICAgICBodG1sID0gaHRtbC5yZXBsYWNlKCJfX1NEX1BJTl9fIiwgc2RQaW4pCiAgICAgICAgaHRtbCA9IGh0bWwucmVwbGFjZSgiX19SRFBfQUREUl9fIiwgcmRwQWRkcikKICAgICAgICBodG1sID0gaHRtbC5yZXBsYWNlKCJfX1BXRF9fIiwgcHdkKQogICAgICAgIGh0bWwgPSBodG1sLnJlcGxhY2UoIl9fU1VOX0xJTktfXyIsIHN1bkxpbmspCiAgICAgICAgaHRtbCA9IGh0bWwucmVwbGFjZSgiX19XRUJfQkFOTkVSX18iLCB3ZWJCYW5uZXIpCgogICAgICAgIHJlc3AgPSBodG1sLmVuY29kZSgndXRmLTgnKQogICAgICAgIHNlbGYuc2VuZF9yZXNwb25zZSgyMDApCiAgICAgICAgc2VsZi5zZW5kX2NvcnMoKQogICAgICAgIHNlbGYuc2VuZF9oZWFkZXIoJ0NvbnRlbnQtVHlwZScsICd0ZXh0L2h0bWw7IGNoYXJzZXQ9dXRmLTgnKQogICAgICAgIHNlbGYuc2VuZF9oZWFkZXIoJ0NvbnRlbnQtTGVuZ3RoJywgc3RyKGxlbihyZXNwKSkpCiAgICAgICAgc2VsZi5lbmRfaGVhZGVycygpCiAgICAgICAgc2VsZi53ZmlsZS53cml0ZShyZXNwKQoKY2xhc3MgVGhyZWFkZWRIVFRQU2VydmVyKHNvY2tldHNlcnZlci5UaHJlYWRpbmdNaXhJbiwgaHR0cC5zZXJ2ZXIuSFRUUFNlcnZlcik6CiAgICBkYWVtb25fdGhyZWFkcyA9IFRydWUKICAgIGFsbG93X3JldXNlX2FkZHJlc3MgPSBUcnVlCgppZiBfX25hbWVfXyA9PSAnX19tYWluX18nOgogICAgc2VydmVyID0gVGhyZWFkZWRIVFRQU2VydmVyKCgnMC4wLjAuMCcsIFBPUlQpLCBaZW5vdmFIYW5kbGVyKQogICAgc2VydmVyLnNlcnZlX2ZvcmV2ZXIoKQo=';
           [System.IO.File]::WriteAllBytes($pyServerPath, [System.Convert]::FromBase64String($pyB64));
 
           $pyExe = (Get-Command python -ErrorAction SilentlyContinue).Source;
           if (-not $pyExe) { $pyExe = 'python'; }
           Start-Process -FilePath $pyExe -ArgumentList "`"$pyServerPath`"", "8080", "`"$env:CONTROL_SIGNAL_FILE`"" -WindowStyle Hidden -ErrorAction SilentlyContinue;
 
-          # Kiểm tra nhanh mỗi 300ms xác thực port 8080 đã sống trước khi bật Cloudflare Tunnel
           $serverAlive = $false;
           for ($i = 0; $i -lt 15; $i++) {
               Start-Sleep -Milliseconds 300;
@@ -1314,7 +1263,6 @@ jobs:
           $cfSunshine = "";
           $ltWeb = "";
 
-          # Quét nhanh 500ms tìm URLs
           for ($i = 0; $i -lt 15; $i++) {
               Start-Sleep -Milliseconds 500;
               if (Test-Path "C:\cloudflared-web.log") {
@@ -1367,7 +1315,6 @@ jobs:
           Write-Host "🔐 MẬT KHẨU CỐ ĐỊNH             : $pass" -ForegroundColor Gray;
           Write-Host "======================================================================" -ForegroundColor Green;
 
-          # Render GitHub Step Summary
           $sb = New-Object System.Text.StringBuilder;
           [void]$sb.AppendLine('# 🚀 Zenova Ultimate VPS - Thông Tin Kết Nối Toàn Diện');
           [void]$sb.AppendLine('');
@@ -1380,19 +1327,19 @@ jobs:
           [void]$sb.AppendLine('### 🌟 2. Kết Nối StarDesk Trung / NetEase GameViewer (Khuyên Dùng - 0ms Delay)');
           [void]$sb.AppendLine('| Thông Tin | Giá Trị |');
           [void]$sb.AppendLine('|---|---|');
-          [void]$sb.AppendLine("| **Device ID** | `$sdId` |");
-          [void]$sb.AppendLine("| **Mã PIN** | `$sdPin` |");
+          [void]$sb.AppendLine("| **Device ID** | ``$sdId`` |");
+          [void]$sb.AppendLine("| **Mã PIN** | ``$sdPin`` |");
           [void]$sb.AppendLine('');
           [void]$sb.AppendLine('---');
           [void]$sb.AppendLine('');
           [void]$sb.AppendLine('### 🖥️ 3. Kết Nối Remote Desktop (mstsc) & Tailscale');
           [void]$sb.AppendLine('| Mục | Thông Số |');
           [void]$sb.AppendLine('|---|---|');
-          [void]$sb.AppendLine("| **Địa chỉ RDP** | `$rdpTarget` |");
-          [void]$sb.AppendLine("| **IP Tailscale** | `$tsIp` |");
-          [void]$sb.AppendLine("| **IP Outbound Máy** | `$pubIp` |");
+          [void]$sb.AppendLine("| **Địa chỉ RDP** | ``$rdpTarget`` |");
+          [void]$sb.AppendLine("| **IP Tailscale** | ``$tsIp`` |");
+          [void]$sb.AppendLine("| **IP Outbound Máy** | ``$pubIp`` |");
           [void]$sb.AppendLine('| **User** | `zenova` (hoặc `runneradmin`) |');
-          [void]$sb.AppendLine("| **Mật khẩu** | `$pass` |");
+          [void]$sb.AppendLine("| **Mật khẩu** | ``$pass`` |");
           [void]$sb.AppendLine('');
           [void]$sb.AppendLine('---');
           [void]$sb.AppendLine('');
@@ -1413,7 +1360,7 @@ jobs:
           exit 0;
 
       # ─────────────────────────────────────────────────────────────
-      # 13. DUY TRÌ PHIÊN LÀM VIỆC & LẮNG NGHE LỆNH WEB PANEL (TỰ ĐỘNG CHUYỂN TIẾP 24H)
+      # 13. DUY TRÌ PHIÊN LÀM VIỆC & LẮNG NGHE LỆNH WEB PANEL
       # ─────────────────────────────────────────────────────────────
       - name: ⏳ Duy trì phiên làm việc & Lắng nghe lệnh Web Panel
         id: keepalive
@@ -1452,7 +1399,6 @@ jobs:
                   }
               }
 
-              # Kiểm tra cập nhật StarDesk ID nếu chưa có
               $sdFile = "C:\stardesk-id.txt";
               $curId = if (Test-Path "$sdFile") { (Get-Content "$sdFile" -Raw).Trim() } else { "" };
               if ((-not $curId) -or ($curId -match 'Đang lấy|chưa|Chưa|\(')) {
@@ -1468,7 +1414,6 @@ jobs:
                   }
               }
 
-              # Quét cập nhật Web Public URL nếu chưa có
               $cfWebFile = "C:\cloudflared-web-url.txt";
               if ((-not (Test-Path "$cfWebFile")) -and (Test-Path "C:\cloudflared-web.log")) {
                   $cfLog = Get-Content -Path "C:\cloudflared-web.log" -Raw -ErrorAction SilentlyContinue;
@@ -1601,12 +1546,10 @@ jobs:
       DISPLAY_NAME: ${{ github.event.inputs.display_name || github.event.inputs.machine_id || 'Zenova Linux Machine' }}
       WEB_PORT: '8080'
       FIXED_PASSWORD: ${{ github.event.inputs.fixed_password || 'Zenova@2026' }}
-      TAILSCALE_AUTH_KEY: ${{ github.event.inputs.tailscale_authkey || secrets.TAILSCALE_AUTHKEY || secrets.TAILSCALE_KEY || secrets.TS_AUTHKEY || secrets.TAILSCALE_AUTH_KEY || secrets.TAILSCALE || secrets.TS_KEY || secrets.TAILSCALE_TOKEN }}
+      # ✅ FIX Tailscale: thêm nhiều alias secret + fallback
+      TAILSCALE_AUTH_KEY: ${{ github.event.inputs.tailscale_authkey || secrets.TAILSCALE_AUTHKEY || secrets.TAILSCALE_AUTH_KEY || secrets.TAILSCALE_KEY || secrets.TS_AUTHKEY || secrets.TS_AUTH_KEY || secrets.TSKEY || secrets.TAILSCALE || secrets.TS_KEY || secrets.TAILSCALE_TOKEN || secrets.TAILSCALE_SECRET }}
 
     steps:
-      # ─────────────────────────────────────────────────────────────
-      # 1. KHỞI TẠO MÔI TRƯỜNG LINUX & CHUẨN BỊ THÔNG SỐ
-      # ─────────────────────────────────────────────────────────────
       - name: 🐧 Khởi tạo môi trường Linux & Chuẩn bị thông số
         run: |
           NOW=$(date +%s)
@@ -1630,9 +1573,6 @@ jobs:
           mkdir -p /mnt/zenova-data /tmp/zenova-system
           sudo chown -R runner:docker /mnt/zenova-data /tmp/zenova-system
 
-      # ─────────────────────────────────────────────────────────────
-      # 2. TẠO SCRIPT LƯU TRỮ DỮ LIỆU LINUX
-      # ─────────────────────────────────────────────────────────────
       - name: 🧰 Tạo script lưu trữ dữ liệu Linux
         run: |
           cat << 'EOF' > /tmp/save-linux-data.sh
@@ -1648,9 +1588,6 @@ jobs:
           EOF
           chmod +x /tmp/save-linux-data.sh
 
-      # ─────────────────────────────────────────────────────────────
-      # 3. KHÔI PHỤC DỮ LIỆU LINUX TỪ GITHUB RELEASE
-      # ─────────────────────────────────────────────────────────────
       - name: ♻️ Khôi phục dữ liệu Linux từ GitHub Release
         run: |
           mkdir -p /tmp/gh-restore-linux
@@ -1665,9 +1602,6 @@ jobs:
             echo "ℹ️ Máy Linux [$MACHINE_ID] là máy mới. Tạo phiên ban đầu..."
           fi
 
-      # ─────────────────────────────────────────────────────────────
-      # 4. TỐI ƯU TỐI THƯỢNG LINUX KERNEL & FIX LAG
-      # ─────────────────────────────────────────────────────────────
       - name: ⚙️ Tối ưu tối thượng Linux Kernel & Fix Lag
         run: |
           echo "🚀 Đang tối ưu Kernel Linux (BBR, TCP buffer, giảm độ trễ)..."
@@ -1677,9 +1611,6 @@ jobs:
           sudo sysctl -w net.ipv4.tcp_fastopen=3
           sudo sysctl -w fs.file-max=1048576
 
-      # ─────────────────────────────────────────────────────────────
-      # 5. CÀI ĐẶT DESKTOP XFCE4 & XRDP SERVER
-      # ─────────────────────────────────────────────────────────────
       - name: 🖥️ Cài đặt Desktop XFCE4 & XRDP Server
         run: |
           sudo apt-get update -qq
@@ -1690,36 +1621,32 @@ jobs:
           sudo systemctl enable xrdp
           sudo systemctl restart xrdp
 
-      # ─────────────────────────────────────────────────────────────
-      # 6. THIẾT LẬP TÀI KHOẢN RUNNER
-      # ─────────────────────────────────────────────────────────────
       - name: 👤 Thiết lập tài khoản runner
         run: |
           echo "runner:$FIXED_PASSWORD" | sudo chpasswd
           sudo usermod -aG sudo runner
 
-      # ─────────────────────────────────────────────────────────────
-      # 7. CÀI ĐẶT ỨNG DỤNG LINUX (CHROME, VLC, DISCORD, SPOTIFY)
-      # ─────────────────────────────────────────────────────────────
       - name: 📦 Cài đặt ứng dụng Linux (Chrome, VLC, Discord, Spotify)
         run: |
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends vlc
           wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -O /tmp/chrome.deb
           sudo apt install -y -qq /tmp/chrome.deb >/dev/null 2>&1 || true
 
-      # ─────────────────────────────────────────────────────────────
-      # 8. KẾT NỐI TAILSCALE LINUX
-      # ─────────────────────────────────────────────────────────────
-      - name: 🌐 Kết nối Tailscale Linux
+      - name: 🌐 Kết nối Tailscale Linux (FIX TRIỆT ĐỂ)
         run: |
-          if [ -n "$TAILSCALE_AUTH_KEY" ]; then
-            echo "🌐 Đang kết nối Tailscale Linux..."
+          # ✅ FIX: trim đúng cách + kiểm tra bằng -n
+          CLEAN_KEY=$(printf '%s' "$TAILSCALE_AUTH_KEY" | tr -d '\r\n' | tr -d '"' | tr -d "'" | xargs)
+          if [ -n "$CLEAN_KEY" ]; then
+            echo "🌐 Đang kết nối Tailscale Linux (key length: ${#CLEAN_KEY})..."
+            if [[ ! "$CLEAN_KEY" =~ ^tskey- ]]; then
+              echo "⚠️ CẢNH BÁO: Key không bắt đầu bằng 'tskey-' — có thể sai định dạng!"
+            fi
             curl -fsSL https://tailscale.com/install.sh | sh
-            CLEAN_KEY=$(echo "$TAILSCALE_AUTH_KEY" | tr -d ' "'"'")
             CLEAN_HOST=$(echo "zenova-linux-$MACHINE_ID" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')
-            sudo tailscale up --authkey="$CLEAN_KEY" --hostname="$CLEAN_HOST" --accept-routes || true
-            for i in {1..20}; do
-              TS_IP=$(tailscale ip -4 2>/dev/null || echo "")
+            sudo tailscale up --authkey="$CLEAN_KEY" --hostname="$CLEAN_HOST" --accept-routes 2>&1 | tee /tmp/ts-up.log || true
+            TS_IP=""
+            for i in {1..30}; do
+              TS_IP=$(tailscale ip -4 2>/dev/null | head -n1 || echo "")
               if [[ "$TS_IP" =~ ^100\. ]]; then break; fi
               sleep 1
             done
@@ -1727,26 +1654,22 @@ jobs:
               echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
               echo "$TS_IP" > /tmp/tailscale-ip.txt
               echo "🎉 Tailscale IP: $TS_IP"
+            else
+              echo "⚠️ Chưa có IP Tailscale. Status:"
+              tailscale status 2>&1 | head -n 20 || true
             fi
+          else
+            echo "⚠️ Không có TAILSCALE_AUTH_KEY — bỏ qua Tailscale."
           fi
 
-      # ─────────────────────────────────────────────────────────────
-      # 9. KHỞI CHẠY WEB QUẢN LÝ LINUX (PYTHON MULTI-THREADED PORT 8080)
-      # ─────────────────────────────────────────────────────────────
       - name: 🌐 Khởi chạy Web Quản Lý Linux (Port 8080)
         run: |
-          echo 'aW1wb3J0IGh0dHAuc2VydmVyLCBzb2NrZXRzZXJ2ZXIsIGpzb24sIG9zLCBzeXMsIHVybGxpYi5wYXJzZQoKUE9SVCA9IDgwODAKU0lHX0ZJTEUgPSAiL3RtcC96ZW5vdmEtc2lnbmFsLnR4dCIKCkhUTUxfVEVNUExBVEUgPSAiIiI8IURPQ1RZUEUgaHRtbD4KPGh0bWwgbGFuZz0idmkiPgo8aGVhZD4KPG1ldGEgY2hhcnNldD0idXRmLTgiPgo8dGl0bGU+WmVub3ZhIExpbnV4IENvbnRyb2w8L3RpdGxlPgo8c3R5bGU+CmJvZHkgeyBiYWNrZ3JvdW5kOiMwZDExMTc7IGNvbG9yOiNjOWQxZDk7IGZvbnQtZmFtaWx5OnN5c3RlbS11aSwtYXBwbGUtc3lzdGVtLHNhbnMtc2VyaWY7IHBhZGRpbmc6MzBweDsgdGV4dC1hbGlnbjpjZW50ZXI7IH0KLmNhcmQgeyBiYWNrZ3JvdW5kOiMxNjFiMjI7IHBhZGRpbmc6MjRweDsgYm9yZGVyLXJhZGl1czoxMnB4OyBtYXgtd2lkdGg6NjAwcHg7IG1hcmdpbjphdXRvOyBib3JkZXI6MXB4IHNvbGlkICMzMDM2M2Q7IGJveC1zaGFkb3c6MCAxMHB4IDIwcHggcmdiYSgwLDAsMCwwLjUpOyB9Ci5idG4geyBwYWRkaW5nOjEycHggMjRweDsgbWFyZ2luOjhweDsgYm9yZGVyOm5vbmU7IGJvcmRlci1yYWRpdXM6OHB4OyBjdXJzb3I6cG9pbnRlcjsgZm9udC13ZWlnaHQ6Ym9sZDsgY29sb3I6I2ZmZjsgfQouc2F2ZSB7IGJhY2tncm91bmQ6IzFmNmZlYjsgfSAucnN0IHsgYmFja2dyb3VuZDojZDI5OTIyOyB9IC5zdG9wIHsgYmFja2dyb3VuZDojZGEzNjMzOyB9Ci5jb2RlIHsgYmFja2dyb3VuZDojMGQxMTE3OyBwYWRkaW5nOjZweCAxMHB4OyBib3JkZXItcmFkaXVzOjZweDsgZm9udC1mYW1pbHk6bW9ub3NwYWNlOyBjb2xvcjojNThhNmZmOyB9Cjwvc3R5bGU+CjwvaGVhZD4KPGJvZHk+CjxkaXYgY2xhc3M9ImNhcmQiPgo8aDI+8J+QpyBaRU5PVkEgTElOVVggVlBTPC9oMj4KPHA+TcOheTogPGI+X19NQUNIX0lEX188L2I+IHwgSVAgT3V0Ym91bmQ6IDxiPl9fUFVCX0lQX188L2I+PC9wPgo8cD5YUkRQIEhvc3Q6IDxzcGFuIGNsYXNzPSJjb2RlIj5fX1hSRFBfQUREUl9fPC9zcGFuPjwvcD4KPHA+VXNlcjogPGI+cnVubmVyPC9iPiB8IFBhc3M6IDxiPl9fUFdEX188L2I+PC9wPgo8aHIgc3R5bGU9ImJvcmRlci1jb2xvcjojMzAzNjNkIj4KPGJ1dHRvbiBjbGFzcz0iYnRuIHNhdmUiIG9uY2xpY2s9InNlbmRDbWQoJ1NBVkVfTk9XJykiPvCfkr4gTMavVSBOR0FZPC9idXR0b24+CjxidXR0b24gY2xhc3M9ImJ0biByc3QiIG9uY2xpY2s9InNlbmRDbWQoJ1JFU1RBUlRfU0VTU0lPTicpIj7wn5SBIFJFU0VUIFBIScOKTjwvYnV0dG9uPgo8YnV0dG9uIGNsYXNzPSJidG4gc3RvcCIgb25jbGljaz0ic2VuZENtZCgnU1RPUF9TRVNTSU9OJykiPvCfm5EgVOG6rlQgVlBTPC9idXR0b24+CjwvZGl2Pgo8c2NyaXB0Pgphc3luYyBmdW5jdGlvbiBzZW5kQ21kKGMpIHsKICAgIGlmIChjb25maXJtKCdYw6FjIG5o4bqtbiB0aOG7sWMgaGnhu4duIGzhu4duaDogJyArIGMgKyAnPycpKSB7CiAgICAgICAgdHJ5IHsKICAgICAgICAgICAgYXdhaXQgZmV0Y2goJy9hcGkvY21kJywgeyBtZXRob2Q6J1BPU1QnLCBoZWFkZXJzOnsnQ29udGVudC1UeXBlJzonYXBwbGljYXRpb24vanNvbid9LCBib2R5OkpTT04uc3RyaW5naWZ5KHtjbWQ6Y30pIH0pOwogICAgICAgICAgICBhbGVydCgnxJDDoyBn4butaSBs4buHbmghJyk7CiAgICAgICAgfSBjYXRjaChlKSB7CiAgICAgICAgICAgIGFsZXJ0KCdM4buXaTogJyArIGUpOwogICAgICAgIH0KICAgIH0KfQo8L3NjcmlwdD4KPC9ib2R5Pgo8L2h0bWw+CiIiIgoKY2xhc3MgSGFuZGxlcihodHRwLnNlcnZlci5TaW1wbGVIVFRQUmVxdWVzdEhhbmRsZXIpOgogICAgZGVmIGxvZ19tZXNzYWdlKHNlbGYsIGZvcm1hdCwgKmFyZ3MpOiBwYXNzCgogICAgZGVmIGRvX1BPU1Qoc2VsZik6CiAgICAgICAgY21kID0gIiIKICAgICAgICBpZiBzZWxmLnBhdGggPT0gIi9zdG9wIjogY21kID0gIlNUT1BfU0VTU0lPTiIKICAgICAgICBlbGlmIHNlbGYucGF0aCA9PSAiL3Jlc3RhcnQiOiBjbWQgPSAiUkVTVEFSVF9TRVNTSU9OIgogICAgICAgIGVsaWYgc2VsZi5wYXRoID0gPSAic2F2ZSI6IGNtZCA9ICJTQVZFX05PVyIKICAgICAgICBlbHNlOgogICAgICAgICAgICBsZW5ndGggPSBpbnQoc2VsZi5oZWFkZXJzLmdldCgnY29udGVudC1sZW5ndGgnLCAwKSkKICAgICAgICAgICAgYm9keSA9IHNlbGYucmZpbGUucmVhZChsZW5ndGgpLmRlY29kZSgndXRmLTgnLCBlcnJvcnM9J2lnbm9yZScpCiAgICAgICAgICAgIHRyeTogY21kID0ganNvbi5sb2Fkcyhib2R5KS5nZXQoJ2NtZCcsIGJvZHkpCiAgICAgICAgICAgIGV4Y2VwdDogY21kID0gYm9keQoKICAgICAgICBpZiBjbWQ6CiAgICAgICAgICAgIHdpdGggb3BlbihTSUdfRklMRSwgInciKSBhcyBmOgogICAgICAgICAgICAgICAgZi53cml0ZShjbWQuc3RyaXAoKSkKCiAgICAgICAgcmVzcCA9IGpzb24uZHVtcHMoeyJvayI6IFRydWUsICJtZXNzYWdlIjogIsSQw6MgZ+G7rWkgbOG7h25oIExpbnV4OiAiICsgc3RyKGNtZCl9KS5lbmNvZGUoJ3V0Zi04JykKICAgICAgICBzZWxmLnNlbmRfcmVzcG9uc2UoMjAwKQogICAgICAgIHNlbGYuc2VuZF9oZWFkZXIoJ0NvbnRlbnQtVHlwZScsICdhcHBsaWNhdGlvbi9qc29uJykKICAgICAgICBzZWxmLmVuZF9oZWFkZXJzKCkKICAgICAgICBzZWxmLndmaWxlLndyaXRlKHJlc3ApCgogICAgZGVmIGRvX0dFVChzZWxmKToKICAgICAgICBkZWYgcmYocCk6CiAgICAgICAgICAgIHRyeToKICAgICAgICAgICAgICAgIGlmIG9zLnBhdGguZXhpc3RzKHApOgogICAgICAgICAgICAgICAgICAgIHdpdGggb3BlbihwLCAncicpIGFzIGY6IHJldHVybiBmLnJlYWQoKS5zdHJpcCgpCiAgICAgICAgICAgIGV4Y2VwdDogcGFzcwogICAgICAgICAgICByZXR1cm4gIiIKCiAgICAgICAgdHNfaXAgPSByZigiL3RtcC90YWlsc2NhbGUtaXAudHh0Iikgb3Igb3MuZW52aXJvbi5nZXQoJ1RBSUxTQ0FMRV9JUCcsICcnKQogICAgICAgIHB1Yl9pcCA9IHJmKCIvdG1wL21hY2hpbmUtaXAudHh0Iikgb3Igb3MuZW52aXJvbi5nZXQoJ01BQ0hJTkVfUFVCTElDX0lQJywgJzEyNy4wLjAuMScpCiAgICAgICAgcHdkID0gb3MuZW52aXJvbi5nZXQoJ0ZJWEVEX1BBU1NXT1JEJywgJ1plbm92YUAyMDI2JykKICAgICAgICBtYWNoX2lkID0gb3MuZW52aXJvbi5nZXQoJ01BQ0hJTkVfSUQnLCAnemVub3ZhLWxpbnV4LTEnKQoKICAgICAgICB4cmRwX2FkZHIgPSAodHNfaXAgKyAiOjMzODkiKSBpZiB0c19pcCBlbHNlIChwdWJfaXAgKyAiOjMzODkiKQoKICAgICAgICBodG1sID0gSFRNTF9URU1QTEFURQogICAgICAgIGh0bWwgPSBodG1sLnJlcGxhY2UoIl9fTUFDSF9JRF9fIiwgbWFjaF9pZCkKICAgICAgICBodG1sID0gaHRtbC5yZXBsYWNlKCJfX1BVQl9JUF9fIiwgcHViX2lwKQogICAgICAgIGh0bWwgPSBodG1sLnJlcGxhY2UoIl9fWFJEUF9BRERSX18iLCB4cmRwX2FkZHIpCiAgICAgICAgaHRtbCA9IGh0bWwucmVwbGFjZSgiX19QV0RfXyIsIHB3ZCkKCiAgICAgICAgc2VsZi5zZW5kX3Jlc3BvbnNlKDIwMCkKICAgICAgICBzZWxmLnNlbmRfaGVhZGVyKCdDb250ZW50LVR5cGUnLCAndGV4dC9odG1sOyBjaGFyc2V0PXV0Zi04JykKICAgICAgICBzZWxmLmVuZF9oZWFkZXJzKCkKICAgICAgICBzZWxmLndmaWxlLndyaXRlKGh0bWwuZW5jb2RlKCd1dGYtOCcpKQoKY2xhc3MgVGhyZWFkZWRIVFRQU2VydmVyKHNvY2tldHNlcnZlci5UaHJlYWRpbmdNaXhJbiwgaHR0cC5zZXJ2ZXIuSFRUUFNlcnZlcik6CiAgICBkYWVtb25fdGhyZWFkcyA9IFRydWUKICAgIGFsbG93X3JldXNlX2FkZHJlc3MgPSBUcnVlCgppZiBfX25hbWVfXyA9PSAnX19tYWluX18nOgogICAgc2VydmVyID0gVGhyZWFkZWRIVFRQU2VydmVyKCgnMC4wLjAuMCcsIFBPUlQpLCBIYW5kbGVyKQogICAgc2VydmVyLnNlcnZlX2ZvcmV2ZXIoKQo=' | base64 -d > /tmp/server.py
-
+          echo 'aW1wb3J0IGh0dHAuc2VydmVyLCBzb2NrZXRzZXJ2ZXIsIGpzb24sIG9zLCBzeXMsIHVybGxpYi5wYXJzZQoKUE9SVCA9IDgwODAKU0lHX0ZJTEUgPSAiL3RtcC96ZW5vdmEtc2lnbmFsLnR4dCIKCkhUTUxfVEVNUExBVEUgPSAiIiI8IURPQ1RZUEUgaHRtbD4KPGh0bWwgbGFuZz0idmkiPgo8aGVhZD4KPG1ldGEgY2hhcnNldD0idXRmLTgiPgo8dGl0bGU+WmVub3ZhIExpbnV4IENvbnRyb2w8L3RpdGxlPgo8c3R5bGU+CmJvZHkgeyBiYWNrZ3JvdW5kOiMwZDExMTc7IGNvbG9yOiNjOWQxZDk7IGZvbnQtZmFtaWx5OnN5c3RlbS11aSwtYXBwbGUtc3lzdGVtLHNhbnMtc2VyaWY7IHBhZGRpbmc6MzBweDsgdGV4dC1hbGlnbjpjZW50ZXI7IH0KLmNhcmQgeyBiYWNrZ3JvdW5kOiMxNjFiMjI7IHBhZGRpbmc6MjRweDsgYm9yZGVyLXJhZGl1czoxMnB4OyBtYXgtd2lkdGg6NjAwcHg7IG1hcmdpbjphdXRvOyBib3JkZXI6MXB4IHNvbGlkICMzMDM2M2Q7IGJveC1zaGFkb3c6MCAxMHB4IDIwcHggcmdiYSgwLDAsMCwwLjUpOyB9Ci5idG4geyBwYWRkaW5nOjEycHggMjRweDsgbWFyZ2luOjhweDsgYm9yZGVyOm5vbmU7IGJvcmRlci1yYWRpdXM6OHB4OyBjdXJzb3I6cG9pbnRlcjsgZm9udC13ZWlnaHQ6Ym9sZDsgY29sb3I6I2ZmZjsgfQouc2F2ZSB7IGJhY2tncm91bmQ6IzFmNmZlYjsgfSAucnN0IHsgYmFja2dyb3VuZDojZDI5OTIyOyB9IC5zdG9wIHsgYmFja2dyb3VuZDojZGEzNjMzOyB9Ci5jb2RlIHsgYmFja2dyb3VuZDojMGQxMTE3OyBwYWRkaW5nOjZweCAxMHB4OyBib3JkZXItcmFkaXVzOjZweDsgZm9udC1mYW1pbHk6bW9ub3NwYWNlOyBjb2xvcjojNThhNmZmOyB9Cjwvc3R5bGU+CjwvaGVhZD4KPGJvZHk+CjxkaXYgY2xhc3M9ImNhcmQiPgo8aDI+8J+QpyBaRU5PVkEgTElOVVggVlBTPC9oMj4KPHA+TcOheTogPGI+X19NQUNIX0lEX188L2I+IHwgSVAgT3V0Ym91bmQ6IDxiPl9fUFVCX0lQX188L2I+PC9wPgo8cD5YUkRQIEhvc3Q6IDxzcGFuIGNsYXNzPSJjb2RlIj5fX1hSRFBfQUREUl9fPC9zcGFuPjwvcD4KPHA+VXNlcjogPGI+cnVubmVyPC9iPiB8IFBhc3M6IDxiPl9fUFdEX188L2I+PC9wPgo8aHIgc3R5bGU9ImJvcmRlci1jb2xvcjojMzAzNjNkIj4KPGJ1dHRvbiBjbGFzcz0iYnRuIHNhdmUiIG9uY2xpY2s9InNlbmRDbWQoJ1NBVkVfTk9XJykiPvCfkr4gTMavVSBOR0FZPC9idXR0b24+CjxidXR0b24gY2xhc3M9ImJ0biByc3QiIG9uY2xpY2s9InNlbmRDbWQoJ1JFU1RBUlRfU0VTU0lPTicpIj7wn5SBIFJFU0VUIFBIScOKTjwvYnV0dG9uPgo8YnV0dG9uIGNsYXNzPSJidG4gc3RvcCIgb25jbGljaz0ic2VuZENtZCgnU1RPUF9TRVNTSU9OJykiPvCfm5EgVOG6rlQgVlBTPC9idXR0b24+CjwvZGl2Pgo8c2NyaXB0Pgphc3luYyBmdW5jdGlvbiBzZW5kQ21kKGMpIHsKICAgIGlmIChjb25maXJtKCdYw6FjIG5o4bqtbiB0aOG7sWMgaGnhu4duIGzhu4duaDogJyArIGMgKyAnPycpKSB7CiAgICAgICAgdHJ5IHsKICAgICAgICAgICAgYXdhaXQgZmV0Y2goJy9hcGkvY21kJywgeyBtZXRob2Q6J1BPU1QnLCBoZWFkZXJzOnsnQ29udGVudC1UeXBlJzonYXBwbGljYXRpb24vanNvbid9LCBib2R5OkpTT04uc3RyaW5naWZ5KHtjbWQ6Y30pIH0pOwogICAgICAgICAgICBhbGVydCgnxJDDoyBn4butaSBs4buHbmghJyk7CiAgICAgICAgfSBjYXRjaChlKSB7CiAgICAgICAgICAgIGFsZXJ0KCdM4buXaTogJyArIGUpOwogICAgICAgIH0KICAgIH0KfQo8L3NjcmlwdD4KPC9ib2R5Pgo8L2h0bWw+CiIiIgoKY2xhc3MgSGFuZGxlcihodHRwLnNlcnZlci5TaW1wbGVIVFRQUmVxdWVzdEhhbmRsZXIpOgogICAgZGVmIGxvZ19tZXNzYWdlKHNlbGYsIGZvcm1hdCwgKmFyZ3MpOiBwYXNzCgogICAgZGVmIGRvX1BPU1Qoc2VsZik6CiAgICAgICAgY21kID0gIiIKICAgICAgICBpZiBzZWxmLnBhdGggPT0gIi9zdG9wIjogY21kID0gIlNUT1BfU0VTU0lPTiIKICAgICAgICBlbGlmIHNlbGYucGF0aCA9PSAiL3Jlc3RhcnQiOiBjbWQgPSAiUkVTVEFSVF9TRVNTSU9OIgogICAgICAgIGVsaWYgc2VsZi5wYXRoID09ICIvc2F2ZSI6IGNtZCA9ICJTQVZFX05PVyIKICAgICAgICBlbHNlOgogICAgICAgICAgICBsZW5ndGggPSBpbnQoc2VsZi5oZWFkZXJzLmdldCgnY29udGVudC1sZW5ndGgnLCAwKSkKICAgICAgICAgICAgYm9keSA9IHNlbGYucmZpbGUucmVhZChsZW5ndGgpLmRlY29kZSgndXRmLTgnLCBlcnJvcnM9J2lnbm9yZScpCiAgICAgICAgICAgIHRyeTogY21kID0ganNvbi5sb2Fkcyhib2R5KS5nZXQoJ2NtZCcsIGJvZHkpCiAgICAgICAgICAgIGV4Y2VwdDogY21kID0gYm9keQoKICAgICAgICBpZiBjbWQ6CiAgICAgICAgICAgIHdpdGggb3BlbihTSUdfRklMRSwgInciKSBhcyBmOgogICAgICAgICAgICAgICAgZi53cml0ZShjbWQuc3RyaXAoKSkKCiAgICAgICAgcmVzcCA9IGpzb24uZHVtcHMoeyJvayI6IFRydWUsICJtZXNzYWdlIjogIsSQw6MgZ+G7rWkgbOG7h25oIExpbnV4OiAiICsgc3RyKGNtZCl9KS5lbmNvZGUoJ3V0Zi04JykKICAgICAgICBzZWxmLnNlbmRfcmVzcG9uc2UoMjAwKQogICAgICAgIHNlbGYuc2VuZF9oZWFkZXIoJ0NvbnRlbnQtVHlwZScsICdhcHBsaWNhdGlvbi9qc29uJykKICAgICAgICBzZWxmLmVuZF9oZWFkZXJzKCkKICAgICAgICBzZWxmLndmaWxlLndyaXRlKHJlc3ApCgogICAgZGVmIGRvX0dFVChzZWxmKToKICAgICAgICBkZWYgcmYocCk6CiAgICAgICAgICAgIHRyeToKICAgICAgICAgICAgICAgIGlmIG9zLnBhdGguZXhpc3RzKHApOgogICAgICAgICAgICAgICAgICAgIHdpdGggb3BlbihwLCAncicpIGFzIGY6IHJldHVybiBmLnJlYWQoKS5zdHJpcCgpCiAgICAgICAgICAgIGV4Y2VwdDogcGFzcwogICAgICAgICAgICByZXR1cm4gIiIKCiAgICAgICAgdHNfaXAgPSByZigiL3RtcC90YWlsc2NhbGUtaXAudHh0Iikgb3Igb3MuZW52aXJvbi5nZXQoJ1RBSUxTQ0FMRV9JUCcsICcnKQogICAgICAgIHB1Yl9pcCA9IHJmKCIvdG1wL21hY2hpbmUtaXAudHh0Iikgb3Igb3MuZW52aXJvbi5nZXQoJ01BQ0hJTkVfUFVCTElDX0lQJywgJzEyNy4wLjAuMScpCiAgICAgICAgcHdkID0gb3MuZW52aXJvbi5nZXQoJ0ZJWEVEX1BBU1NXT1JEJywgJ1plbm92YUAyMDI2JykKICAgICAgICBtYWNoX2lkID0gb3MuZW52aXJvbi5nZXQoJ01BQ0hJTkVfSUQnLCAnemVub3ZhLWxpbnV4LTEnKQoKICAgICAgICB4cmRwX2FkZHIgPSAodHNfaXAgKyAiOjMzODkiKSBpZiB0c19pcCBlbHNlIChwdWJfaXAgKyAiOjMzODkiKQoKICAgICAgICBodG1sID0gSFRNTF9URU1QTEFURQogICAgICAgIGh0bWwgPSBodG1sLnJlcGxhY2UoIl9fTUFDSF9JRF9fIiwgbWFjaF9pZCkKICAgICAgICBodG1sID0gaHRtbC5yZXBsYWNlKCJfX1BVQl9JUF9fIiwgcHViX2lwKQogICAgICAgIGh0bWwgPSBodG1sLnJlcGxhY2UoIl9fWFJEUF9BRERSX18iLCB4cmRwX2FkZHIpCiAgICAgICAgaHRtbCA9IGh0bWwucmVwbGFjZSgiX19QV0RfXyIsIHB3ZCkKCiAgICAgICAgc2VsZi5zZW5kX3Jlc3BvbnNlKDIwMCkKICAgICAgICBzZWxmLnNlbmRfaGVhZGVyKCdDb250ZW50LVR5cGUnLCAndGV4dC9odG1sOyBjaGFyc2V0PXV0Zi04JykKICAgICAgICBzZWxmLmVuZF9oZWFkZXJzKCkKICAgICAgICBzZWxmLndmaWxlLndyaXRlKGh0bWwuZW5jb2RlKCd1dGYtOCcpKQoKY2xhc3MgVGhyZWFkZWRIVFRQU2VydmVyKHNvY2tldHNlcnZlci5UaHJlYWRpbmdNaXhJbiwgaHR0cC5zZXJ2ZXIuSFRUUFNlcnZlcik6CiAgICBkYWVtb25fdGhyZWFkcyA9IFRydWUKICAgIGFsbG93X3JldXNlX2FkZHJlc3MgPSBUcnVlCgppZiBfX25hbWVfXyA9PSAnX19tYWluX18nOgogICAgc2VydmVyID0gVGhyZWFkZWRIVFRQU2VydmVyKCgnMC4wLjAuMCcsIFBPUlQpLCBIYW5kbGVyKQogICAgc2VydmVyLnNlcnZlX2ZvcmV2ZXIoKQo=' | base64 -d > /tmp/server.py
           nohup python3 /tmp/server.py >/dev/null 2>&1 &
-
-          # Cloudflare tunnel
           wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -O /tmp/cf.deb
           sudo dpkg -i /tmp/cf.deb >/dev/null 2>&1 || true
           nohup cloudflared tunnel --url http://127.0.0.1:8080 --logfile /tmp/cf-linux.log >/dev/null 2>&1 &
 
-      # ─────────────────────────────────────────────────────────────
-      # 10. THÔNG TIN KẾT NỐI LINUX VPS
-      # ─────────────────────────────────────────────────────────────
       - name: 🎉 Thông tin kết nối Linux VPS
         run: |
           CF_URL=""
@@ -1768,9 +1691,6 @@ jobs:
           echo "======================================================================"
           echo "::notice title=LINUX VPS SẴN SÀNG::XRDP=${TAILSCALE_IP:-127.0.0.1}:3389 | User=runner | Pass=$FIXED_PASSWORD | Web=$CF_URL"
 
-      # ─────────────────────────────────────────────────────────────
-      # 11. DUY TRÌ PHIÊN LÀM VIỆC LINUX (KEEP-ALIVE)
-      # ─────────────────────────────────────────────────────────────
       - name: ⏳ Duy trì phiên làm việc Linux (Keep-Alive)
         run: |
           END_EPOCH=$((JOB_START_EPOCH + TOTAL_MINUTES * 60))
@@ -1797,17 +1717,11 @@ jobs:
             sleep 5
           done
 
-      # ─────────────────────────────────────────────────────────────
-      # 12. LƯU DỮ LIỆU LINUX CUỐI PHIÊN
-      # ─────────────────────────────────────────────────────────────
       - name: 💾 Lưu dữ liệu Linux cuối phiên
         if: always()
         run: |
           bash /tmp/save-linux-data.sh || true
 
-      # ─────────────────────────────────────────────────────────────
-      # 13. KÍCH HOẠT PHIÊN TIẾP THEO LINUX
-      # ─────────────────────────────────────────────────────────────
       - name: 🔁 Kích hoạt phiên tiếp theo Linux
         if: always()
         run: |
