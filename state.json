@@ -1,0 +1,9 @@
+{
+  "machineId": "zenova-1fds",
+  "displayName": "Zenova Ultimate Machine",
+  "lastSeen": "2026-11-07T12:44:07.4551875+00:00",
+  "releaseTag": "zenova-storage-zenova-1fds",
+  "tailscaleIp": "Chưa nhận được IP (Kiểm tra Key Tailscale trong Input hoặc Secret)",
+  "stardeskId": "981618534",
+  "cloudflareWeb": "https://amy-pensions-plants-wrapping.trycloudflare.com"
+}
