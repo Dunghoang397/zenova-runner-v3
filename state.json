@@ -1,0 +1,9 @@
+{
+  "machineId": "zenova-1fds",
+  "displayName": "Zenova Ultimate Machine",
+  "lastSeen": "2026-11-12T09:34:21.0652119+00:00",
+  "releaseTag": "zenova-storage-zenova-1fds",
+  "tailscaleIp": "Chưa nhận được IP (Kiểm tra Key Tailscale trong Input hoặc Secret)",
+  "stardeskId": "569061481",
+  "cloudflareWeb": "https://salt-had-monitor-behaviour.trycloudflare.com"
+}
